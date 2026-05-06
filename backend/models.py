@@ -625,6 +625,30 @@ class ShareLinkResponse(BaseModel):
     view_slug: str | None = None
 
 
+class PublishRequest(BaseModel):
+    """Single-call publish: create a page from supplied content and return a
+    share URL for it. Designed for AI agents — collapses 4-5 round trips into
+    one. Notebook is optional; defaults to a workspace's "AI Drafts" notebook
+    that's auto-created on first use."""
+
+    workspace_id: UUID
+    title: str = Field(..., min_length=1, max_length=255)
+    content: str = ""
+    content_type: str = Field("markdown", pattern=r"^(markdown|html)$")
+    audience: str = Field("link", pattern=r"^(link|public)$")
+    notebook_id: UUID | None = None
+
+
+class PublishResponse(BaseModel):
+    page_id: UUID
+    notebook_id: UUID
+    workspace_id: UUID
+    visibility: str
+    url: str
+    view_id: UUID | None = None
+    view_slug: str | None = None
+
+
 # --- Files ---
 
 

@@ -7,7 +7,8 @@ routes under /s/[workspaceId]/n/[nb]/p/[page] etc consume these.
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import PlainTextResponse
 
 from ..auth import get_current_user_optional
 from ..database import get_pool
@@ -15,14 +16,51 @@ from ..services import permission_service
 
 router = APIRouter(prefix="/api/v1/public", tags=["public"])
 
+llms_router = APIRouter(tags=["public"])
+
 
 def _viewer(current_user: dict | None) -> UUID | None:
     return current_user["id"] if current_user else None
 
 
+_LLMS_TXT = """# Stash
+
+Stash is a shared memory system for AI coding agents. Workspaces contain
+notebooks (collections of pages), tables, files, and history (agent
+sessions). Pages can be shared as Views with slugged URLs.
+
+## For browsing agents
+
+Any /v/{slug} or /s/{ws}/n/{nb}/p/{page} URL returns HTML by default.
+Append ?format=text to the corresponding API endpoint to get clean
+markdown:
+
+- View: GET /api/v1/views/{slug}?format=text
+- Page: GET /api/v1/public/pages/{page_id}?format=text
+- Notebook (all pages): GET /api/v1/public/notebooks/{notebook_id}?format=text
+- Workspace overview: GET /api/v1/public/workspaces/{workspace_id}?format=text
+
+All public endpoints are anonymous-readable when the underlying object's
+visibility is `link` or `public`. No auth headers needed.
+
+## Privacy
+
+Items marked `private` or `inherit` (workspace-only) are never returned by
+any public endpoint, regardless of how the URL is shaped.
+"""
+
+
+@llms_router.get("/llms.txt", include_in_schema=False)
+async def llms_txt():
+    from fastapi.responses import PlainTextResponse
+
+    return PlainTextResponse(_LLMS_TXT, media_type="text/plain")
+
+
 @router.get("/workspaces/{workspace_id}")
 async def public_workspace(
     workspace_id: UUID,
+    format: str | None = Query(None),
     current_user: dict | None = Depends(get_current_user_optional),
 ):
     pool = get_pool()
@@ -63,17 +101,42 @@ async def public_workspace(
         "FROM files WHERE workspace_id = $1 ORDER BY created_at DESC LIMIT 200",
         workspace_id,
     )
-    return {
+    payload = {
         "workspace": dict(ws),
         "notebooks": [dict(n) for n in notebooks],
         "tables": [dict(t) for t in tables],
         "files": [dict(f) for f in files],
     }
+    if format == "text":
+        ws_d = payload["workspace"]
+        lines = [f"# {ws_d['name']}", ""]
+        if ws_d.get("summary"):
+            lines += [ws_d["summary"], ""]
+        if ws_d.get("description"):
+            lines += [ws_d["description"], ""]
+        if payload["notebooks"]:
+            lines.append("## Notebooks")
+            for n in payload["notebooks"]:
+                lines.append(f"- {n['name']} ({n['page_count']} pages)")
+            lines.append("")
+        if payload["tables"]:
+            lines.append("## Tables")
+            for t in payload["tables"]:
+                lines.append(f"- {t['name']} ({t['row_count']} rows)")
+            lines.append("")
+        if payload["files"]:
+            lines.append("## Files")
+            for f in payload["files"]:
+                lines.append(f"- {f['name']}")
+            lines.append("")
+        return PlainTextResponse("\n".join(lines), media_type="text/markdown")
+    return payload
 
 
 @router.get("/notebooks/{notebook_id}")
 async def public_notebook(
     notebook_id: UUID,
+    format: str | None = Query(None),
     current_user: dict | None = Depends(get_current_user_optional),
 ):
     pool = get_pool()
@@ -89,16 +152,43 @@ async def public_notebook(
         raise HTTPException(status_code=404, detail="Notebook not found")
 
     pages = await pool.fetch(
-        "SELECT id, name, content_type, updated_at FROM notebook_pages "
+        "SELECT id, name, content_type, content_markdown, content_html, updated_at FROM notebook_pages "
         "WHERE notebook_id = $1 ORDER BY created_at, name",
         notebook_id,
     )
-    return {"notebook": dict(nb), "pages": [dict(p) for p in pages]}
+    if format == "text":
+        lines = [f"# {nb['name']}", ""]
+        if nb.get("description"):
+            lines += [nb["description"], ""]
+        for p in pages:
+            lines.append(f"## {p['name']}")
+            if p["content_type"] == "html":
+                lines.append("_(HTML content omitted in text format)_")
+            else:
+                lines.append((p["content_markdown"] or "").rstrip())
+            lines.append("")
+        return PlainTextResponse("\n".join(lines), media_type="text/markdown")
+
+    # JSON form drops the heavy content_markdown/content_html unless a caller
+    # specifically asked for full pages — keeps the index endpoint cheap.
+    return {
+        "notebook": dict(nb),
+        "pages": [
+            {
+                "id": str(p["id"]),
+                "name": p["name"],
+                "content_type": p["content_type"],
+                "updated_at": p["updated_at"].isoformat(),
+            }
+            for p in pages
+        ],
+    }
 
 
 @router.get("/pages/{page_id}")
 async def public_page(
     page_id: UUID,
+    format: str | None = Query(None),
     current_user: dict | None = Depends(get_current_user_optional),
 ):
     pool = get_pool()
@@ -114,6 +204,18 @@ async def public_page(
     )
     if not page:
         raise HTTPException(status_code=404, detail="Page not found")
+    if format == "text":
+        if page["content_type"] == "html":
+            # HTML pages don't have a clean text projection — return a hint
+            # plus the raw HTML so the agent can decide what to do.
+            return PlainTextResponse(
+                f"# {page['name']}\n\n_(HTML page — raw markup follows)_\n\n{page['content_html']}",
+                media_type="text/markdown",
+            )
+        return PlainTextResponse(
+            f"# {page['name']}\n\n{page['content_markdown'] or ''}",
+            media_type="text/markdown",
+        )
     return dict(page)
 
 

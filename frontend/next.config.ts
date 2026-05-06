@@ -19,6 +19,10 @@ const nextConfig: NextConfig = {
         source: "/health",
         destination: `${backend}/health`,
       },
+      {
+        source: "/llms.txt",
+        destination: `${backend}/llms.txt`,
+      },
     ];
   },
   async headers() {

@@ -10,7 +10,7 @@ keep working — this is additive.
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 from ..auth import get_current_user
 from ..config import settings
@@ -116,10 +116,14 @@ async def remove_share(
     await permission_service.remove_share(object_type, object_id, user_id)
 
 
+_VISIBILITY_RANK = {"private": 0, "inherit": 0, "link": 1, "public": 2}
+
+
 @router.post("/{object_type}/{object_id}/share-link", response_model=ShareLinkResponse)
 async def create_share_link(
     object_type: str,
     object_id: UUID,
+    ensure: str | None = Query(None, pattern=r"^(link|public)$"),
     current_user: dict = Depends(get_current_user),
 ):
     """Idempotently mint the URL for the share sheet's "Copy link" button.
@@ -127,13 +131,36 @@ async def create_share_link(
     For a workspace the URL is /s/{id}. For every other shareable object we
     auto-create (or reuse) a one-item View pointing at it and return /v/{slug}.
     The View is just the slugged shell — access is governed by the object's
-    own permissions, not by the View."""
+    own permissions, not by the View.
+
+    `ensure=link|public`: raise the underlying object's visibility to at
+    least the requested level before returning the URL. Without this, an
+    agent that calls share-link on an `inherit` object gets back a URL that
+    immediately 404s for anonymous viewers — easy to forget, hard to debug."""
     await _require_admin(object_type, object_id, current_user["id"])
+
+    if ensure:
+        current_vis = await permission_service.get_visibility(object_type, object_id)
+        if _VISIBILITY_RANK.get(current_vis, 0) < _VISIBILITY_RANK[ensure]:
+            await permission_service.set_visibility(object_type, object_id, ensure)
 
     base = settings.PUBLIC_URL.rstrip("/")
 
     if object_type == "workspace":
         return ShareLinkResponse(url=f"{base}/s/{object_id}", kind="workspace")
+
+    if object_type == "view":
+        # Views already have their own /v/{slug} URL — return it directly
+        # rather than wrapping a View around a View.
+        view = await view_service.get_view(object_id)
+        if not view:
+            raise HTTPException(status_code=404, detail="View not found")
+        return ShareLinkResponse(
+            url=f"{base}/v/{view['slug']}",
+            kind="view",
+            view_id=view["id"],
+            view_slug=view["slug"],
+        )
 
     workspace_id = await permission_service.resolve_workspace_id(object_type, object_id)
     if workspace_id is None:

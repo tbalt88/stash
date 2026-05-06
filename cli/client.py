@@ -577,3 +577,53 @@ class StashClient:
     def delete_table_column(self, workspace_id: str | None, table_id: str, column_id: str) -> dict:
         base = f"/api/v1/workspaces/{workspace_id}/tables" if workspace_id else "/api/v1/tables"
         return self._request("DELETE", f"{base}/{table_id}/columns/{column_id}").json()
+
+    # ── Unified sharing API (object_type: workspace|notebook|page|table|file|history|view) ──
+
+    def get_object_permissions(self, object_type: str, object_id: str) -> dict:
+        return self._get(f"/api/v1/objects/{object_type}/{object_id}/permissions")
+
+    def set_object_visibility(self, object_type: str, object_id: str, visibility: str) -> dict:
+        return self._patch(
+            f"/api/v1/objects/{object_type}/{object_id}/permissions",
+            json={"visibility": visibility},
+        )
+
+    def add_object_share(
+        self, object_type: str, object_id: str, user_id: str, permission: str = "read"
+    ) -> dict:
+        return self._post(
+            f"/api/v1/objects/{object_type}/{object_id}/shares",
+            json={"user_id": user_id, "permission": permission},
+        )
+
+    def remove_object_share(self, object_type: str, object_id: str, user_id: str) -> None:
+        self._delete(f"/api/v1/objects/{object_type}/{object_id}/shares/{user_id}")
+
+    def share_link(
+        self, object_type: str, object_id: str, ensure: str | None = None
+    ) -> dict:
+        path = f"/api/v1/objects/{object_type}/{object_id}/share-link"
+        if ensure:
+            path += f"?ensure={ensure}"
+        return self._post(path)
+
+    def publish(
+        self,
+        workspace_id: str,
+        title: str,
+        content: str,
+        content_type: str = "markdown",
+        audience: str = "link",
+        notebook_id: str | None = None,
+    ) -> dict:
+        body: dict = {
+            "workspace_id": workspace_id,
+            "title": title,
+            "content": content,
+            "content_type": content_type,
+            "audience": audience,
+        }
+        if notebook_id:
+            body["notebook_id"] = notebook_id
+        return self._post("/api/v1/publish", json=body)
