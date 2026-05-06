@@ -17,7 +17,7 @@ interface PublicTable {
 
 async function loadTable(tableId: string): Promise<PublicTable | null> {
   const res = await fetch(`${BACKEND_ORIGIN}/api/v1/public/tables/${tableId}`, {
-    next: { revalidate: 30 },
+    cache: "no-store",
   });
   if (res.status === 404) return null;
   if (!res.ok) throw new Error(`table fetch failed: ${res.status}`);

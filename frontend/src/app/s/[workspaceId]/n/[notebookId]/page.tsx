@@ -21,7 +21,7 @@ interface NotebookDetail {
 
 async function loadNotebook(notebookId: string): Promise<NotebookDetail | null> {
   const res = await fetch(`${BACKEND_ORIGIN}/api/v1/public/notebooks/${notebookId}`, {
-    next: { revalidate: 30 },
+    cache: "no-store",
   });
   if (res.status === 404) return null;
   if (!res.ok) throw new Error(`notebook fetch failed: ${res.status}`);

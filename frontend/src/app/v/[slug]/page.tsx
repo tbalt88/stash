@@ -62,8 +62,11 @@ type ViewPublic = {
 };
 
 async function loadView(slug: string): Promise<ViewPublic | null> {
+  // Permissions changes (revoke a share, flip an item to private) MUST take
+  // effect immediately — caching the SSR response would let stale public
+  // pages keep rendering after the publisher pulled access.
   const res = await fetch(`${BACKEND_ORIGIN}/api/v1/views/${slug}`, {
-    next: { revalidate: 30 },
+    cache: "no-store",
   });
   if (res.status === 404) return null;
   if (!res.ok) throw new Error(`view fetch failed: ${res.status}`);

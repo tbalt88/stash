@@ -40,7 +40,7 @@ interface PublicPage {
 
 async function loadPage(pageId: string): Promise<PublicPage | null> {
   const res = await fetch(`${BACKEND_ORIGIN}/api/v1/public/pages/${pageId}`, {
-    next: { revalidate: 30 },
+    cache: "no-store",
   });
   if (res.status === 404) return null;
   if (!res.ok) throw new Error(`page fetch failed: ${res.status}`);

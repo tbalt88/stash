@@ -33,7 +33,7 @@ async function loadDetail(workspaceId: string): Promise<PublicWorkspaceDetail | 
   // (used by the Discover index, not by the share-URL reader).
   const res = await fetch(
     `${BACKEND_ORIGIN}/api/v1/public/workspaces/${workspaceId}`,
-    { next: { revalidate: 30 } }
+    { cache: "no-store" }
   );
   if (res.status === 404) return null;
   if (!res.ok) throw new Error(`public fetch failed: ${res.status}`);

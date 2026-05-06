@@ -21,7 +21,7 @@ type ViewPublic = {
 
 async function loadView(slug: string): Promise<ViewPublic | null> {
   const res = await fetch(`${BACKEND_ORIGIN}/api/v1/views/${slug}`, {
-    next: { revalidate: 30 },
+    cache: "no-store",
   });
   if (res.status === 404) return null;
   if (!res.ok) throw new Error(`view fetch failed: ${res.status}`);
