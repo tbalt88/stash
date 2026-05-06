@@ -913,9 +913,11 @@ export async function removeObjectShare(
 
 export async function createShareLink(
   objectType: ShareableObjectType,
-  objectId: string
+  objectId: string,
+  ensure?: "link" | "public"
 ): Promise<ShareLinkResult> {
-  return apiFetch(`/api/v1/objects/${objectType}/${objectId}/share-link`, {
+  const qs = ensure ? `?ensure=${ensure}` : "";
+  return apiFetch(`/api/v1/objects/${objectType}/${objectId}/share-link${qs}`, {
     method: "POST",
   });
 }
@@ -1014,6 +1016,13 @@ export interface CreatedView {
   updated_at: string;
 }
 
+export interface SharedViewResult {
+  view: CreatedView;
+  url: string;
+  view_id: string;
+  view_slug: string;
+}
+
 export async function createView(
   workspaceId: string,
   title: string,
@@ -1026,6 +1035,30 @@ export async function createView(
       title,
       description: opts.description ?? "",
       is_public: opts.is_public ?? false,
+      cover_image_url: null,
+      items: items.map((it, i) => ({
+        object_type: it.object_type,
+        object_id: it.object_id,
+        position: it.position ?? i,
+        label_override: it.label_override ?? null,
+      })),
+    }),
+  });
+}
+
+export async function createSharedView(
+  workspaceId: string,
+  title: string,
+  items: ViewItemSpec[],
+  opts: { description?: string; ensure?: "link" | "public" } = {}
+): Promise<SharedViewResult> {
+  const ensure = opts.ensure ?? "link";
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/views/share-bundle?ensure=${ensure}`, {
+    method: "POST",
+    body: JSON.stringify({
+      title,
+      description: opts.description ?? "",
+      is_public: ensure === "public",
       cover_image_url: null,
       items: items.map((it, i) => ({
         object_type: it.object_type,

@@ -23,6 +23,36 @@ def _viewer(current_user: dict | None) -> UUID | None:
     return current_user["id"] if current_user else None
 
 
+async def _readable_rows(
+    object_type: str,
+    rows,
+    viewer: UUID | None,
+    *,
+    workspace_id: UUID | None = None,
+) -> list[dict]:
+    out: list[dict] = []
+    for row in rows:
+        obj = dict(row)
+        if await permission_service.check_access(
+            object_type,
+            obj["id"],
+            viewer,
+            workspace_id=workspace_id or obj.get("workspace_id"),
+        ):
+            out.append(obj)
+    return out
+
+
+async def _readable_notebook_pages(notebook_id: UUID, viewer: UUID | None) -> list[dict]:
+    pool = get_pool()
+    pages = await pool.fetch(
+        "SELECT id, name, content_type, content_markdown, content_html, updated_at "
+        "FROM notebook_pages WHERE notebook_id = $1 ORDER BY created_at, name",
+        notebook_id,
+    )
+    return await _readable_rows("page", pages, viewer)
+
+
 _LLMS_TXT = """# Stash
 
 Stash is a shared memory system for AI coding agents. Workspaces contain
@@ -84,28 +114,33 @@ async def public_workspace(
     if not ws:
         raise HTTPException(status_code=404, detail="Workspace not found")
 
-    notebooks = await pool.fetch(
+    notebook_rows = await pool.fetch(
         "SELECT nb.id, nb.name, nb.description, nb.updated_at, "
         "(SELECT COUNT(*) FROM notebook_pages p WHERE p.notebook_id = nb.id) AS page_count "
         "FROM notebooks nb WHERE nb.workspace_id = $1 ORDER BY nb.updated_at DESC",
         workspace_id,
     )
-    tables = await pool.fetch(
+    table_rows = await pool.fetch(
         "SELECT t.id, t.name, t.updated_at, "
         "(SELECT COUNT(*) FROM table_rows tr WHERE tr.table_id = t.id) AS row_count "
         "FROM tables t WHERE t.workspace_id = $1 ORDER BY t.updated_at DESC",
         workspace_id,
     )
-    files = await pool.fetch(
+    file_rows = await pool.fetch(
         "SELECT id, name, content_type, COALESCE(size_bytes, 0) AS size_bytes, created_at "
         "FROM files WHERE workspace_id = $1 ORDER BY created_at DESC LIMIT 200",
         workspace_id,
     )
+    notebooks = await _readable_rows("notebook", notebook_rows, viewer, workspace_id=workspace_id)
+    for nb in notebooks:
+        nb["page_count"] = len(await _readable_notebook_pages(nb["id"], viewer))
+    tables = await _readable_rows("table", table_rows, viewer, workspace_id=workspace_id)
+    files = await _readable_rows("file", file_rows, viewer, workspace_id=workspace_id)
     payload = {
         "workspace": dict(ws),
-        "notebooks": [dict(n) for n in notebooks],
-        "tables": [dict(t) for t in tables],
-        "files": [dict(f) for f in files],
+        "notebooks": notebooks,
+        "tables": tables,
+        "files": files,
     }
     if format == "text":
         ws_d = payload["workspace"]
@@ -151,11 +186,7 @@ async def public_notebook(
     if not nb:
         raise HTTPException(status_code=404, detail="Notebook not found")
 
-    pages = await pool.fetch(
-        "SELECT id, name, content_type, content_markdown, content_html, updated_at FROM notebook_pages "
-        "WHERE notebook_id = $1 ORDER BY created_at, name",
-        notebook_id,
-    )
+    pages = await _readable_notebook_pages(notebook_id, viewer)
     if format == "text":
         lines = [f"# {nb['name']}", ""]
         if nb.get("description"):

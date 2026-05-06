@@ -47,7 +47,7 @@ export default function HistoryPage() {
 
         {!loadingSessions && sessions.length === 0 && !loadError && (
           <p className="mt-12 text-center text-[14px] text-muted">
-            No sessions yet. Run an agent against this workspace and they'll appear here.
+            No sessions yet. Run an agent against this workspace and they&apos;ll appear here.
           </p>
         )}
 

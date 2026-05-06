@@ -323,9 +323,11 @@ async def get_public_view(slug: str, viewer_id: UUID | None = None) -> dict | No
     return view
 
 
-async def inline_items(view: dict) -> list[dict]:
+async def inline_items(view: dict, viewer_id: UUID | None = None) -> list[dict]:
     """Resolve each view_item into a dict with {object_type, object_id, position,
     label, inline} where inline is a type-specific payload."""
+    from . import permission_service
+
     pool = get_pool()
     out: list[dict] = []
     for item in view["items"]:
@@ -345,6 +347,12 @@ async def inline_items(view: dict) -> list[dict]:
                     "WHERE notebook_id = $1 ORDER BY created_at, name",
                     obj_id,
                 )
+                visible_pages = []
+                for p in pages:
+                    if await permission_service.check_access(
+                        "page", p["id"], viewer_id, workspace_id=view["workspace_id"]
+                    ):
+                        visible_pages.append(p)
                 inline = {
                     "description": nb["description"],
                     "pages": [
@@ -356,7 +364,7 @@ async def inline_items(view: dict) -> list[dict]:
                             "content_html": p["content_html"],
                             "updated_at": p["updated_at"].isoformat(),
                         }
-                        for p in pages
+                        for p in visible_pages
                     ],
                 }
         elif obj_type == "page":
@@ -482,12 +490,18 @@ async def fork_view(slug: str, forker_id: UUID, name: str | None = None) -> dict
     view's items, not the whole source workspace.
     """
     pool = get_pool()
-    view_row = await pool.fetchrow(
-        f"{_VIEW_SELECT} WHERE slug = $1 AND is_public = true", slug
-    )
+    view_row = await pool.fetchrow(f"{_VIEW_SELECT} WHERE slug = $1", slug)
     if not view_row:
         return None
     view = await _attach_items(dict(view_row))
+
+    from . import permission_service
+
+    for item in view["items"]:
+        if not await permission_service.check_access(
+            item["object_type"], item["object_id"], None, workspace_id=view["workspace_id"]
+        ):
+            return None
 
     source_ws = await pool.fetchrow(
         "SELECT id, name FROM workspaces WHERE id = $1", view["workspace_id"]
@@ -528,6 +542,7 @@ async def fork_view(slug: str, forker_id: UUID, name: str | None = None) -> dict
                 forker_id,
             )
 
+            page_nb_id: UUID | None = None
             for item in view["items"]:
                 t = item["object_type"]
                 src_id = item["object_id"]
@@ -541,26 +556,46 @@ async def fork_view(slug: str, forker_id: UUID, name: str | None = None) -> dict
                     new_nb_id = await conn.fetchval(
                         "INSERT INTO notebooks (workspace_id, name, description, created_by) "
                         "VALUES ($1, $2, $3, $4) RETURNING id",
-                        new_ws_id, nb["name"], nb["description"] or "", forker_id,
+                        new_ws_id,
+                        nb["name"],
+                        nb["description"] or "",
+                        forker_id,
                     )
-                    folders = await conn.fetch(
-                        "SELECT id, name FROM notebook_folders WHERE notebook_id = $1", src_id
+                    pages = await conn.fetch(
+                        "SELECT id, folder_id, name, content_markdown, content_html, "
+                        "content_type, content_hash, metadata "
+                        "FROM notebook_pages WHERE notebook_id = $1",
+                        src_id,
+                    )
+                    visible_pages = []
+                    for p in pages:
+                        if await permission_service.check_access(
+                            "page", p["id"], None, workspace_id=view["workspace_id"]
+                        ):
+                            visible_pages.append(p)
+
+                    folder_ids = [p["folder_id"] for p in visible_pages if p["folder_id"]]
+                    folders = (
+                        await conn.fetch(
+                            "SELECT id, name FROM notebook_folders "
+                            "WHERE notebook_id = $1 AND id = ANY($2::uuid[])",
+                            src_id,
+                            folder_ids,
+                        )
+                        if folder_ids
+                        else []
                     )
                     folder_id_map: dict = {}
                     for f in folders:
                         new_f = await conn.fetchval(
                             "INSERT INTO notebook_folders (notebook_id, name, created_by) "
                             "VALUES ($1, $2, $3) RETURNING id",
-                            new_nb_id, f["name"], forker_id,
+                            new_nb_id,
+                            f["name"],
+                            forker_id,
                         )
                         folder_id_map[f["id"]] = new_f
-                    pages = await conn.fetch(
-                        "SELECT folder_id, name, content_markdown, content_html, "
-                        "content_type, content_hash, metadata "
-                        "FROM notebook_pages WHERE notebook_id = $1",
-                        src_id,
-                    )
-                    for p in pages:
+                    for p in visible_pages:
                         await conn.execute(
                             "INSERT INTO notebook_pages "
                             "(notebook_id, folder_id, name, content_markdown, content_html, "
@@ -577,6 +612,38 @@ async def fork_view(slug: str, forker_id: UUID, name: str | None = None) -> dict
                             forker_id,
                         )
 
+                elif t == "page":
+                    src = await conn.fetchrow(
+                        "SELECT name, content_markdown, content_html, content_type, "
+                        "content_hash, metadata FROM notebook_pages WHERE id = $1",
+                        src_id,
+                    )
+                    if not src:
+                        continue
+                    if page_nb_id is None:
+                        page_nb_id = await conn.fetchval(
+                            "INSERT INTO notebooks (workspace_id, name, description, created_by) "
+                            "VALUES ($1, $2, $3, $4) RETURNING id",
+                            new_ws_id,
+                            "Pages",
+                            f"Pages forked from {view['title']}.",
+                            forker_id,
+                        )
+                    await conn.execute(
+                        "INSERT INTO notebook_pages "
+                        "(notebook_id, name, content_markdown, content_html, "
+                        "content_type, content_hash, metadata, created_by) "
+                        "VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
+                        page_nb_id,
+                        src["name"],
+                        src["content_markdown"] or "",
+                        src["content_html"] or "",
+                        src["content_type"],
+                        src["content_hash"],
+                        src["metadata"] or {},
+                        forker_id,
+                    )
+
                 elif t == "table":
                     src = await conn.fetchrow(
                         "SELECT name, description, columns, views FROM tables WHERE id = $1",
@@ -587,8 +654,12 @@ async def fork_view(slug: str, forker_id: UUID, name: str | None = None) -> dict
                     new_t_id = await conn.fetchval(
                         "INSERT INTO tables (workspace_id, name, description, columns, views, created_by) "
                         "VALUES ($1, $2, $3, $4, $5, $6) RETURNING id",
-                        new_ws_id, src["name"], src["description"] or "",
-                        src["columns"], src["views"], forker_id,
+                        new_ws_id,
+                        src["name"],
+                        src["description"] or "",
+                        src["columns"],
+                        src["views"],
+                        forker_id,
                     )
                     rows = await conn.fetch(
                         "SELECT data, row_order FROM table_rows WHERE table_id = $1 "
@@ -599,7 +670,10 @@ async def fork_view(slug: str, forker_id: UUID, name: str | None = None) -> dict
                         await conn.execute(
                             "INSERT INTO table_rows (table_id, data, row_order, created_by) "
                             "VALUES ($1, $2, $3, $4)",
-                            new_t_id, r["data"], r["row_order"], forker_id,
+                            new_t_id,
+                            r["data"],
+                            r["row_order"],
+                            forker_id,
                         )
 
                 elif t == "history":
@@ -615,9 +689,15 @@ async def fork_view(slug: str, forker_id: UUID, name: str | None = None) -> dict
                         "INSERT INTO history_events (workspace_id, created_by, agent_name, "
                         "event_type, session_id, tool_name, content, metadata, attachments, "
                         "created_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)",
-                        new_ws_id, src["created_by"], src["agent_name"],
-                        src["event_type"], src["session_id"], src["tool_name"],
-                        src["content"], src["metadata"], src["attachments"],
+                        new_ws_id,
+                        src["created_by"],
+                        src["agent_name"],
+                        src["event_type"],
+                        src["session_id"],
+                        src["tool_name"],
+                        src["content"],
+                        src["metadata"],
+                        src["attachments"],
                         src["created_at"],
                     )
                 # files are intentionally skipped (S3 copy out of scope).

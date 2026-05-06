@@ -96,13 +96,14 @@ export default function ShareSheet({ objectType, objectId, objectLabel, onClose 
   const onCopyLink = async () => {
     let result;
     try {
-      result = await createShareLink(objectType, objectId);
+      result = await createShareLink(objectType, objectId, "link");
     } catch (err) {
       setLoadError(err instanceof Error ? err.message : "Failed to create link");
       return;
     }
     setLinkUrl(result.url);
     setEmbedSlug(result.kind === "view" ? result.view_slug ?? null : null);
+    await reload();
     // Clipboard is best-effort — some browsers (headless, sandboxed iframes,
     // permission denied) reject writeText. The URL is still shown above so
     // the user can select-and-copy by hand.

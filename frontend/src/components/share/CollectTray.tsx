@@ -2,9 +2,8 @@
 
 import { useState } from "react";
 
-import { createView } from "../../lib/api";
+import { createSharedView } from "../../lib/api";
 import { useCollectTray } from "../../lib/collectTray";
-import ShareSheet from "./ShareSheet";
 
 /**
  * Persistent tray for bundling items across the app into a single shareable
@@ -17,7 +16,8 @@ export default function CollectTray() {
   const [title, setTitle] = useState("");
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
-  const [sharedView, setSharedView] = useState<{ id: string; title: string } | null>(null);
+  const [sharedBundle, setSharedBundle] = useState<{ url: string; title: string } | null>(null);
+  const [copied, setCopied] = useState(false);
   const [dragIdx, setDragIdx] = useState<number | null>(null);
 
   const onShare = async () => {
@@ -26,7 +26,7 @@ export default function CollectTray() {
     setCreateError(null);
     try {
       const ws = items[0].workspace_id;
-      const view = await createView(
+      const result = await createSharedView(
         ws,
         title.trim() || `Bundle of ${items.length} item${items.length === 1 ? "" : "s"}`,
         items.map((it, i) => ({
@@ -35,7 +35,7 @@ export default function CollectTray() {
           position: i,
         }))
       );
-      setSharedView({ id: view.id, title: view.title });
+      setSharedBundle({ url: result.url, title: result.view.title });
     } catch (err) {
       setCreateError(err instanceof Error ? err.message : "Failed to create view");
     } finally {
@@ -43,12 +43,22 @@ export default function CollectTray() {
     }
   };
 
-  const onShareSheetClose = () => {
-    // Once the user dismisses the share sheet, clear the tray and reset.
-    // The View is created and they have the link.
-    setSharedView(null);
+  const onBundleDone = () => {
+    setSharedBundle(null);
     setTitle("");
+    setCopied(false);
     clear();
+  };
+
+  const onCopyBundleLink = async () => {
+    if (!sharedBundle) return;
+    try {
+      await navigator.clipboard.writeText(sharedBundle.url);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      /* ignore — link is visible for manual copy */
+    }
   };
 
   if (items.length === 0 && !open) return null;
@@ -146,14 +156,27 @@ export default function CollectTray() {
         </button>
       )}
 
-      {sharedView && (
-        <div className="absolute bottom-0 right-0">
-          <ShareSheet
-            objectType="view"
-            objectId={sharedView.id}
-            objectLabel={sharedView.title}
-            onClose={onShareSheetClose}
-          />
+      {sharedBundle && (
+        <div className="absolute bottom-0 right-0 w-[360px] rounded-lg border border-border bg-surface p-4 shadow-xl">
+          <div className="text-[13px] font-medium text-foreground">Bundle shared</div>
+          <div className="mt-1 truncate text-[12px] text-muted">{sharedBundle.title}</div>
+          <div className="mt-3 rounded border border-border-subtle bg-raised px-2 py-1.5 text-[12px] text-dim">
+            {sharedBundle.url}
+          </div>
+          <div className="mt-3 flex justify-end gap-2">
+            <button
+              onClick={onBundleDone}
+              className="rounded border border-border bg-raised px-3 py-1 text-[12px] text-foreground hover:border-foreground"
+            >
+              Done
+            </button>
+            <button
+              onClick={onCopyBundleLink}
+              className="rounded border border-brand bg-brand/15 px-3 py-1 text-[12px] text-brand hover:bg-brand/25"
+            >
+              {copied ? "Copied!" : "Copy link"}
+            </button>
+          </div>
         </div>
       )}
     </div>

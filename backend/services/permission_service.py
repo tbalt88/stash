@@ -20,7 +20,7 @@ _WORKSPACE_LOOKUP = {
     "notebook": ("notebooks", "workspace_id"),
     "table": ("tables", "workspace_id"),
     "file": ("files", "workspace_id"),
-    "history": ("histories", "workspace_id"),
+    "history": ("history_events", "workspace_id"),
     "view": ("views", "workspace_id"),
 }
 
@@ -45,11 +45,30 @@ async def resolve_workspace_id(object_type: str, object_id: UUID) -> UUID | None
 async def _effective_read_visibility(
     object_type: str, object_id: UUID, workspace_id: UUID | None
 ) -> str:
-    """Resolve `inherit` to the parent workspace's visibility so anonymous
-    viewers can read items inside a public/link workspace by default."""
+    """Resolve read inheritance for anonymous/link readers.
+
+    Pages inherit from their notebook first, then the workspace. Other
+    workspace objects inherit directly from the workspace. Explicit object
+    visibility always wins, including `private` children inside a public parent.
+    """
     vis = await get_visibility(object_type, object_id)
     if vis != "inherit":
         return vis
+
+    if object_type == "page":
+        pool = get_pool()
+        row = await pool.fetchrow(
+            "SELECT p.notebook_id, n.workspace_id FROM notebook_pages p "
+            "JOIN notebooks n ON n.id = p.notebook_id WHERE p.id = $1",
+            object_id,
+        )
+        if not row:
+            return "inherit"
+        notebook_vis = await get_visibility("notebook", row["notebook_id"])
+        if notebook_vis != "inherit":
+            return notebook_vis
+        return await get_visibility("workspace", row["workspace_id"])
+
     if object_type == "workspace" or workspace_id is None:
         return "inherit"
     parent_vis = await get_visibility("workspace", workspace_id)
@@ -103,13 +122,12 @@ async def check_access(
     if role in ("owner", "admin"):
         return True
 
-    # 'public' and 'link' grant anonymous read; write still requires a share entry.
-    if vis in ("public", "link") and not require_write:
+    # 'public' and 'link' grant read to any viewer; write still requires a
+    # share entry. Use effective visibility so logged-in non-members can read
+    # inherited pages from a link/public notebook, matching anonymous behavior.
+    effective = await _effective_read_visibility(object_type, object_id, workspace_id)
+    if effective in ("public", "link") and not require_write:
         return True
-
-    if vis == "inherit" and workspace_id and role is not None:
-        if not require_write:
-            return True
 
     share = await pool.fetchrow(
         "SELECT permission FROM object_shares "
@@ -122,6 +140,25 @@ async def check_access(
         if not require_write:
             return True
         return share["permission"] in ("write", "admin")
+
+    if object_type == "page" and vis == "inherit":
+        row = await pool.fetchrow(
+            "SELECT notebook_id FROM notebook_pages WHERE id = $1",
+            object_id,
+        )
+        if not row:
+            return False
+        return await check_access(
+            "notebook",
+            row["notebook_id"],
+            user_id,
+            workspace_id=workspace_id,
+            require_write=require_write,
+        )
+
+    if vis == "inherit" and workspace_id and role is not None:
+        if not require_write:
+            return True
 
     return False
 

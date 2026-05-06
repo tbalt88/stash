@@ -41,6 +41,11 @@ async def _require_admin(object_type: str, object_id: UUID, user_id: UUID) -> No
     if workspace_id is None:
         raise HTTPException(status_code=404, detail="Object not found")
 
+    if object_type == "view":
+        if await view_service.user_can_manage(object_id, user_id):
+            return
+        raise HTTPException(status_code=403, detail="Not allowed to manage this view")
+
     if object_type == "workspace":
         # Sharing the workspace itself: must be a workspace owner/admin.
         role = await workspace_service.get_member_role(workspace_id, user_id)
@@ -139,7 +144,7 @@ async def create_share_link(
     immediately 404s for anonymous viewers — easy to forget, hard to debug."""
     await _require_admin(object_type, object_id, current_user["id"])
 
-    if ensure:
+    if ensure and object_type != "view":
         current_vis = await permission_service.get_visibility(object_type, object_id)
         if _VISIBILITY_RANK.get(current_vis, 0) < _VISIBILITY_RANK[ensure]:
             await permission_service.set_visibility(object_type, object_id, ensure)
@@ -155,6 +160,17 @@ async def create_share_link(
         view = await view_service.get_view(object_id)
         if not view:
             raise HTTPException(status_code=404, detail="View not found")
+        if ensure:
+            for item in view["items"]:
+                await _require_admin(item["object_type"], item["object_id"], current_user["id"])
+            for item in view["items"]:
+                current_vis = await permission_service.get_visibility(
+                    item["object_type"], item["object_id"]
+                )
+                if _VISIBILITY_RANK.get(current_vis, 0) < _VISIBILITY_RANK[ensure]:
+                    await permission_service.set_visibility(
+                        item["object_type"], item["object_id"], ensure
+                    )
         return ShareLinkResponse(
             url=f"{base}/v/{view['slug']}",
             kind="view",

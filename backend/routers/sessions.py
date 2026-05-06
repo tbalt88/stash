@@ -52,9 +52,12 @@ async def list_my_sessions(
           MIN(he.created_at) AS started_at,
           MAX(he.created_at) AS last_event_at,
           (
-            SELECT LEFT(content, 240) FROM history_events
-            WHERE session_id = he.session_id AND event_type IN ('user_prompt', 'prompt', 'message')
-            ORDER BY created_at LIMIT 1
+            SELECT LEFT(he2.content, 240) FROM history_events he2
+            WHERE he2.session_id = he.session_id
+              AND he2.workspace_id IS NOT DISTINCT FROM he.workspace_id
+              AND (he2.workspace_id IS NOT NULL OR he2.created_by = $1)
+              AND he2.event_type IN ('user_prompt', 'prompt', 'message')
+            ORDER BY he2.created_at LIMIT 1
           ) AS first_prompt_preview
         FROM history_events he
         LEFT JOIN workspaces w ON w.id = he.workspace_id
