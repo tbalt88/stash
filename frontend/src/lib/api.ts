@@ -836,6 +836,90 @@ export async function removeShare(
   );
 }
 
+// --- Universal share API (works on any shareable object_type) ---
+
+export type ShareableObjectType =
+  | "workspace"
+  | "notebook"
+  | "page"
+  | "table"
+  | "file"
+  | "history"
+  | "view";
+
+export type ObjectVisibility = "inherit" | "private" | "link" | "public";
+
+export interface ObjectShare {
+  user_id: string;
+  user_name: string;
+  permission: "read" | "write" | "admin";
+  granted_by: string;
+  created_at: string;
+}
+
+export interface ObjectPermissions {
+  object_type: string;
+  object_id: string;
+  visibility: ObjectVisibility;
+  shares: ObjectShare[];
+}
+
+export interface ShareLinkResult {
+  url: string;
+  kind: "workspace" | "view";
+  view_id?: string | null;
+  view_slug?: string | null;
+}
+
+export async function getObjectPermissions(
+  objectType: ShareableObjectType,
+  objectId: string
+): Promise<ObjectPermissions> {
+  return apiFetch(`/api/v1/objects/${objectType}/${objectId}/permissions`);
+}
+
+export async function setObjectVisibility(
+  objectType: ShareableObjectType,
+  objectId: string,
+  visibility: ObjectVisibility
+): Promise<void> {
+  await apiFetch(`/api/v1/objects/${objectType}/${objectId}/permissions`, {
+    method: "PATCH",
+    body: JSON.stringify({ visibility }),
+  });
+}
+
+export async function addObjectShare(
+  objectType: ShareableObjectType,
+  objectId: string,
+  userId: string,
+  permission: "read" | "write" | "admin"
+): Promise<ObjectShare> {
+  return apiFetch(`/api/v1/objects/${objectType}/${objectId}/shares`, {
+    method: "POST",
+    body: JSON.stringify({ user_id: userId, permission }),
+  });
+}
+
+export async function removeObjectShare(
+  objectType: ShareableObjectType,
+  objectId: string,
+  userId: string
+): Promise<void> {
+  await apiFetch(`/api/v1/objects/${objectType}/${objectId}/shares/${userId}`, {
+    method: "DELETE",
+  });
+}
+
+export async function createShareLink(
+  objectType: ShareableObjectType,
+  objectId: string
+): Promise<ShareLinkResult> {
+  return apiFetch(`/api/v1/objects/${objectType}/${objectId}/share-link`, {
+    method: "POST",
+  });
+}
+
 // --- Files ---
 
 export async function uploadFile(

@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
@@ -7,13 +8,35 @@ import ForkButton from "./ForkButton";
 const BACKEND_ORIGIN =
   process.env.NEXT_PUBLIC_API_URL || "http://localhost:3456";
 
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ workspaceId: string }>;
+}): Promise<Metadata> {
+  const { workspaceId } = await params;
+  const detail = await loadDetail(workspaceId);
+  if (!detail) return { title: "Workspace not found · Stash" };
+  const ws = detail.workspace;
+  const title = `${ws.name} · Stash`;
+  const description = ws.summary || ws.description || `A workspace by ${ws.creator_display_name || ws.creator_name}.`;
+  return {
+    title,
+    description,
+    openGraph: { title, description, type: "website", url: `/s/${workspaceId}`, siteName: "Stash" },
+    twitter: { card: "summary_large_image", title, description },
+  };
+}
+
 async function loadDetail(workspaceId: string): Promise<PublicWorkspaceDetail | null> {
+  // /api/v1/public/* is permission-aware and works for both `link` and `public`
+  // workspaces. /api/v1/discover/* only returns is_public=true catalog cards
+  // (used by the Discover index, not by the share-URL reader).
   const res = await fetch(
-    `${BACKEND_ORIGIN}/api/v1/discover/workspaces/${workspaceId}`,
-    { next: { revalidate: 60 } }
+    `${BACKEND_ORIGIN}/api/v1/public/workspaces/${workspaceId}`,
+    { next: { revalidate: 30 } }
   );
   if (res.status === 404) return null;
-  if (!res.ok) throw new Error(`discover fetch failed: ${res.status}`);
+  if (!res.ok) throw new Error(`public fetch failed: ${res.status}`);
   return res.json();
 }
 

@@ -77,6 +77,78 @@ async def create_view(
     return await _attach_items(dict(row))
 
 
+async def _object_title(object_type: str, object_id: UUID) -> str:
+    """Best-effort human label for an underlying object — used as the default
+    View title when minting a share-link View."""
+    pool = get_pool()
+    if object_type == "notebook":
+        row = await pool.fetchrow("SELECT name FROM notebooks WHERE id = $1", object_id)
+    elif object_type == "page":
+        row = await pool.fetchrow("SELECT name FROM notebook_pages WHERE id = $1", object_id)
+    elif object_type == "table":
+        row = await pool.fetchrow("SELECT name FROM tables WHERE id = $1", object_id)
+    elif object_type == "file":
+        row = await pool.fetchrow("SELECT name FROM files WHERE id = $1", object_id)
+    elif object_type == "history":
+        row = await pool.fetchrow(
+            "SELECT agent_name AS name FROM history_events WHERE id = $1", object_id
+        )
+    else:
+        row = None
+    return (row["name"] if row else "Shared item")
+
+
+async def find_or_create_share_link_view(
+    workspace_id: UUID,
+    owner_id: UUID,
+    object_type: str,
+    object_id: UUID,
+) -> dict:
+    """Reuse-or-create the one-item View that backs the Copy Link button.
+
+    Idempotent on (owner, object_type, object_id): clicking Copy Link a second
+    time on the same object returns the same /v/{slug} URL."""
+    pool = get_pool()
+    existing = await pool.fetchrow(
+        "SELECT v.id, v.workspace_id, v.slug, v.title, v.description, v.owner_id, "
+        "v.is_public, v.cover_image_url, v.view_count, v.created_at, v.updated_at "
+        "FROM views v "
+        "WHERE v.owner_id = $1 "
+        "AND (SELECT COUNT(*) FROM view_items WHERE view_id = v.id) = 1 "
+        "AND EXISTS (SELECT 1 FROM view_items "
+        "            WHERE view_id = v.id AND object_type = $2 AND object_id = $3) "
+        "ORDER BY v.created_at LIMIT 1",
+        owner_id,
+        object_type,
+        object_id,
+    )
+    if existing:
+        return await _attach_items(dict(existing))
+
+    title = await _object_title(object_type, object_id)
+    slug = _slugify(title)
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            row = await conn.fetchrow(
+                "INSERT INTO views (workspace_id, slug, title, description, owner_id, "
+                "is_public, cover_image_url) VALUES ($1, $2, $3, $4, $5, true, NULL) "
+                f"RETURNING {', '.join(['id','workspace_id','slug','title','description','owner_id','is_public','cover_image_url','view_count','created_at','updated_at'])}",
+                workspace_id,
+                slug,
+                title,
+                "",
+                owner_id,
+            )
+            await conn.execute(
+                "INSERT INTO view_items (view_id, object_type, object_id, position, label_override) "
+                "VALUES ($1, $2, $3, 0, NULL)",
+                row["id"],
+                object_type,
+                object_id,
+            )
+    return await _attach_items(dict(row))
+
+
 async def update_view(
     view_id: UUID,
     user_id: UUID,
@@ -130,6 +202,74 @@ async def delete_view(view_id: UUID, user_id: UUID) -> bool:
     return result == "DELETE 1"
 
 
+async def list_public_views(
+    *,
+    query: str | None = None,
+    sort: str = "trending",
+    limit: int = 48,
+) -> list[dict]:
+    """Catalog of Views whose every underlying item is anonymously readable."""
+    from . import permission_service
+
+    pool = get_pool()
+    where = ["1=1"]
+    args: list = []
+    idx = 1
+    if query:
+        where.append(f"(v.title ILIKE ${idx} OR v.description ILIKE ${idx})")
+        args.append(f"%{query}%")
+        idx += 1
+
+    if sort == "newest":
+        order = "v.created_at DESC, v.id DESC"
+    elif sort == "popular":
+        order = "v.view_count DESC, v.updated_at DESC, v.id DESC"
+    else:
+        order = "v.updated_at DESC, v.id DESC"
+
+    rows = await pool.fetch(
+        f"SELECT v.id, v.workspace_id, v.slug, v.title, v.description, v.owner_id, "
+        f"v.cover_image_url, v.view_count, v.created_at, v.updated_at, "
+        f"u.name AS owner_name, u.display_name AS owner_display_name, "
+        f"w.name AS workspace_name "
+        f"FROM views v JOIN users u ON u.id = v.owner_id "
+        f"JOIN workspaces w ON w.id = v.workspace_id "
+        f"WHERE {' AND '.join(where)} ORDER BY {order} LIMIT {int(limit) * 2}",
+        *args,
+    )
+
+    out: list[dict] = []
+    for r in rows:
+        view = await _attach_items(dict(r))
+        readable = True
+        for item in view["items"]:
+            ok = await permission_service.check_access(
+                item["object_type"], item["object_id"], None, workspace_id=view["workspace_id"]
+            )
+            if not ok:
+                readable = False
+                break
+        if readable:
+            out.append({
+                "id": str(view["id"]),
+                "slug": view["slug"],
+                "title": view["title"],
+                "description": view["description"],
+                "cover_image_url": view["cover_image_url"],
+                "view_count": view["view_count"],
+                "owner_name": view.get("owner_name"),
+                "owner_display_name": view.get("owner_display_name"),
+                "workspace_id": str(view["workspace_id"]),
+                "workspace_name": view.get("workspace_name"),
+                "item_count": len(view["items"]),
+                "created_at": view["created_at"].isoformat(),
+                "updated_at": view["updated_at"].isoformat(),
+            })
+            if len(out) >= limit:
+                break
+    return out
+
+
 async def list_workspace_views(workspace_id: UUID) -> list[dict]:
     pool = get_pool()
     rows = await pool.fetch(
@@ -145,15 +285,39 @@ async def get_view(view_id: UUID) -> dict | None:
     return await _attach_items(dict(row)) if row else None
 
 
-async def get_public_view(slug: str) -> dict | None:
+async def get_public_view(slug: str, viewer_id: UUID | None = None) -> dict | None:
+    """Resolve a View by slug for the given viewer (None = anonymous).
+
+    Strict access: the View renders iff the viewer can read every one of its
+    items via the object-level permission service. There's no separate View
+    ACL — we derive it from the items, which avoids the orphan-View bug
+    (a public View over a now-private item would silently leak today).
+    """
+    from . import permission_service
+
     pool = get_pool()
-    row = await pool.fetchrow(
-        f"{_VIEW_SELECT} WHERE slug = $1 AND is_public = true", slug
-    )
+    row = await pool.fetchrow(f"{_VIEW_SELECT} WHERE slug = $1", slug)
     if not row:
         return None
-    await pool.execute("UPDATE views SET view_count = view_count + 1 WHERE id = $1", row["id"])
     view = await _attach_items(dict(row))
+
+    # The View itself can also be ACLd via object_permissions on object_type='view'
+    # (e.g. a viewer was explicitly shared on the curation). If the viewer can't
+    # see the View object directly AND can't see at least one item, treat as 404.
+    can_see_view = await permission_service.check_access(
+        "view", view["id"], viewer_id, workspace_id=view["workspace_id"]
+    )
+
+    for item in view["items"]:
+        item_workspace = view["workspace_id"]
+        ok = await permission_service.check_access(
+            item["object_type"], item["object_id"], viewer_id, workspace_id=item_workspace
+        )
+        if not ok and not can_see_view:
+            return None
+
+    await pool.execute("UPDATE views SET view_count = view_count + 1 WHERE id = $1", view["id"])
+
     ws = await pool.fetchrow(
         "SELECT name, is_public FROM workspaces WHERE id = $1", view["workspace_id"]
     )
@@ -197,6 +361,24 @@ async def inline_items(view: dict) -> list[dict]:
                         }
                         for p in pages
                     ],
+                }
+        elif obj_type == "page":
+            p = await pool.fetchrow(
+                "SELECT id, name, content_markdown, content_html, content_type, updated_at "
+                "FROM notebook_pages WHERE id = $1",
+                obj_id,
+            )
+            if p:
+                label = label or p["name"]
+                inline = {
+                    "page": {
+                        "id": str(p["id"]),
+                        "name": p["name"],
+                        "content_type": p["content_type"],
+                        "content_markdown": p["content_markdown"],
+                        "content_html": p["content_html"],
+                        "updated_at": p["updated_at"].isoformat(),
+                    }
                 }
         elif obj_type == "table":
             t = await pool.fetchrow(
@@ -270,6 +452,10 @@ def items_to_text(title: str, items: list[dict]) -> str:
             for page in inline.get("pages", []):
                 if page.get("content_markdown"):
                     parts.append(page["content_markdown"])
+        elif obj_type == "page":
+            page = inline.get("page", {})
+            if page.get("content_markdown"):
+                parts.append(page["content_markdown"])
         elif obj_type == "table":
             cols = inline.get("columns", [])
             rows = inline.get("rows", [])

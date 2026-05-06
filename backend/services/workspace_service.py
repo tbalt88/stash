@@ -124,6 +124,15 @@ async def update_workspace(
         "(SELECT COUNT(*) FROM workspace_members wm WHERE wm.workspace_id = id) AS member_count",
         *args,
     )
+    if row and is_public is not None:
+        # Mirror the legacy is_public toggle into the unified ACL so the
+        # public reader (which checks object_permissions) stays in sync with
+        # the discover catalog (which still queries workspaces.is_public).
+        from . import permission_service
+
+        await permission_service.set_visibility(
+            "workspace", workspace_id, "public" if is_public else "inherit"
+        )
     return dict(row) if row else None
 
 

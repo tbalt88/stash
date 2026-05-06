@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import Markdown from "react-markdown";
@@ -9,8 +10,34 @@ import ViewForkButton from "./ViewForkButton";
 const BACKEND_ORIGIN =
   process.env.NEXT_PUBLIC_API_URL || "http://localhost:3456";
 
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ slug: string }>;
+}): Promise<Metadata> {
+  const { slug } = await params;
+  const data = await loadView(slug);
+  if (!data) return { title: "View not found · Stash" };
+  const title = `${data.view.title} · Stash`;
+  const description =
+    data.view.description ||
+    `A View of ${data.items.length} item${data.items.length === 1 ? "" : "s"} from ${data.workspace_name}.`;
+  return {
+    title,
+    description,
+    openGraph: {
+      title,
+      description,
+      type: "article",
+      url: `/v/${slug}`,
+      siteName: "Stash",
+    },
+    twitter: { card: "summary_large_image", title, description },
+  };
+}
+
 type ViewItemInlined = {
-  object_type: "notebook" | "table" | "file" | "history";
+  object_type: "notebook" | "page" | "table" | "file" | "history";
   object_id: string;
   position: number;
   label: string;
@@ -164,6 +191,29 @@ function ItemBody({ item }: { item: ViewItemInlined }) {
             )}
           </div>
         ))}
+      </div>
+    );
+  }
+
+  if (item.object_type === "page") {
+    const inline = item.inline as {
+      page?: {
+        id: string;
+        name: string;
+        content_type?: "markdown" | "html";
+        content_markdown: string;
+        content_html?: string;
+      };
+    };
+    const p = inline.page;
+    if (!p) return <p className="text-[13px] italic text-muted">This page is no longer available.</p>;
+    return p.content_type === "html" ? (
+      <HtmlPageView html={p.content_html || ""} title={p.name} />
+    ) : (
+      <div className="markdown-content">
+        <Markdown remarkPlugins={[remarkGfm]}>
+          {p.content_markdown || "(empty)"}
+        </Markdown>
       </div>
     );
   }

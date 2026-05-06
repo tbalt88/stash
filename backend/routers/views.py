@@ -5,7 +5,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import PlainTextResponse
 
-from ..auth import get_current_user
+from ..auth import get_current_user, get_current_user_optional
 from ..models import (
     ViewCreateRequest,
     ViewForkRequest,
@@ -90,8 +90,10 @@ async def delete_view(
 async def get_public_view(
     slug: str,
     format: str = Query(None, alias="format"),
+    current_user: dict | None = Depends(get_current_user_optional),
 ):
-    view = await view_service.get_public_view(slug)
+    viewer_id = current_user["id"] if current_user else None
+    view = await view_service.get_public_view(slug, viewer_id=viewer_id)
     if not view:
         raise HTTPException(status_code=404, detail="View not found")
     items = await view_service.inline_items(view)

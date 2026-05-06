@@ -176,11 +176,11 @@ class WorkspacePublicDetail(BaseModel):
 
 # --- Views (curated subsets of a workspace) ---
 
-ViewObjectType = str  # 'notebook' | 'table' | 'file' | 'history'
+ViewObjectType = str  # 'notebook' | 'page' | 'table' | 'file' | 'history'
 
 
 class ViewItem(BaseModel):
-    object_type: ViewObjectType = Field(..., pattern=r"^(notebook|table|file|history)$")
+    object_type: ViewObjectType = Field(..., pattern=r"^(notebook|page|table|file|history)$")
     object_id: UUID
     position: int = 0
     label_override: str | None = Field(None, max_length=160)
@@ -593,12 +593,12 @@ class HistoryQueryResponse(BaseModel):
 class PermissionResponse(BaseModel):
     object_type: str
     object_id: UUID
-    visibility: str  # inherit, private, public
+    visibility: str  # inherit, private, link, public
     shares: list["ShareResponse"] = []
 
 
 class SetVisibilityRequest(BaseModel):
-    visibility: str = Field(..., pattern=r"^(inherit|private|public)$")
+    visibility: str = Field(..., pattern=r"^(inherit|private|link|public)$")
 
 
 class ShareRequest(BaseModel):
@@ -612,6 +612,17 @@ class ShareResponse(BaseModel):
     permission: str
     granted_by: UUID
     created_at: datetime
+
+
+class ShareLinkResponse(BaseModel):
+    """URL the share sheet copies to clipboard. For workspaces this points at
+    /s/{slug-or-uuid}; for everything else it points at the auto-created
+    one-item View at /v/{slug}."""
+
+    url: str
+    kind: str  # 'workspace' | 'view'
+    view_id: UUID | None = None
+    view_slug: str | None = None
 
 
 # --- Files ---

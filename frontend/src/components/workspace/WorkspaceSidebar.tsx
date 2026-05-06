@@ -4,6 +4,7 @@ import { useCallback, useRef, useState } from "react";
 
 import { Workspace, WorkspaceMember } from "../../lib/types";
 import { rotateWorkspaceInvite } from "../../lib/api";
+import ShareSheet from "../share/ShareSheet";
 
 interface UserResult { id: string; name: string; display_name: string }
 
@@ -145,6 +146,7 @@ export default function WorkspaceSidebar({
   const [copied, setCopied] = useState(false);
   const [rotating, setRotating] = useState(false);
   const [updatingVisibility, setUpdatingVisibility] = useState(false);
+  const [shareOpen, setShareOpen] = useState(false);
 
   const toggleVisibility = async () => {
     if (updatingVisibility) return;
@@ -305,15 +307,35 @@ export default function WorkspaceSidebar({
               {workspace.is_public ? "Public" : "Private"}
             </span>
           </span>
-          {isOwner && (
-            <button
-              onClick={toggleVisibility}
-              disabled={updatingVisibility}
-              className="text-[10px] text-muted hover:text-foreground underline underline-offset-2 disabled:opacity-50"
-            >
-              {updatingVisibility ? "saving..." : workspace.is_public ? "make private" : "make public"}
-            </button>
-          )}
+          <div className="flex items-center gap-2">
+            {isOwner && (
+              <button
+                onClick={toggleVisibility}
+                disabled={updatingVisibility}
+                className="text-[10px] text-muted hover:text-foreground underline underline-offset-2 disabled:opacity-50"
+              >
+                {updatingVisibility ? "saving..." : workspace.is_public ? "make private" : "make public"}
+              </button>
+            )}
+            {isOwner && (
+              <div className="relative">
+                <button
+                  onClick={() => setShareOpen((v) => !v)}
+                  className="rounded border border-border bg-raised px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-foreground hover:border-foreground"
+                >
+                  Share
+                </button>
+                {shareOpen && (
+                  <ShareSheet
+                    objectType="workspace"
+                    objectId={workspace.id}
+                    objectLabel={workspace.name}
+                    onClose={() => setShareOpen(false)}
+                  />
+                )}
+              </div>
+            )}
+          </div>
         </div>
         <div className="mt-3 flex flex-col gap-2">
           <button
