@@ -12,7 +12,7 @@ from ..models import (
     WorkspacePublicNotebookSummary,
     WorkspacePublicTableSummary,
 )
-from ..services import discover_service
+from ..services import discover_service, view_service
 
 router = APIRouter(prefix="/api/v1/discover", tags=["discover"])
 
@@ -51,3 +51,14 @@ async def public_workspace(workspace_id: UUID):
         tables=[WorkspacePublicTableSummary(**t) for t in detail["tables"]],
         files=[WorkspacePublicFileSummary(**f) for f in detail["files"]],
     )
+
+
+@router.get("/views")
+async def list_public_views(
+    q: str | None = Query(None, max_length=128),
+    sort: str = Query("trending", pattern="^(trending|newest|popular)$"),
+    limit: int = Query(48, ge=1, le=100),
+):
+    """All Views whose every item is publicly readable."""
+    items = await view_service.list_public_views(query=q, sort=sort, limit=limit)
+    return {"views": items}

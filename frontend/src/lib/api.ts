@@ -836,6 +836,92 @@ export async function removeShare(
   );
 }
 
+// --- Universal share API (works on any shareable object_type) ---
+
+export type ShareableObjectType =
+  | "workspace"
+  | "notebook"
+  | "page"
+  | "table"
+  | "file"
+  | "history"
+  | "view";
+
+export type ObjectVisibility = "inherit" | "private" | "link" | "public";
+
+export interface ObjectShare {
+  user_id: string;
+  user_name: string;
+  permission: "read" | "write" | "admin";
+  granted_by: string;
+  created_at: string;
+}
+
+export interface ObjectPermissions {
+  object_type: string;
+  object_id: string;
+  visibility: ObjectVisibility;
+  shares: ObjectShare[];
+}
+
+export interface ShareLinkResult {
+  url: string;
+  kind: "workspace" | "view";
+  view_id?: string | null;
+  view_slug?: string | null;
+}
+
+export async function getObjectPermissions(
+  objectType: ShareableObjectType,
+  objectId: string
+): Promise<ObjectPermissions> {
+  return apiFetch(`/api/v1/objects/${objectType}/${objectId}/permissions`);
+}
+
+export async function setObjectVisibility(
+  objectType: ShareableObjectType,
+  objectId: string,
+  visibility: ObjectVisibility
+): Promise<void> {
+  await apiFetch(`/api/v1/objects/${objectType}/${objectId}/permissions`, {
+    method: "PATCH",
+    body: JSON.stringify({ visibility }),
+  });
+}
+
+export async function addObjectShare(
+  objectType: ShareableObjectType,
+  objectId: string,
+  userId: string,
+  permission: "read" | "write" | "admin"
+): Promise<ObjectShare> {
+  return apiFetch(`/api/v1/objects/${objectType}/${objectId}/shares`, {
+    method: "POST",
+    body: JSON.stringify({ user_id: userId, permission }),
+  });
+}
+
+export async function removeObjectShare(
+  objectType: ShareableObjectType,
+  objectId: string,
+  userId: string
+): Promise<void> {
+  await apiFetch(`/api/v1/objects/${objectType}/${objectId}/shares/${userId}`, {
+    method: "DELETE",
+  });
+}
+
+export async function createShareLink(
+  objectType: ShareableObjectType,
+  objectId: string,
+  ensure?: "link" | "public"
+): Promise<ShareLinkResult> {
+  const qs = ensure ? `?ensure=${ensure}` : "";
+  return apiFetch(`/api/v1/objects/${objectType}/${objectId}/share-link${qs}`, {
+    method: "POST",
+  });
+}
+
 // --- Files ---
 
 export async function uploadFile(
@@ -867,6 +953,121 @@ export async function listFiles(workspaceId: string): Promise<FileInfo[]> {
 
 export async function deleteFile(workspaceId: string, fileId: string): Promise<void> {
   await apiFetch(`/api/v1/workspaces/${workspaceId}/files/${fileId}`, { method: "DELETE" });
+}
+
+// --- Sessions (history events grouped by session_id) ---
+
+export interface SessionSummary {
+  session_id: string;
+  workspace_id: string | null;
+  workspace_name: string | null;
+  agent_name: string | null;
+  event_count: number;
+  started_at: string;
+  last_event_at: string;
+  first_prompt_preview: string | null;
+}
+
+export async function listMySessions(workspaceId?: string, limit = 50): Promise<SessionSummary[]> {
+  const qs = new URLSearchParams();
+  if (workspaceId) qs.set("workspace_id", workspaceId);
+  qs.set("limit", String(limit));
+  const data = await apiFetch<{ sessions: SessionSummary[] }>(
+    `/api/v1/me/sessions?${qs.toString()}`
+  );
+  return data.sessions;
+}
+
+export interface MaterializedSession {
+  page: { id: string; notebook_id: string; name: string };
+  notebook_id: string;
+}
+
+export async function materializeSession(
+  workspaceId: string,
+  sessionId: string
+): Promise<MaterializedSession> {
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/sessions/${sessionId}/materialize`, {
+    method: "POST",
+  });
+}
+
+// --- Views (curated bundles of items shareable as /v/{slug}) ---
+
+export type CollectableObjectType = "notebook" | "page" | "table" | "file" | "history";
+
+export interface ViewItemSpec {
+  object_type: CollectableObjectType;
+  object_id: string;
+  position?: number;
+  label_override?: string | null;
+}
+
+export interface CreatedView {
+  id: string;
+  workspace_id: string;
+  slug: string;
+  title: string;
+  description: string;
+  owner_id: string;
+  view_count: number;
+  items: ViewItemSpec[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SharedViewResult {
+  view: CreatedView;
+  url: string;
+  view_id: string;
+  view_slug: string;
+}
+
+export async function createView(
+  workspaceId: string,
+  title: string,
+  items: ViewItemSpec[],
+  opts: { description?: string; is_public?: boolean } = {}
+): Promise<CreatedView> {
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/views`, {
+    method: "POST",
+    body: JSON.stringify({
+      title,
+      description: opts.description ?? "",
+      is_public: opts.is_public ?? false,
+      cover_image_url: null,
+      items: items.map((it, i) => ({
+        object_type: it.object_type,
+        object_id: it.object_id,
+        position: it.position ?? i,
+        label_override: it.label_override ?? null,
+      })),
+    }),
+  });
+}
+
+export async function createSharedView(
+  workspaceId: string,
+  title: string,
+  items: ViewItemSpec[],
+  opts: { description?: string; ensure?: "link" | "public" } = {}
+): Promise<SharedViewResult> {
+  const ensure = opts.ensure ?? "link";
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/views/share-bundle?ensure=${ensure}`, {
+    method: "POST",
+    body: JSON.stringify({
+      title,
+      description: opts.description ?? "",
+      is_public: ensure === "public",
+      cover_image_url: null,
+      items: items.map((it, i) => ({
+        object_type: it.object_type,
+        object_id: it.object_id,
+        position: it.position ?? i,
+        label_override: it.label_override ?? null,
+      })),
+    }),
+  });
 }
 
 // --- Cross-notebook page index ---

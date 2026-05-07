@@ -3,6 +3,7 @@
 import { ReactNode } from "react";
 import { User } from "../lib/types";
 import AppSidebar from "./AppSidebar";
+import CollectTray from "./share/CollectTray";
 import TopBar from "./TopBar";
 
 interface AppShellProps {
@@ -19,6 +20,7 @@ export default function AppShell({ user, onLogout, children }: AppShellProps) {
         <TopBar />
         <div className="flex-1 overflow-y-auto">{children}</div>
       </main>
+      <CollectTray />
     </div>
   );
 }

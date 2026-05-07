@@ -49,6 +49,17 @@ async def _make_notebook(pool, workspace_id, created_by):
     return row["id"]
 
 
+async def _make_page(pool, notebook_id, created_by, name="page"):
+    row = await pool.fetchrow(
+        "INSERT INTO notebook_pages (notebook_id, name, content_markdown, created_by) "
+        "VALUES ($1, $2, 'content', $3) RETURNING id",
+        notebook_id,
+        name,
+        created_by,
+    )
+    return row["id"]
+
+
 @pytest.mark.asyncio
 async def test_owner_has_access(pool):
     user_id = await _make_user(pool)
@@ -155,3 +166,64 @@ async def test_private_visibility_denies_member(pool):
     assert not await permission_service.check_access(
         "notebook", nb_id, member_id, workspace_id=ws_id
     )
+
+
+@pytest.mark.asyncio
+async def test_page_inherits_notebook_visibility_for_link_readers(pool):
+    owner_id = await _make_user(pool)
+    ws_id = await _make_workspace(pool, owner_id)
+    nb_id = await _make_notebook(pool, ws_id, owner_id)
+    inherited_page_id = await _make_page(pool, nb_id, owner_id, "inherited")
+    private_page_id = await _make_page(pool, nb_id, owner_id, "private")
+
+    await permission_service.set_visibility("notebook", nb_id, "link")
+    await permission_service.set_visibility("page", private_page_id, "private")
+
+    assert await permission_service.check_access("page", inherited_page_id, None)
+    assert not await permission_service.check_access("page", private_page_id, None)
+
+
+@pytest.mark.asyncio
+async def test_page_inherits_notebook_shares_for_authenticated_readers(pool):
+    owner_id = await _make_user(pool)
+    reader_id = await _make_user(pool)
+    ws_id = await _make_workspace(pool, owner_id)
+    nb_id = await _make_notebook(pool, ws_id, owner_id)
+    page_id = await _make_page(pool, nb_id, owner_id)
+
+    await permission_service.set_visibility("notebook", nb_id, "private")
+    await permission_service.add_share("notebook", nb_id, reader_id, "read", owner_id)
+
+    assert await permission_service.check_access("page", page_id, reader_id)
+
+
+@pytest.mark.asyncio
+async def test_private_notebook_hides_inherited_pages_from_workspace_members(pool):
+    owner_id = await _make_user(pool)
+    member_id = await _make_user(pool)
+    ws_id = await _make_workspace(pool, owner_id)
+    await pool.execute(
+        "INSERT INTO workspace_members (workspace_id, user_id, role) VALUES ($1, $2, 'member')",
+        ws_id,
+        member_id,
+    )
+    nb_id = await _make_notebook(pool, ws_id, owner_id)
+    page_id = await _make_page(pool, nb_id, owner_id)
+
+    await permission_service.set_visibility("notebook", nb_id, "private")
+
+    assert not await permission_service.check_access("page", page_id, member_id)
+
+
+@pytest.mark.asyncio
+async def test_history_resolves_to_history_events_workspace(pool):
+    owner_id = await _make_user(pool)
+    ws_id = await _make_workspace(pool, owner_id)
+    event_id = await pool.fetchval(
+        "INSERT INTO history_events (workspace_id, created_by, agent_name, event_type, content) "
+        "VALUES ($1, $2, 'agent', 'message', 'hello') RETURNING id",
+        ws_id,
+        owner_id,
+    )
+
+    assert await permission_service.resolve_workspace_id("history", event_id) == ws_id

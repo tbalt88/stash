@@ -514,6 +514,103 @@ def stash_whoami() -> str:
     return _json(client.whoami())
 
 
+# ── Sharing (unified ACL + share-link + publish) ──────────────────
+
+
+@mcp.tool()
+def stash_get_permissions(object_type: str, object_id: str) -> str:
+    """Get visibility + shares for any object (workspace|notebook|page|table|file|history|view)."""
+    client, _ = _client()
+    return _json(client.get_object_permissions(object_type, object_id))
+
+
+@mcp.tool()
+def stash_set_visibility(object_type: str, object_id: str, visibility: str) -> str:
+    """Set visibility on an object. Allowed: inherit | private | link | public."""
+    client, _ = _client()
+    return _json(client.set_object_visibility(object_type, object_id, visibility))
+
+
+@mcp.tool()
+def stash_add_share(
+    object_type: str, object_id: str, user_id: str, permission: str = "read"
+) -> str:
+    """Grant a specific user access to an object. permission: read | write | admin."""
+    client, _ = _client()
+    return _json(client.add_object_share(object_type, object_id, user_id, permission))
+
+
+@mcp.tool()
+def stash_remove_share(object_type: str, object_id: str, user_id: str) -> str:
+    """Revoke a specific user's access to an object."""
+    client, _ = _client()
+    client.remove_object_share(object_type, object_id, user_id)
+    return _json({"removed": user_id})
+
+
+@mcp.tool()
+def stash_share(object_type: str, object_id: str, ensure: str = "link") -> str:
+    """Mint or fetch a share URL for any object. ensure: '' | 'link' | 'public'.
+
+    With ensure='link' (default), the underlying object's visibility is raised
+    to at least 'link' if it isn't already, so the returned URL is guaranteed
+    to be readable to anyone with it. Pass ensure='' to skip the visibility
+    bump (use when you want the URL but plan to set permissions separately)."""
+    client, _ = _client()
+    return _json(client.share_link(object_type, object_id, ensure or None))
+
+
+@mcp.tool()
+def stash_publish_html(
+    title: str,
+    html: str,
+    workspace_id: str = "",
+    audience: str = "link",
+    notebook_id: str = "",
+) -> str:
+    """Single-call publish: create an HTML page and return a share URL.
+
+    If notebook_id is omitted, the page lands in the workspace's auto-created
+    'AI Drafts' notebook. audience: 'link' (anyone with URL) or 'public'
+    (also listed in /discover)."""
+    client, default_ws = _client()
+    ws = _require_ws(workspace_id or default_ws)
+    return _json(
+        client.publish(
+            workspace_id=ws,
+            title=title,
+            content=html,
+            content_type="html",
+            audience=audience,
+            notebook_id=notebook_id or None,
+        )
+    )
+
+
+@mcp.tool()
+def stash_publish_markdown(
+    title: str,
+    markdown: str,
+    workspace_id: str = "",
+    audience: str = "link",
+    notebook_id: str = "",
+) -> str:
+    """Single-call publish: create a markdown page and return a share URL.
+    Same flow as stash_publish_html but for markdown content."""
+    client, default_ws = _client()
+    ws = _require_ws(workspace_id or default_ws)
+    return _json(
+        client.publish(
+            workspace_id=ws,
+            title=title,
+            content=markdown,
+            content_type="markdown",
+            audience=audience,
+            notebook_id=notebook_id or None,
+        )
+    )
+
+
 # ── Entry point ───────────────────────────────────────────────────
 
 def main():

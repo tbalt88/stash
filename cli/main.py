@@ -3541,5 +3541,65 @@ def config_cmd(
     console.print(json.dumps(display, indent=2, default=str))
 
 
+@app.command("share-object")
+def share_object_cmd(
+    object_type: str = typer.Argument(..., help="workspace|notebook|page|table|file|history|view"),
+    object_id: str = typer.Argument(..., help="UUID of the object"),
+    ensure: str = typer.Option("link", "--ensure", help="Raise visibility to at least this level: ''|'link'|'public'"),
+):
+    """Mint a share URL for any object. Idempotent."""
+    cfg = load_config()
+    c = StashClient(cfg["base_url"], cfg.get("api_key", ""))
+    result = c.share_link(object_type, object_id, ensure or None)
+    console.print(result["url"])
+
+
+@app.command("visibility")
+def visibility_cmd(
+    object_type: str = typer.Argument(..., help="workspace|notebook|page|table|file|history|view"),
+    object_id: str = typer.Argument(..., help="UUID of the object"),
+    level: str = typer.Argument(..., help="inherit|private|link|public"),
+):
+    """Set visibility on any object."""
+    cfg = load_config()
+    c = StashClient(cfg["base_url"], cfg.get("api_key", ""))
+    c.set_object_visibility(object_type, object_id, level)
+    console.print(f"[green]✓[/green] {object_type} {object_id[:8]}… → {level}")
+
+
+@app.command("publish")
+def publish_cmd(
+    file_path: str = typer.Argument(..., help="Path to .html or .md file to publish"),
+    title: str = typer.Option(None, "--title", "-t", help="Page title (defaults to filename)"),
+    workspace_id: str = typer.Option(None, "--workspace", "-w"),
+    notebook_id: str = typer.Option(None, "--notebook", "-n", help="Defaults to auto-created 'AI Drafts'"),
+    audience: str = typer.Option("link", "--audience", help="link | public"),
+):
+    """Publish a local file as a Stash page and print the share URL.
+
+    Single call: creates the page, sets visibility, mints the share-link.
+    Mirrors what an agent does via the MCP `stash_publish_html` tool."""
+    p = Path(file_path)
+    if not p.exists():
+        console.print(f"[red]File not found: {file_path}[/red]")
+        raise typer.Exit(1)
+    content_type = "html" if p.suffix.lower() in (".html", ".htm") else "markdown"
+    cfg = load_config()
+    c = StashClient(cfg["base_url"], cfg.get("api_key", ""))
+    ws = workspace_id or (load_manifest() or {}).get("workspace_id")
+    if not ws:
+        console.print("[red]No workspace. Pass --workspace or run `stash connect`.[/red]")
+        raise typer.Exit(1)
+    result = c.publish(
+        workspace_id=ws,
+        title=title or p.stem,
+        content=p.read_text(),
+        content_type=content_type,
+        audience=audience,
+        notebook_id=notebook_id,
+    )
+    console.print(result["url"])
+
+
 if __name__ == "__main__":
     app()

@@ -19,6 +19,10 @@ from .routers import (
     files,
     memory,
     notebooks,
+    permissions,
+    public,
+    publish,
+    sessions,
     skill,
     tables,
     transcripts,
@@ -95,6 +99,11 @@ app.include_router(transcripts.router)
 app.include_router(aggregate.router)
 app.include_router(skill.router)
 app.include_router(admin.router)
+app.include_router(permissions.router)
+app.include_router(public.router)
+app.include_router(public.llms_router)
+app.include_router(sessions.router)
+app.include_router(publish.router)
 
 if settings.AUTH0_ENABLED:
     from backend.managed.auth0 import router as auth0_router

@@ -8,6 +8,8 @@ import { useBreadcrumbs, type Crumb } from "../../components/BreadcrumbContext";
 import NotebookTreeComponent from "../../components/workspace/FileTree";
 import MarkdownEditor, { SaveStatus } from "../../components/workspace/MarkdownEditor";
 import HtmlPageEditor from "../../components/workspace/HtmlPageEditor";
+import AddToCollect from "../../components/share/AddToCollect";
+import ShareSheet from "../../components/share/ShareSheet";
 import { useAuth } from "../../hooks/useAuth";
 import {
   listAllNotebooks,
@@ -524,6 +526,23 @@ function WikiPageInner() {
             {/* Sidebar: file tree */}
             <div className="flex w-[260px] flex-shrink-0 flex-col overflow-hidden border-r border-border bg-surface">
               {selectedNotebook.workspace_id && (
+                <div className="flex items-center justify-between gap-2 border-b border-border-subtle px-3 py-2.5">
+                  <span className="min-w-0 flex-1 truncate text-[12px] font-medium text-foreground">
+                    {selectedNotebook.name}
+                  </span>
+                  <AddToCollect
+                    objectType="notebook"
+                    objectId={selectedNotebook.id}
+                    workspaceId={selectedNotebook.workspace_id}
+                    label={selectedNotebook.name}
+                  />
+                  <NotebookShareButton
+                    notebookId={selectedNotebook.id}
+                    notebookName={selectedNotebook.name}
+                  />
+                </div>
+              )}
+              {selectedNotebook.workspace_id && (
                 <div className="border-b border-border-subtle px-3 py-3">
                   <input
                     type="text"
@@ -599,18 +618,29 @@ function WikiPageInner() {
               )}
 
               {selectedPage && (
-                <div className="pointer-events-none absolute right-5 top-3 z-10 flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.08em] text-muted">
-                  <span
-                    className={
-                      "h-1.5 w-1.5 rounded-full " +
-                      (saveStatus === "saved" ? "bg-[#22C55E]" : "bg-[#EAB308]")
-                    }
-                  />
-                  {saveStatus === "saving"
-                    ? "saving"
-                    : saveStatus === "dirty"
-                    ? "unsaved"
-                    : "saved"}
+                <div className="absolute right-5 top-3 z-20 flex items-center gap-3">
+                  <div className="pointer-events-none flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.08em] text-muted">
+                    <span
+                      className={
+                        "h-1.5 w-1.5 rounded-full " +
+                        (saveStatus === "saved" ? "bg-[#22C55E]" : "bg-[#EAB308]")
+                      }
+                    />
+                    {saveStatus === "saving"
+                      ? "saving"
+                      : saveStatus === "dirty"
+                      ? "unsaved"
+                      : "saved"}
+                  </div>
+                  {selectedNotebook?.workspace_id && (
+                    <AddToCollect
+                      objectType="page"
+                      objectId={selectedPage.id}
+                      workspaceId={selectedNotebook.workspace_id}
+                      label={selectedPage.name}
+                    />
+                  )}
+                  <PageShareButton pageId={selectedPage.id} pageName={selectedPage.name} />
                 </div>
               )}
 
@@ -679,5 +709,49 @@ function WikiPageInner() {
 
       </div>
     </AppShell>
+  );
+}
+
+function NotebookShareButton({ notebookId, notebookName }: { notebookId: string; notebookName: string }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="relative">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="rounded border border-border bg-raised px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-foreground hover:border-foreground"
+      >
+        Share
+      </button>
+      {open && (
+        <ShareSheet
+          objectType="notebook"
+          objectId={notebookId}
+          objectLabel={notebookName}
+          onClose={() => setOpen(false)}
+        />
+      )}
+    </div>
+  );
+}
+
+function PageShareButton({ pageId, pageName }: { pageId: string; pageName: string }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="relative">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="rounded border border-border bg-raised px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.08em] text-foreground hover:border-foreground"
+      >
+        Share
+      </button>
+      {open && (
+        <ShareSheet
+          objectType="page"
+          objectId={pageId}
+          objectLabel={pageName}
+          onClose={() => setOpen(false)}
+        />
+      )}
+    </div>
   );
 }

@@ -3,6 +3,8 @@
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import AppShell from "../../../components/AppShell";
+import AddToCollect from "../../../components/share/AddToCollect";
+import ShareSheet from "../../../components/share/ShareSheet";
 import { useAuth } from "../../../hooks/useAuth";
 import {
   getTable, updateTable,
@@ -525,6 +527,15 @@ function TableEditorPageInner() {
             <button onClick={() => fileInputRef.current?.click()} className="text-xs text-muted hover:text-foreground px-2 py-1 rounded hover:bg-raised">Import</button>
             <input ref={fileInputRef} type="file" accept=".csv" className="hidden" onChange={(e) => { if (e.target.files?.[0]) handleCsvImport(e.target.files[0]); e.target.value = ""; }} />
             {selectedRows.size > 0 && <button onClick={handleBulkDelete} className="text-xs text-red-400 hover:text-red-300 px-2 py-1">Delete {selectedRows.size}</button>}
+            {wsId && table && (
+              <AddToCollect
+                objectType="table"
+                objectId={table.id}
+                workspaceId={wsId}
+                label={table.name}
+              />
+            )}
+            {table && <TableShareButton tableId={table.id} tableName={table.name} />}
             <button onClick={handleDelete} className="text-xs text-red-400 hover:text-red-300 px-2 py-1">Delete table</button>
           </>}
         </div>
@@ -783,5 +794,27 @@ function TableEditorPageInner() {
         )}
       </div>
     </AppShell>
+  );
+}
+
+function TableShareButton({ tableId, tableName }: { tableId: string; tableName: string }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="relative">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="rounded border border-border bg-raised px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-foreground hover:border-foreground"
+      >
+        Share
+      </button>
+      {open && (
+        <ShareSheet
+          objectType="table"
+          objectId={tableId}
+          objectLabel={tableName}
+          onClose={() => setOpen(false)}
+        />
+      )}
+    </div>
   );
 }

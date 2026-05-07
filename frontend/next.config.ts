@@ -19,6 +19,21 @@ const nextConfig: NextConfig = {
         source: "/health",
         destination: `${backend}/health`,
       },
+      {
+        source: "/llms.txt",
+        destination: `${backend}/llms.txt`,
+      },
+    ];
+  },
+  async headers() {
+    return [
+      {
+        // /v/{slug}/embed must be iframe-able from anywhere.
+        source: "/v/:slug/embed",
+        headers: [
+          { key: "Content-Security-Policy", value: "frame-ancestors *" },
+        ],
+      },
     ];
   },
 };
