@@ -1,45 +1,67 @@
 "use client";
 
 import { useState } from "react";
-import { PageTree, PageTreeFile, PageTreeFolder } from "../../lib/types";
+import {
+  FolderTreeNode,
+  PageSummary,
+  WorkspaceTree,
+} from "../../lib/types";
 
-interface NotebookTreeProps {
-  tree: PageTree;
-  selectedFileId: string | null;
-  onSelectFile: (fileId: string) => void;
-  onCreateFile: (folderId: string | null) => void;
-  onCreateFolder: () => void;
-  onDeleteFile: (fileId: string) => void;
+interface FileTreeProps {
+  tree: WorkspaceTree;
+  selectedPageId: string | null;
+  onSelectPage: (pageId: string) => void;
+  onCreatePage: (folderId: string | null) => void;
+  onCreateFolder: (parentFolderId: string | null) => void;
+  onDeletePage: (pageId: string) => void;
   onDeleteFolder: (folderId: string) => void;
-  onRenameFile: (fileId: string, currentName: string) => void;
+  onRenamePage: (pageId: string, currentName: string) => void;
   onRenameFolder: (folderId: string, currentName: string) => void;
-  onMoveFile: (fileId: string, folderId: string | null) => void;
+  onMovePage: (pageId: string, folderId: string | null) => void;
+}
+
+type ContextTarget =
+  | { type: "page"; id: string; name: string; folderId: string | null }
+  | { type: "folder"; id: string; name: string };
+
+interface ContextMenu {
+  x: number;
+  y: number;
+  target: ContextTarget;
+}
+
+// Flatten the folder tree into a flat list of {id, label, depth} entries —
+// used to render move-to options across nested folders.
+function flatFolderList(
+  folders: FolderTreeNode[],
+  prefix = ""
+): { id: string; label: string }[] {
+  const out: { id: string; label: string }[] = [];
+  for (const f of folders) {
+    const label = prefix ? `${prefix}/${f.name}` : f.name;
+    out.push({ id: f.id, label });
+    if (f.folders.length) out.push(...flatFolderList(f.folders, label));
+  }
+  return out;
 }
 
 export default function FileTreeComponent({
   tree,
-  selectedFileId,
-  onSelectFile,
-  onCreateFile,
+  selectedPageId,
+  onSelectPage,
+  onCreatePage,
   onCreateFolder,
-  onDeleteFile,
+  onDeletePage,
   onDeleteFolder,
-  onRenameFile,
+  onRenamePage,
   onRenameFolder,
-  onMoveFile,
-}: NotebookTreeProps) {
-  const [collapsedFolders, setCollapsedFolders] = useState<Set<string>>(new Set());
-  const [contextMenu, setContextMenu] = useState<{
-    x: number;
-    y: number;
-    type: "file" | "folder";
-    id: string;
-    name: string;
-    folderId?: string;
-  } | null>(null);
+  onMovePage,
+}: FileTreeProps) {
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  const [contextMenu, setContextMenu] = useState<ContextMenu | null>(null);
 
-  const toggleFolder = (folderId: string) => {
-    setCollapsedFolders((prev) => {
+  const toggle = (folderId: string) => {
+    setCollapsed((prev) => {
       const next = new Set(prev);
       if (next.has(folderId)) next.delete(folderId);
       else next.add(folderId);
@@ -47,27 +69,25 @@ export default function FileTreeComponent({
     });
   };
 
-  const handleContextMenu = (
-    e: React.MouseEvent,
-    type: "file" | "folder",
-    id: string,
-    name: string,
-    folderId?: string
-  ) => {
+  const handleContextMenu = (e: React.MouseEvent, target: ContextTarget) => {
     e.preventDefault();
-    setContextMenu({ x: e.clientX, y: e.clientY, type, id, name, folderId });
+    setContextMenu({ x: e.clientX, y: e.clientY, target });
   };
-
   const closeContextMenu = () => setContextMenu(null);
 
-  const renderFile = (file: PageTreeFile) => {
-    const active = selectedFileId === file.id;
+  const renderPage = (page: PageSummary) => {
+    const active = selectedPageId === page.id;
     return (
       <button
-        key={file.id}
-        onClick={() => onSelectFile(file.id)}
+        key={page.id}
+        onClick={() => onSelectPage(page.id)}
         onContextMenu={(e) =>
-          handleContextMenu(e, "file", file.id, file.name, file.folder_id || undefined)
+          handleContextMenu(e, {
+            type: "page",
+            id: page.id,
+            name: page.name,
+            folderId: page.folder_id,
+          })
         }
         className={
           "flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-[13px] transition-colors " +
@@ -83,18 +103,21 @@ export default function FileTreeComponent({
           }
           style={{ background: "currentColor" }}
         />
-        <span className="truncate">{file.name}</span>
+        <span className="truncate">{page.name}</span>
       </button>
     );
   };
 
-  const renderFolder = (folder: PageTreeFolder) => {
-    const isCollapsed = collapsedFolders.has(folder.id);
+  const renderFolder = (folder: FolderTreeNode, depth: number) => {
+    const isCollapsed = collapsed.has(folder.id);
+    const childCount = folder.folders.length + folder.pages.length;
     return (
-      <div key={folder.id} className="mb-4">
+      <div key={folder.id} className="mb-2" style={{ paddingLeft: depth * 8 }}>
         <button
-          onClick={() => toggleFolder(folder.id)}
-          onContextMenu={(e) => handleContextMenu(e, "folder", folder.id, folder.name)}
+          onClick={() => toggle(folder.id)}
+          onContextMenu={(e) =>
+            handleContextMenu(e, { type: "folder", id: folder.id, name: folder.name })
+          }
           className="flex w-full items-center gap-1.5 rounded px-2 py-1 text-left font-mono text-[10px] font-medium uppercase tracking-[0.12em] text-muted transition-colors hover:text-foreground"
         >
           <span
@@ -106,60 +129,61 @@ export default function FileTreeComponent({
             ▸
           </span>
           <span className="truncate">{folder.name}</span>
-          <span className="ml-auto font-mono text-[10px] text-muted">
-            {folder.files.length}
-          </span>
+          <span className="ml-auto font-mono text-[10px] text-muted">{childCount}</span>
         </button>
         {!isCollapsed && (
-          <ul className="mt-1 space-y-0.5">
-            {folder.files.map((f) => (
-              <li key={f.id}>{renderFile(f)}</li>
-            ))}
-            {folder.files.length === 0 && (
-              <li className="px-2 py-1 text-[11px] text-muted">Empty folder</li>
-            )}
-          </ul>
+          <div className="mt-1">
+            {folder.folders.map((sub) => renderFolder(sub, depth + 1))}
+            <ul className="space-y-0.5" style={{ paddingLeft: 8 }}>
+              {folder.pages.map((p) => (
+                <li key={p.id}>{renderPage(p)}</li>
+              ))}
+              {childCount === 0 && (
+                <li className="px-2 py-1 text-[11px] text-muted">Empty folder</li>
+              )}
+            </ul>
+          </div>
         )}
       </div>
     );
   };
 
+  const allFolders = flatFolderList(tree.folders);
+
   return (
     <div className="flex h-full flex-col" onClick={closeContextMenu}>
-      {/* Toolbar */}
       <div className="flex items-center justify-between gap-2 border-b border-border-subtle px-3 py-2.5">
         <p className="font-mono text-[10px] font-medium uppercase tracking-[0.12em] text-muted">
           Pages
         </p>
         <div className="flex gap-1">
           <button
-            onClick={() => onCreateFile(null)}
+            onClick={() => onCreatePage(null)}
             className="inline-flex h-6 items-center rounded border border-border bg-transparent px-2 font-mono text-[10px] text-dim transition-colors hover:border-foreground hover:text-foreground"
-            title="New page"
+            title="New page at workspace root"
           >
             + Page
           </button>
           <button
-            onClick={onCreateFolder}
+            onClick={() => onCreateFolder(null)}
             className="inline-flex h-6 items-center rounded border border-border bg-transparent px-2 font-mono text-[10px] text-dim transition-colors hover:border-foreground hover:text-foreground"
-            title="New folder"
+            title="New folder at workspace root"
           >
             + Folder
           </button>
         </div>
       </div>
 
-      {/* Tree */}
       <div className="flex-1 overflow-y-auto px-2 py-3">
-        {tree.folders.map(renderFolder)}
-        {tree.root_files.length > 0 && (
+        {tree.folders.map((folder) => renderFolder(folder, 0))}
+        {tree.pages.length > 0 && (
           <ul className="space-y-0.5">
-            {tree.root_files.map((f) => (
-              <li key={f.id}>{renderFile(f)}</li>
+            {tree.pages.map((p) => (
+              <li key={p.id}>{renderPage(p)}</li>
             ))}
           </ul>
         )}
-        {tree.folders.length === 0 && tree.root_files.length === 0 && (
+        {tree.folders.length === 0 && tree.pages.length === 0 && (
           <p className="py-8 text-center text-[13px] text-muted">
             No pages yet.
             <br />
@@ -168,7 +192,6 @@ export default function FileTreeComponent({
         )}
       </div>
 
-      {/* Context menu */}
       {contextMenu && (
         <div
           className="fixed z-50 min-w-[160px] overflow-hidden rounded-lg border border-border bg-surface py-1 shadow-[0_12px_30px_rgba(15,23,42,0.08),0_2px_4px_rgba(15,23,42,0.04)]"
@@ -177,10 +200,10 @@ export default function FileTreeComponent({
         >
           <button
             onClick={() => {
-              if (contextMenu.type === "file") {
-                onRenameFile(contextMenu.id, contextMenu.name);
+              if (contextMenu.target.type === "page") {
+                onRenamePage(contextMenu.target.id, contextMenu.target.name);
               } else {
-                onRenameFolder(contextMenu.id, contextMenu.name);
+                onRenameFolder(contextMenu.target.id, contextMenu.target.name);
               }
               closeContextMenu();
             }}
@@ -188,53 +211,67 @@ export default function FileTreeComponent({
           >
             Rename
           </button>
-          {contextMenu.type === "folder" && (
-            <button
-              onClick={() => {
-                onCreateFile(contextMenu.id);
-                closeContextMenu();
-              }}
-              className="block w-full px-3 py-1.5 text-left text-[13px] text-foreground transition-colors hover:bg-raised"
-            >
-              New page here
-            </button>
-          )}
-          {contextMenu.type === "file" && (
+          {contextMenu.target.type === "folder" && (
             <>
-              {contextMenu.folderId && (
-                <button
-                  onClick={() => {
-                    onMoveFile(contextMenu.id, null);
-                    closeContextMenu();
-                  }}
-                  className="block w-full px-3 py-1.5 text-left text-[13px] text-foreground transition-colors hover:bg-raised"
-                >
-                  Move to root
-                </button>
-              )}
-              {tree.folders
-                .filter((f: PageTreeFolder) => f.id !== contextMenu.folderId)
-                .map((folder: PageTreeFolder) => (
+              <button
+                onClick={() => {
+                  onCreatePage(contextMenu.target.id);
+                  closeContextMenu();
+                }}
+                className="block w-full px-3 py-1.5 text-left text-[13px] text-foreground transition-colors hover:bg-raised"
+              >
+                New page here
+              </button>
+              <button
+                onClick={() => {
+                  onCreateFolder(contextMenu.target.id);
+                  closeContextMenu();
+                }}
+                className="block w-full px-3 py-1.5 text-left text-[13px] text-foreground transition-colors hover:bg-raised"
+              >
+                New subfolder
+              </button>
+            </>
+          )}
+          {contextMenu.target.type === "page" && (() => {
+            const pageTarget = contextMenu.target;
+            return (
+              <>
+                {pageTarget.folderId && (
                   <button
-                    key={folder.id}
                     onClick={() => {
-                      onMoveFile(contextMenu.id, folder.id);
+                      onMovePage(pageTarget.id, null);
                       closeContextMenu();
                     }}
                     className="block w-full px-3 py-1.5 text-left text-[13px] text-foreground transition-colors hover:bg-raised"
                   >
-                    Move to {folder.name}
+                    Move to root
                   </button>
-                ))}
-            </>
-          )}
+                )}
+                {allFolders
+                  .filter((f) => f.id !== pageTarget.folderId)
+                  .map((f) => (
+                    <button
+                      key={f.id}
+                      onClick={() => {
+                        onMovePage(pageTarget.id, f.id);
+                        closeContextMenu();
+                      }}
+                      className="block w-full truncate px-3 py-1.5 text-left text-[13px] text-foreground transition-colors hover:bg-raised"
+                    >
+                      Move to {f.label}
+                    </button>
+                  ))}
+              </>
+            );
+          })()}
           <div className="my-1 h-px bg-border-subtle" />
           <button
             onClick={() => {
-              if (contextMenu.type === "file") {
-                onDeleteFile(contextMenu.id);
+              if (contextMenu.target.type === "page") {
+                onDeletePage(contextMenu.target.id);
               } else {
-                onDeleteFolder(contextMenu.id);
+                onDeleteFolder(contextMenu.target.id);
               }
               closeContextMenu();
             }}

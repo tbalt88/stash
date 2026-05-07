@@ -37,7 +37,7 @@ export async function generateMetadata({
 }
 
 type ViewItemInlined = {
-  object_type: "notebook" | "page" | "table" | "file" | "history";
+  object_type: "folder" | "page" | "table" | "file" | "history";
   object_id: string;
   position: number;
   label: string;
@@ -162,9 +162,8 @@ function ItemBody({ item }: { item: ViewItemInlined }) {
     return <p className="text-[13px] italic text-muted">This item is no longer available.</p>;
   }
 
-  if (item.object_type === "notebook") {
+  if (item.object_type === "folder") {
     const inline = item.inline as {
-      description?: string;
       pages?: {
         id: string;
         name: string;
@@ -175,9 +174,6 @@ function ItemBody({ item }: { item: ViewItemInlined }) {
     };
     return (
       <div>
-        {inline.description ? (
-          <p className="mb-4 text-[14px] text-dim">{inline.description}</p>
-        ) : null}
         {(inline.pages ?? []).map((p) => (
           <div key={p.id} className="mb-6 last:mb-0">
             <h3 className="font-display text-[16px] font-bold text-ink">{p.name}</h3>

@@ -81,7 +81,7 @@ export default function CollectTray() {
 
           {items.length === 0 ? (
             <p className="px-4 py-6 text-center text-[13px] text-muted">
-              Empty. Click <span className="font-mono">+ Collect</span> on any page, table, notebook, or session to start a bundle.
+              Empty. Click <span className="font-mono">+ Collect</span> on any page, folder, table, or session to start a bundle.
             </p>
           ) : (
             <>

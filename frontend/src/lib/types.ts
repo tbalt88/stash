@@ -36,23 +36,23 @@ export interface WorkspaceMember {
   joined_at: string;
 }
 
-// --- Notebooks (collections) ---
+// --- Wiki: folders (nested) and pages ---
 
-export interface Notebook {
+export type PageContentType = "markdown" | "html";
+
+export interface Folder {
   id: string;
-  workspace_id: string | null;
+  workspace_id: string;
+  parent_folder_id: string | null;
   name: string;
-  description: string;
   created_by: string;
   created_at: string;
   updated_at: string;
 }
 
-export type PageContentType = "markdown" | "html";
-
-export interface NotebookPage {
+export interface Page {
   id: string;
-  notebook_id: string;
+  workspace_id: string;
   folder_id: string | null;
   name: string;
   content_type: PageContentType;
@@ -64,33 +64,24 @@ export interface NotebookPage {
   updated_at: string;
 }
 
-export interface NotebookFolder {
+// Lightweight tree node — pages live as `pages: PageSummary[]` in each folder.
+export interface PageSummary {
   id: string;
-  notebook_id: string;
-  name: string;
-  created_by: string;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface PageTreeFile {
-  id: string;
-  name: string;
+  workspace_id: string;
   folder_id: string | null;
+  name: string;
   created_at: string;
   updated_at: string;
 }
 
-export interface PageTreeFolder {
-  id: string;
-  name: string;
-  files: PageTreeFile[];
-  created_at: string;
+export interface FolderTreeNode extends Folder {
+  folders: FolderTreeNode[];
+  pages: PageSummary[];
 }
 
-export interface PageTree {
-  folders: PageTreeFolder[];
-  root_files: PageTreeFile[];
+export interface WorkspaceTree {
+  folders: FolderTreeNode[];
+  pages: PageSummary[];
 }
 
 // --- History ---
@@ -196,9 +187,7 @@ export interface TableWithWorkspace extends Table {
   workspace_name: string | null;
 }
 
-export interface NotebookWithWorkspace extends Notebook {
-  workspace_name: string | null;
-}
+// (No NotebookWithWorkspace anymore — wikis hang directly off the workspace.)
 
 // --- Files ---
 
@@ -224,7 +213,7 @@ export interface Attachment {
 export interface PageLink {
   id: string;
   name: string;
-  notebook_id: string;
+  workspace_id: string;
   link_text: string;
   created_at: string;
 }
@@ -257,7 +246,7 @@ export interface EmbeddingProjectionPoint {
   x: number;
   y: number;
   z: number;
-  source: "notebook_pages" | "table_rows" | "history_events";
+  source: "pages" | "table_rows" | "history_events";
   label: string;
   created_at: string | null;
 }

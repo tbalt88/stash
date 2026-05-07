@@ -49,7 +49,8 @@ export default async function PublicStashPage({
   const detail = await loadDetail(workspaceId);
   if (!detail) notFound();
 
-  const { workspace: ws, notebooks, tables, files } = detail;
+  const { workspace: ws, folders, root_pages, tables, files } = detail;
+  const rootFolders = folders.filter((f) => f.parent_folder_id === null);
   const owner = ws.creator_display_name || ws.creator_name;
 
   return (
@@ -89,7 +90,7 @@ export default async function PublicStashPage({
         <div className="flex flex-wrap items-center gap-x-5 gap-y-2 font-mono text-[11px] uppercase tracking-wider text-muted">
           <span>★ {ws.fork_count} forks</span>
           <span>{ws.member_count} members</span>
-          <span>{ws.notebook_count} notebooks</span>
+          <span>{ws.page_count} pages</span>
           <span>{ws.table_count} tables</span>
           <span>{ws.file_count} files</span>
           <span>{ws.history_event_count} events</span>
@@ -124,14 +125,24 @@ export default async function PublicStashPage({
         </section>
       ) : null}
 
-      <Section title="Notebooks" empty="No notebooks.">
-        {notebooks.map((nb) => (
+      <Section title="Folders" empty="No folders.">
+        {rootFolders.map((f) => (
           <Row
-            key={nb.id}
-            href={`/s/${ws.id}/n/${nb.id}`}
-            title={nb.name}
-            subtitle={nb.description}
-            meta={`${nb.page_count} page${nb.page_count === 1 ? "" : "s"} · updated ${relativeTime(nb.updated_at)}`}
+            key={f.id}
+            href={`/s/${ws.id}/f/${f.id}`}
+            title={f.name}
+            meta={`${f.page_count} page${f.page_count === 1 ? "" : "s"} · updated ${relativeTime(f.updated_at)}`}
+          />
+        ))}
+      </Section>
+
+      <Section title="Pages" empty="No top-level pages.">
+        {root_pages.map((p) => (
+          <Row
+            key={p.id}
+            href={`/s/${ws.id}/p/${p.id}`}
+            title={p.name}
+            meta={`updated ${relativeTime(p.updated_at)}`}
           />
         ))}
       </Section>

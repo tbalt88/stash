@@ -18,13 +18,19 @@ branch_labels = None
 depends_on = None
 
 
-_NEW_OBJECT_TYPES = "('workspace', 'chat', 'notebook', 'page', 'history', 'deck', 'table', 'file', 'view')"
+_NEW_OBJECT_TYPES = (
+    "('workspace', 'chat', 'notebook', 'page', 'history', 'deck', 'table', 'file', 'view')"
+)
 _NEW_VISIBILITY = "('inherit', 'private', 'link', 'public')"
 
 
 def upgrade() -> None:
-    op.execute("ALTER TABLE object_permissions DROP CONSTRAINT IF EXISTS object_permissions_object_type_check")
-    op.execute("ALTER TABLE object_permissions DROP CONSTRAINT IF EXISTS object_permissions_visibility_check")
+    op.execute(
+        "ALTER TABLE object_permissions DROP CONSTRAINT IF EXISTS object_permissions_object_type_check"
+    )
+    op.execute(
+        "ALTER TABLE object_permissions DROP CONSTRAINT IF EXISTS object_permissions_visibility_check"
+    )
     op.execute(
         f"ALTER TABLE object_permissions ADD CONSTRAINT object_permissions_object_type_check "
         f"CHECK (object_type IN {_NEW_OBJECT_TYPES})"
@@ -34,7 +40,9 @@ def upgrade() -> None:
         f"CHECK (visibility IN {_NEW_VISIBILITY})"
     )
 
-    op.execute("ALTER TABLE object_shares DROP CONSTRAINT IF EXISTS object_shares_object_type_check")
+    op.execute(
+        "ALTER TABLE object_shares DROP CONSTRAINT IF EXISTS object_shares_object_type_check"
+    )
     op.execute(
         f"ALTER TABLE object_shares ADD CONSTRAINT object_shares_object_type_check "
         f"CHECK (object_type IN {_NEW_OBJECT_TYPES})"
@@ -69,10 +77,16 @@ def downgrade() -> None:
         "DELETE FROM object_permissions WHERE object_type IN ('workspace', 'page', 'file', 'view') "
         "OR visibility = 'link'"
     )
-    op.execute("DELETE FROM object_shares WHERE object_type IN ('workspace', 'page', 'file', 'view')")
+    op.execute(
+        "DELETE FROM object_shares WHERE object_type IN ('workspace', 'page', 'file', 'view')"
+    )
 
-    op.execute("ALTER TABLE object_permissions DROP CONSTRAINT IF EXISTS object_permissions_object_type_check")
-    op.execute("ALTER TABLE object_permissions DROP CONSTRAINT IF EXISTS object_permissions_visibility_check")
+    op.execute(
+        "ALTER TABLE object_permissions DROP CONSTRAINT IF EXISTS object_permissions_object_type_check"
+    )
+    op.execute(
+        "ALTER TABLE object_permissions DROP CONSTRAINT IF EXISTS object_permissions_visibility_check"
+    )
     op.execute(
         "ALTER TABLE object_permissions ADD CONSTRAINT object_permissions_object_type_check "
         "CHECK (object_type IN ('chat', 'notebook', 'history', 'deck', 'table'))"
@@ -82,7 +96,9 @@ def downgrade() -> None:
         "CHECK (visibility IN ('inherit', 'private', 'public'))"
     )
 
-    op.execute("ALTER TABLE object_shares DROP CONSTRAINT IF EXISTS object_shares_object_type_check")
+    op.execute(
+        "ALTER TABLE object_shares DROP CONSTRAINT IF EXISTS object_shares_object_type_check"
+    )
     op.execute(
         "ALTER TABLE object_shares ADD CONSTRAINT object_shares_object_type_check "
         "CHECK (object_type IN ('chat', 'notebook', 'history', 'deck', 'table'))"

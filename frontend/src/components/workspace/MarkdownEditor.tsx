@@ -16,7 +16,7 @@ import Placeholder from "@tiptap/extension-placeholder";
 import { Table, TableCell, TableHeader, TableRow } from "@tiptap/extension-table";
 import EditorToolbar from "./EditorToolbar";
 import WikiLink from "./extensions/WikiLink";
-import { NotebookPage, FileInfo } from "../../lib/types";
+import { Page, FileInfo } from "../../lib/types";
 import { listFiles, WorkspacePageEntry } from "../../lib/api";
 
 const AUTOSAVE_DEBOUNCE_MS = 1500;
@@ -25,21 +25,23 @@ export type SaveStatus = "saved" | "dirty" | "saving";
 
 interface MarkdownEditorProps {
   workspaceId: string | null;
-  notebookId: string | null;
-  file: NotebookPage;
+  /** Folder names from workspace root down to the page's folder, for sibling
+   *  detection in `[[` autocomplete. Empty for pages at the workspace root. */
+  folderPath?: string[];
+  file: Page;
   onSave: (content: string) => void;
   onSaveStatusChange?: (status: SaveStatus) => void;
   onRename?: (name: string) => void;
   /** Every page in the workspace, used to seed `[[` autocomplete. */
   pageIndex?: WorkspacePageEntry[];
-  /** Called on clicks to same-origin stash routes so the notebooks
-   *  page can SPA-select the target instead of reloading. */
+  /** Called on clicks to same-origin stash routes so the wiki page
+   *  can SPA-select the target instead of reloading. */
   onNavigateInternal?: (href: string) => void;
 }
 
 export default function MarkdownEditor({
   workspaceId,
-  notebookId,
+  folderPath = [],
   file,
   onSave,
   onSaveStatusChange,
@@ -135,8 +137,8 @@ export default function MarkdownEditor({
         pageIndex,
         workspaceId: workspaceId ?? "",
         context: {
-          notebookId: notebookId ?? null,
           folderId: file.folder_id ?? null,
+          folderPath,
         },
       }),
       Placeholder.configure({ placeholder: "Start typing..." }),

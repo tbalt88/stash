@@ -89,7 +89,7 @@ function SessionRow({ session }: { session: SessionSummary }) {
 
 function SessionActions({ session }: { session: SessionSummary }) {
   const [open, setOpen] = useState(false);
-  const [materialized, setMaterialized] = useState<{ id: string; notebookId: string } | null>(null);
+  const [materialized, setMaterialized] = useState<{ id: string; folderId: string } | null>(null);
   const [working, setWorking] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
@@ -102,7 +102,7 @@ function SessionActions({ session }: { session: SessionSummary }) {
     setErr(null);
     try {
       const result = await materializeSession(session.workspace_id, session.session_id);
-      setMaterialized({ id: result.page.id, notebookId: result.notebook_id });
+      setMaterialized({ id: result.page.id, folderId: result.folder_id });
       setOpen(true);
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Failed to share");

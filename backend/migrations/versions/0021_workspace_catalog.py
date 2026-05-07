@@ -16,7 +16,9 @@ def upgrade() -> None:
     op.execute("ALTER TABLE workspaces ADD COLUMN IF NOT EXISTS summary VARCHAR(280)")
     op.execute("ALTER TABLE workspaces ADD COLUMN IF NOT EXISTS tags TEXT[] NOT NULL DEFAULT '{}'")
     op.execute("ALTER TABLE workspaces ADD COLUMN IF NOT EXISTS category VARCHAR(32)")
-    op.execute("ALTER TABLE workspaces ADD COLUMN IF NOT EXISTS featured BOOLEAN NOT NULL DEFAULT false")
+    op.execute(
+        "ALTER TABLE workspaces ADD COLUMN IF NOT EXISTS featured BOOLEAN NOT NULL DEFAULT false"
+    )
     op.execute("ALTER TABLE workspaces ADD COLUMN IF NOT EXISTS cover_image_url TEXT")
     op.execute("ALTER TABLE workspaces ADD COLUMN IF NOT EXISTS fork_count INT NOT NULL DEFAULT 0")
     op.execute(
@@ -32,9 +34,7 @@ def upgrade() -> None:
         "CREATE INDEX IF NOT EXISTS workspaces_public_category "
         "ON workspaces (category) WHERE is_public = true"
     )
-    op.execute(
-        "CREATE INDEX IF NOT EXISTS workspaces_tags_gin ON workspaces USING gin (tags)"
-    )
+    op.execute("CREATE INDEX IF NOT EXISTS workspaces_tags_gin ON workspaces USING gin (tags)")
 
 
 def downgrade() -> None:

@@ -2,7 +2,7 @@
 
 Every endpoint runs the same Drive-style ACL check the authenticated routes
 do, but with an optional viewer (None = anonymous). The frontend nested
-routes under /s/[workspaceId]/n/[nb]/p/[page] etc consume these.
+routes under /s/[workspaceId]/f/[folder]/p/[page] consume these.
 """
 
 from uuid import UUID
@@ -43,12 +43,12 @@ async def _readable_rows(
     return out
 
 
-async def _readable_notebook_pages(notebook_id: UUID, viewer: UUID | None) -> list[dict]:
+async def _readable_pages_in_folder(folder_id: UUID, viewer: UUID | None) -> list[dict]:
     pool = get_pool()
     pages = await pool.fetch(
-        "SELECT id, name, content_type, content_markdown, content_html, updated_at "
-        "FROM notebook_pages WHERE notebook_id = $1 ORDER BY created_at, name",
-        notebook_id,
+        "SELECT id, workspace_id, name, content_type, content_markdown, content_html, "
+        "updated_at FROM pages WHERE folder_id = $1 ORDER BY created_at, name",
+        folder_id,
     )
     return await _readable_rows("page", pages, viewer)
 
@@ -56,18 +56,18 @@ async def _readable_notebook_pages(notebook_id: UUID, viewer: UUID | None) -> li
 _LLMS_TXT = """# Stash
 
 Stash is a shared memory system for AI coding agents. Workspaces contain
-notebooks (collections of pages), tables, files, and history (agent
-sessions). Pages can be shared as Views with slugged URLs.
+folders (which can nest), pages (markdown or HTML), tables, files, and
+history (agent sessions). Items can be shared as Views with slugged URLs.
 
 ## For browsing agents
 
-Any /v/{slug} or /s/{ws}/n/{nb}/p/{page} URL returns HTML by default.
+Any /v/{slug} or /s/{ws}/p/{page} URL returns HTML by default.
 Append ?format=text to the corresponding API endpoint to get clean
 markdown:
 
 - View: GET /api/v1/views/{slug}?format=text
 - Page: GET /api/v1/public/pages/{page_id}?format=text
-- Notebook (all pages): GET /api/v1/public/notebooks/{notebook_id}?format=text
+- Folder (all pages): GET /api/v1/public/folders/{folder_id}?format=text
 - Workspace overview: GET /api/v1/public/workspaces/{workspace_id}?format=text
 
 All public endpoints are anonymous-readable when the underlying object's
@@ -82,8 +82,6 @@ any public endpoint, regardless of how the URL is shaped.
 
 @llms_router.get("/llms.txt", include_in_schema=False)
 async def llms_txt():
-    from fastapi.responses import PlainTextResponse
-
     return PlainTextResponse(_LLMS_TXT, media_type="text/plain")
 
 
@@ -104,7 +102,7 @@ async def public_workspace(
         "w.tags, w.category, w.featured, w.fork_count, w.forked_from_workspace_id, "
         "w.created_at, w.updated_at, "
         "(SELECT COUNT(*) FROM workspace_members wm WHERE wm.workspace_id = w.id) AS member_count, "
-        "(SELECT COUNT(*) FROM notebooks nb WHERE nb.workspace_id = w.id) AS notebook_count, "
+        "(SELECT COUNT(*) FROM pages p WHERE p.workspace_id = w.id) AS page_count, "
         "(SELECT COUNT(*) FROM tables t WHERE t.workspace_id = w.id) AS table_count, "
         "(SELECT COUNT(*) FROM files f WHERE f.workspace_id = w.id) AS file_count, "
         "(SELECT COUNT(*) FROM history_events he WHERE he.workspace_id = w.id) AS history_event_count "
@@ -114,31 +112,39 @@ async def public_workspace(
     if not ws:
         raise HTTPException(status_code=404, detail="Workspace not found")
 
-    notebook_rows = await pool.fetch(
-        "SELECT nb.id, nb.name, nb.description, nb.updated_at, "
-        "(SELECT COUNT(*) FROM notebook_pages p WHERE p.notebook_id = nb.id) AS page_count "
-        "FROM notebooks nb WHERE nb.workspace_id = $1 ORDER BY nb.updated_at DESC",
+    folder_rows = await pool.fetch(
+        "SELECT f.id, f.workspace_id, f.parent_folder_id, f.name, f.updated_at, "
+        "(SELECT COUNT(*) FROM pages p WHERE p.folder_id = f.id) AS page_count "
+        "FROM folders f WHERE f.workspace_id = $1 "
+        "ORDER BY f.parent_folder_id NULLS FIRST, f.name",
+        workspace_id,
+    )
+    root_page_rows = await pool.fetch(
+        "SELECT id, workspace_id, name, updated_at FROM pages "
+        "WHERE workspace_id = $1 AND folder_id IS NULL ORDER BY name",
         workspace_id,
     )
     table_rows = await pool.fetch(
-        "SELECT t.id, t.name, t.updated_at, "
+        "SELECT t.id, t.workspace_id, t.name, t.updated_at, "
         "(SELECT COUNT(*) FROM table_rows tr WHERE tr.table_id = t.id) AS row_count "
         "FROM tables t WHERE t.workspace_id = $1 ORDER BY t.updated_at DESC",
         workspace_id,
     )
     file_rows = await pool.fetch(
-        "SELECT id, name, content_type, COALESCE(size_bytes, 0) AS size_bytes, created_at "
+        "SELECT id, workspace_id, name, content_type, COALESCE(size_bytes, 0) AS size_bytes, created_at "
         "FROM files WHERE workspace_id = $1 ORDER BY created_at DESC LIMIT 200",
         workspace_id,
     )
-    notebooks = await _readable_rows("notebook", notebook_rows, viewer, workspace_id=workspace_id)
-    for nb in notebooks:
-        nb["page_count"] = len(await _readable_notebook_pages(nb["id"], viewer))
+    folders = await _readable_rows("folder", folder_rows, viewer, workspace_id=workspace_id)
+    for f in folders:
+        f["page_count"] = len(await _readable_pages_in_folder(f["id"], viewer))
+    root_pages = await _readable_rows("page", root_page_rows, viewer, workspace_id=workspace_id)
     tables = await _readable_rows("table", table_rows, viewer, workspace_id=workspace_id)
     files = await _readable_rows("file", file_rows, viewer, workspace_id=workspace_id)
     payload = {
         "workspace": dict(ws),
-        "notebooks": notebooks,
+        "folders": folders,
+        "root_pages": root_pages,
         "tables": tables,
         "files": files,
     }
@@ -149,48 +155,58 @@ async def public_workspace(
             lines += [ws_d["summary"], ""]
         if ws_d.get("description"):
             lines += [ws_d["description"], ""]
-        if payload["notebooks"]:
-            lines.append("## Notebooks")
-            for n in payload["notebooks"]:
+        if folders:
+            lines.append("## Folders")
+            for n in folders:
                 lines.append(f"- {n['name']} ({n['page_count']} pages)")
             lines.append("")
-        if payload["tables"]:
+        if root_pages:
+            lines.append("## Pages")
+            for p in root_pages:
+                lines.append(f"- {p['name']}")
+            lines.append("")
+        if tables:
             lines.append("## Tables")
-            for t in payload["tables"]:
+            for t in tables:
                 lines.append(f"- {t['name']} ({t['row_count']} rows)")
             lines.append("")
-        if payload["files"]:
+        if files:
             lines.append("## Files")
-            for f in payload["files"]:
+            for f in files:
                 lines.append(f"- {f['name']}")
             lines.append("")
         return PlainTextResponse("\n".join(lines), media_type="text/markdown")
     return payload
 
 
-@router.get("/notebooks/{notebook_id}")
-async def public_notebook(
-    notebook_id: UUID,
+@router.get("/folders/{folder_id}")
+async def public_folder(
+    folder_id: UUID,
     format: str | None = Query(None),
     current_user: dict | None = Depends(get_current_user_optional),
 ):
     pool = get_pool()
     viewer = _viewer(current_user)
-    if not await permission_service.check_access("notebook", notebook_id, viewer):
-        raise HTTPException(status_code=404, detail="Notebook not found")
+    if not await permission_service.check_access("folder", folder_id, viewer):
+        raise HTTPException(status_code=404, detail="Folder not found")
 
-    nb = await pool.fetchrow(
-        "SELECT id, name, description, workspace_id, updated_at FROM notebooks WHERE id = $1",
-        notebook_id,
+    folder = await pool.fetchrow(
+        "SELECT id, name, parent_folder_id, workspace_id, updated_at FROM folders WHERE id = $1",
+        folder_id,
     )
-    if not nb:
-        raise HTTPException(status_code=404, detail="Notebook not found")
+    if not folder:
+        raise HTTPException(status_code=404, detail="Folder not found")
 
-    pages = await _readable_notebook_pages(notebook_id, viewer)
+    pages = await _readable_pages_in_folder(folder_id, viewer)
+    subfolders_raw = await pool.fetch(
+        "SELECT id, name, workspace_id, updated_at FROM folders "
+        "WHERE parent_folder_id = $1 ORDER BY name",
+        folder_id,
+    )
+    subfolders = await _readable_rows("folder", subfolders_raw, viewer)
+
     if format == "text":
-        lines = [f"# {nb['name']}", ""]
-        if nb.get("description"):
-            lines += [nb["description"], ""]
+        lines = [f"# {folder['name']}", ""]
         for p in pages:
             lines.append(f"## {p['name']}")
             if p["content_type"] == "html":
@@ -200,10 +216,16 @@ async def public_notebook(
             lines.append("")
         return PlainTextResponse("\n".join(lines), media_type="text/markdown")
 
-    # JSON form drops the heavy content_markdown/content_html unless a caller
-    # specifically asked for full pages — keeps the index endpoint cheap.
     return {
-        "notebook": dict(nb),
+        "folder": dict(folder),
+        "subfolders": [
+            {
+                "id": str(f["id"]),
+                "name": f["name"],
+                "updated_at": f["updated_at"].isoformat(),
+            }
+            for f in subfolders
+        ],
         "pages": [
             {
                 "id": str(p["id"]),
@@ -229,16 +251,15 @@ async def public_page(
 
     page = await pool.fetchrow(
         "SELECT p.id, p.name, p.content_type, p.content_markdown, p.content_html, "
-        "p.notebook_id, p.updated_at, n.workspace_id, n.name AS notebook_name "
-        "FROM notebook_pages p JOIN notebooks n ON n.id = p.notebook_id WHERE p.id = $1",
+        "p.folder_id, p.workspace_id, p.updated_at, "
+        "f.name AS folder_name "
+        "FROM pages p LEFT JOIN folders f ON f.id = p.folder_id WHERE p.id = $1",
         page_id,
     )
     if not page:
         raise HTTPException(status_code=404, detail="Page not found")
     if format == "text":
         if page["content_type"] == "html":
-            # HTML pages don't have a clean text projection — return a hint
-            # plus the raw HTML so the agent can decide what to do.
             return PlainTextResponse(
                 f"# {page['name']}\n\n_(HTML page — raw markup follows)_\n\n{page['content_html']}",
                 media_type="text/markdown",

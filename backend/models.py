@@ -131,7 +131,7 @@ class WorkspaceCatalogCard(BaseModel):
     creator_display_name: str | None = None
     member_count: int = 0
     fork_count: int = 0
-    notebook_count: int = 0
+    page_count: int = 0
     table_count: int = 0
     file_count: int = 0
     history_event_count: int = 0
@@ -145,11 +145,17 @@ class CatalogListResponse(BaseModel):
     next_cursor: str | None = None
 
 
-class WorkspacePublicNotebookSummary(BaseModel):
+class WorkspacePublicFolderSummary(BaseModel):
     id: UUID
     name: str
-    description: str
+    parent_folder_id: UUID | None = None
     page_count: int
+    updated_at: datetime
+
+
+class WorkspacePublicRootPageSummary(BaseModel):
+    id: UUID
+    name: str
     updated_at: datetime
 
 
@@ -169,18 +175,19 @@ class WorkspacePublicFileSummary(BaseModel):
 
 class WorkspacePublicDetail(BaseModel):
     workspace: WorkspaceCatalogCard
-    notebooks: list[WorkspacePublicNotebookSummary]
+    folders: list[WorkspacePublicFolderSummary]
+    root_pages: list[WorkspacePublicRootPageSummary]
     tables: list[WorkspacePublicTableSummary]
     files: list[WorkspacePublicFileSummary]
 
 
 # --- Views (curated subsets of a workspace) ---
 
-ViewObjectType = str  # 'notebook' | 'page' | 'table' | 'file' | 'history'
+ViewObjectType = str  # 'folder' | 'page' | 'table' | 'file' | 'history'
 
 
 class ViewItem(BaseModel):
-    object_type: ViewObjectType = Field(..., pattern=r"^(notebook|page|table|file|history)$")
+    object_type: ViewObjectType = Field(..., pattern=r"^(folder|page|table|file|history)$")
     object_id: UUID
     position: int = 0
     label_override: str | None = Field(None, max_length=160)
@@ -222,7 +229,7 @@ class ViewListResponse(BaseModel):
 
 
 # Public renderer payload — items are inlined with their content where it
-# makes sense (notebook pages, table rows, file metadata, history events).
+# makes sense (folders/pages, table rows, file metadata, history events).
 # The shape is intentionally permissive: each entry has the item
 # type/id/label plus an `inline` blob whose contents depend on the type.
 
@@ -307,29 +314,32 @@ class RedeemInviteAuthedRequest(BaseModel):
     token: str = Field(..., min_length=8, max_length=128)
 
 
-# --- Notebooks (collections) ---
+# --- Wiki: folders (nested) and pages ---
 
 
-class NotebookCreateRequest(BaseModel):
+class FolderCreateRequest(BaseModel):
     name: str = Field(..., min_length=1, max_length=255)
-    description: str = Field("", max_length=1000)
+    parent_folder_id: UUID | None = None
 
 
-class NotebookResponse(BaseModel):
+class FolderUpdateRequest(BaseModel):
+    name: str | None = Field(None, min_length=1, max_length=255)
+    parent_folder_id: UUID | None = None
+    move_to_root: bool = False
+
+
+class FolderResponse(BaseModel):
     id: UUID
-    workspace_id: UUID | None
+    workspace_id: UUID
+    parent_folder_id: UUID | None = None
     name: str
-    description: str
     created_by: UUID
     created_at: datetime
     updated_at: datetime
 
 
-class NotebookListResponse(BaseModel):
-    notebooks: list[NotebookResponse]
-
-
-# --- Notebook Pages (files within a notebook) ---
+class FolderListResponse(BaseModel):
+    folders: list[FolderResponse]
 
 
 class PageCreateRequest(BaseModel):
@@ -351,7 +361,7 @@ class PageUpdateRequest(BaseModel):
 
 class PageResponse(BaseModel):
     id: UUID
-    notebook_id: UUID
+    workspace_id: UUID
     folder_id: UUID | None
     name: str
     content_markdown: str
@@ -365,61 +375,63 @@ class PageResponse(BaseModel):
     updated_at: datetime
 
 
-class FolderCreateRequest(BaseModel):
-    name: str = Field(..., min_length=1, max_length=255)
+class PageSummary(BaseModel):
+    """Lightweight page entry used in workspace tree responses."""
 
-
-class FolderUpdateRequest(BaseModel):
-    name: str = Field(..., min_length=1, max_length=255)
-
-
-class FolderResponse(BaseModel):
     id: UUID
-    notebook_id: UUID
+    name: str
+    workspace_id: UUID
+    folder_id: UUID | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class WorkspaceTreeFolder(BaseModel):
+    id: UUID
+    workspace_id: UUID
+    parent_folder_id: UUID | None
     name: str
     created_by: UUID
     created_at: datetime
     updated_at: datetime
+    folders: list["WorkspaceTreeFolder"] = []
+    pages: list[PageSummary] = []
 
 
-class PageTreeFile(BaseModel):
-    id: UUID
-    name: str
-    folder_id: UUID | None
-    created_at: datetime
-    updated_at: datetime
-
-
-class PageTreeFolder(BaseModel):
-    id: UUID
-    name: str
-    files: list[PageTreeFile]
-    created_at: datetime
-
-
-class PageTreeResponse(BaseModel):
-    folders: list[PageTreeFolder]
-    root_files: list[PageTreeFile]
+class WorkspaceTreeResponse(BaseModel):
+    folders: list[WorkspaceTreeFolder]
+    pages: list[PageSummary]
 
 
 class WorkspacePageEntry(BaseModel):
-    """Flattened reference to a page for cross-notebook lookups (wiki links).
+    """Flat reference to a page for wiki-link lookups.
 
-    folder_name is the text used in path-style links like
-    `[[folder/page]]`; null when the page lives at the notebook root.
+    folder_path is the chain of folder names from the workspace root down to
+    the immediate parent — empty for root pages, ['Architecture', 'API'] for
+    a page nested two folders deep. Used to render and resolve
+    `[[folder/page]]` wiki links.
     """
 
     id: UUID
     name: str
-    notebook_id: UUID
-    notebook_name: str
+    workspace_id: UUID
     folder_id: UUID | None = None
-    folder_name: str | None = None
+    folder_path: list[str] = []
     updated_at: datetime
 
 
 class WorkspacePageListResponse(BaseModel):
     pages: list[WorkspacePageEntry]
+
+
+class UserPageEntry(WorkspacePageEntry):
+    """Cross-workspace flat page list used by /me/pages."""
+
+    workspace_name: str
+
+
+class UserPageListResponse(BaseModel):
+    pages: list[UserPageEntry]
 
 
 # --- Tables ---
@@ -628,7 +640,7 @@ class ShareLinkResponse(BaseModel):
 class PublishRequest(BaseModel):
     """Single-call publish: create a page from supplied content and return a
     share URL for it. Designed for AI agents — collapses 4-5 round trips into
-    one. Notebook is optional; defaults to a workspace's "AI Drafts" notebook
+    one. Folder is optional; defaults to a workspace's "AI Drafts" folder
     that's auto-created on first use."""
 
     workspace_id: UUID
@@ -636,12 +648,12 @@ class PublishRequest(BaseModel):
     content: str = ""
     content_type: str = Field("markdown", pattern=r"^(markdown|html)$")
     audience: str = Field("link", pattern=r"^(link|public)$")
-    notebook_id: UUID | None = None
+    folder_id: UUID | None = None
 
 
 class PublishResponse(BaseModel):
     page_id: UUID
-    notebook_id: UUID
+    folder_id: UUID | None
     workspace_id: UUID
     visibility: str
     url: str

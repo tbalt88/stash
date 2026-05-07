@@ -575,8 +575,12 @@ async def main():
         # -----------------------------------------------------------
         # 1. Add new notebook pages
         # -----------------------------------------------------------
+        # Stale post-migration 0026: NB_* used to be notebook IDs and the
+        # column was notebook_id. After collapsing notebooks into top-level
+        # folders, the existence check is workspace-wide. Refresh the
+        # constants at the top of this file before re-running this script.
         existing = {r["name"] for r in await conn.fetch(
-            "SELECT name FROM notebook_pages WHERE notebook_id = ANY($1)",
+            "SELECT name FROM pages WHERE workspace_id = ANY($1)",
             [NB_ARCH, NB_RESEARCH, NB_MEETINGS],
         )}
 
@@ -587,7 +591,7 @@ async def main():
             ts = NOW - timedelta(days=days_ago, hours=random.randint(0, 12))
             emb = cluster_embedding(hash(name) % 10)
             await conn.execute(
-                """INSERT INTO notebook_pages (id, notebook_id, name, content_markdown, created_by, updated_by, created_at, updated_at, embedding)
+                """INSERT INTO pages (id, workspace_id, name, content_markdown, created_by, updated_by, created_at, updated_at, embedding)
                    VALUES ($1, $2, $3, $4, $5, $5, $6, $6, $7)""",
                 uuid4(), nb_id, name, content, author, ts, emb,
             )
@@ -638,12 +642,12 @@ async def main():
         # 4. Ensure all existing pages have embeddings
         # -----------------------------------------------------------
         missing = await conn.fetch(
-            "SELECT id FROM notebook_pages WHERE embedding IS NULL"
+            "SELECT id FROM pages WHERE embedding IS NULL"
         )
         for r in missing:
             emb = random_embedding()
             await conn.execute(
-                "UPDATE notebook_pages SET embedding = $1 WHERE id = $2",
+                "UPDATE pages SET embedding = $1 WHERE id = $2",
                 emb, r["id"],
             )
         print(f"  Backfilled {len(missing)} page embeddings")

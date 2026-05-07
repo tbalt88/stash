@@ -40,20 +40,24 @@ async def _make_workspace(pool, creator_id):
     return ws_id
 
 
-async def _make_notebook(pool, workspace_id, created_by):
+async def _make_folder(pool, workspace_id, created_by, name="folder", parent_folder_id=None):
     row = await pool.fetchrow(
-        "INSERT INTO notebooks (workspace_id, name, created_by) VALUES ($1, 'nb', $2) RETURNING id",
+        "INSERT INTO folders (workspace_id, parent_folder_id, name, created_by) "
+        "VALUES ($1, $2, $3, $4) RETURNING id",
         workspace_id,
+        parent_folder_id,
+        name,
         created_by,
     )
     return row["id"]
 
 
-async def _make_page(pool, notebook_id, created_by, name="page"):
+async def _make_page(pool, workspace_id, created_by, folder_id=None, name="page"):
     row = await pool.fetchrow(
-        "INSERT INTO notebook_pages (notebook_id, name, content_markdown, created_by) "
-        "VALUES ($1, $2, 'content', $3) RETURNING id",
-        notebook_id,
+        "INSERT INTO pages (workspace_id, folder_id, name, content_markdown, created_by) "
+        "VALUES ($1, $2, $3, 'content', $4) RETURNING id",
+        workspace_id,
+        folder_id,
         name,
         created_by,
     )
@@ -64,11 +68,11 @@ async def _make_page(pool, notebook_id, created_by, name="page"):
 async def test_owner_has_access(pool):
     user_id = await _make_user(pool)
     ws_id = await _make_workspace(pool, user_id)
-    nb_id = await _make_notebook(pool, ws_id, user_id)
+    folder_id = await _make_folder(pool, ws_id, user_id)
 
-    assert await permission_service.check_access("notebook", nb_id, user_id, workspace_id=ws_id)
+    assert await permission_service.check_access("folder", folder_id, user_id, workspace_id=ws_id)
     assert await permission_service.check_access(
-        "notebook", nb_id, user_id, workspace_id=ws_id, require_write=True
+        "folder", folder_id, user_id, workspace_id=ws_id, require_write=True
     )
 
 
@@ -82,15 +86,14 @@ async def test_member_read_inherit(pool):
         ws_id,
         member_id,
     )
-    nb_id = await _make_notebook(pool, ws_id, owner_id)
+    folder_id = await _make_folder(pool, ws_id, owner_id)
 
-    # Member can read (inherit default)
-    assert await permission_service.check_access("notebook", nb_id, member_id, workspace_id=ws_id)
+    assert await permission_service.check_access("folder", folder_id, member_id, workspace_id=ws_id)
 
 
 @pytest.mark.asyncio
 async def test_member_cannot_write_without_share(pool):
-    """Regression test for the write-access logic hole that was fixed in Phase 1.4."""
+    """Members get read access by default but writing requires an explicit share."""
     owner_id = await _make_user(pool)
     member_id = await _make_user(pool)
     ws_id = await _make_workspace(pool, owner_id)
@@ -99,11 +102,10 @@ async def test_member_cannot_write_without_share(pool):
         ws_id,
         member_id,
     )
-    nb_id = await _make_notebook(pool, ws_id, owner_id)
+    folder_id = await _make_folder(pool, ws_id, owner_id)
 
-    # Member must NOT have write access by default on inherit-visibility objects
     result = await permission_service.check_access(
-        "notebook", nb_id, member_id, workspace_id=ws_id, require_write=True
+        "folder", folder_id, member_id, workspace_id=ws_id, require_write=True
     )
     assert not result
 
@@ -118,11 +120,11 @@ async def test_member_can_write_with_share(pool):
         ws_id,
         member_id,
     )
-    nb_id = await _make_notebook(pool, ws_id, owner_id)
+    folder_id = await _make_folder(pool, ws_id, owner_id)
 
-    await permission_service.add_share("notebook", nb_id, member_id, "write", owner_id)
+    await permission_service.add_share("folder", folder_id, member_id, "write", owner_id)
     result = await permission_service.check_access(
-        "notebook", nb_id, member_id, workspace_id=ws_id, require_write=True
+        "folder", folder_id, member_id, workspace_id=ws_id, require_write=True
     )
     assert result
 
@@ -132,10 +134,10 @@ async def test_non_member_denied(pool):
     owner_id = await _make_user(pool)
     stranger_id = await _make_user(pool)
     ws_id = await _make_workspace(pool, owner_id)
-    nb_id = await _make_notebook(pool, ws_id, owner_id)
+    folder_id = await _make_folder(pool, ws_id, owner_id)
 
     assert not await permission_service.check_access(
-        "notebook", nb_id, stranger_id, workspace_id=ws_id
+        "folder", folder_id, stranger_id, workspace_id=ws_id
     )
 
 
@@ -144,10 +146,10 @@ async def test_public_visibility_readable_by_anyone(pool):
     owner_id = await _make_user(pool)
     stranger_id = await _make_user(pool)
     ws_id = await _make_workspace(pool, owner_id)
-    nb_id = await _make_notebook(pool, ws_id, owner_id)
+    folder_id = await _make_folder(pool, ws_id, owner_id)
 
-    await permission_service.set_visibility("notebook", nb_id, "public")
-    assert await permission_service.check_access("notebook", nb_id, stranger_id)
+    await permission_service.set_visibility("folder", folder_id, "public")
+    assert await permission_service.check_access("folder", folder_id, stranger_id)
 
 
 @pytest.mark.asyncio
@@ -160,23 +162,25 @@ async def test_private_visibility_denies_member(pool):
         ws_id,
         member_id,
     )
-    nb_id = await _make_notebook(pool, ws_id, owner_id)
+    folder_id = await _make_folder(pool, ws_id, owner_id)
 
-    await permission_service.set_visibility("notebook", nb_id, "private")
+    await permission_service.set_visibility("folder", folder_id, "private")
     assert not await permission_service.check_access(
-        "notebook", nb_id, member_id, workspace_id=ws_id
+        "folder", folder_id, member_id, workspace_id=ws_id
     )
 
 
 @pytest.mark.asyncio
-async def test_page_inherits_notebook_visibility_for_link_readers(pool):
+async def test_page_inherits_folder_visibility_for_link_readers(pool):
     owner_id = await _make_user(pool)
     ws_id = await _make_workspace(pool, owner_id)
-    nb_id = await _make_notebook(pool, ws_id, owner_id)
-    inherited_page_id = await _make_page(pool, nb_id, owner_id, "inherited")
-    private_page_id = await _make_page(pool, nb_id, owner_id, "private")
+    folder_id = await _make_folder(pool, ws_id, owner_id)
+    inherited_page_id = await _make_page(
+        pool, ws_id, owner_id, folder_id=folder_id, name="inherited"
+    )
+    private_page_id = await _make_page(pool, ws_id, owner_id, folder_id=folder_id, name="private")
 
-    await permission_service.set_visibility("notebook", nb_id, "link")
+    await permission_service.set_visibility("folder", folder_id, "link")
     await permission_service.set_visibility("page", private_page_id, "private")
 
     assert await permission_service.check_access("page", inherited_page_id, None)
@@ -184,21 +188,21 @@ async def test_page_inherits_notebook_visibility_for_link_readers(pool):
 
 
 @pytest.mark.asyncio
-async def test_page_inherits_notebook_shares_for_authenticated_readers(pool):
+async def test_page_inherits_folder_shares_for_authenticated_readers(pool):
     owner_id = await _make_user(pool)
     reader_id = await _make_user(pool)
     ws_id = await _make_workspace(pool, owner_id)
-    nb_id = await _make_notebook(pool, ws_id, owner_id)
-    page_id = await _make_page(pool, nb_id, owner_id)
+    folder_id = await _make_folder(pool, ws_id, owner_id)
+    page_id = await _make_page(pool, ws_id, owner_id, folder_id=folder_id)
 
-    await permission_service.set_visibility("notebook", nb_id, "private")
-    await permission_service.add_share("notebook", nb_id, reader_id, "read", owner_id)
+    await permission_service.set_visibility("folder", folder_id, "private")
+    await permission_service.add_share("folder", folder_id, reader_id, "read", owner_id)
 
     assert await permission_service.check_access("page", page_id, reader_id)
 
 
 @pytest.mark.asyncio
-async def test_private_notebook_hides_inherited_pages_from_workspace_members(pool):
+async def test_private_folder_hides_inherited_pages_from_workspace_members(pool):
     owner_id = await _make_user(pool)
     member_id = await _make_user(pool)
     ws_id = await _make_workspace(pool, owner_id)
@@ -207,10 +211,32 @@ async def test_private_notebook_hides_inherited_pages_from_workspace_members(poo
         ws_id,
         member_id,
     )
-    nb_id = await _make_notebook(pool, ws_id, owner_id)
-    page_id = await _make_page(pool, nb_id, owner_id)
+    folder_id = await _make_folder(pool, ws_id, owner_id)
+    page_id = await _make_page(pool, ws_id, owner_id, folder_id=folder_id)
 
-    await permission_service.set_visibility("notebook", nb_id, "private")
+    await permission_service.set_visibility("folder", folder_id, "private")
+
+    assert not await permission_service.check_access("page", page_id, member_id)
+
+
+@pytest.mark.asyncio
+async def test_nested_folder_inherits_outer_folder_visibility(pool):
+    """A nested folder's pages inherit visibility from the closest folder
+    ancestor that has an explicit setting. A private outer folder hides
+    everything beneath it even when the inner folder is left at 'inherit'."""
+    owner_id = await _make_user(pool)
+    member_id = await _make_user(pool)
+    ws_id = await _make_workspace(pool, owner_id)
+    await pool.execute(
+        "INSERT INTO workspace_members (workspace_id, user_id, role) VALUES ($1, $2, 'member')",
+        ws_id,
+        member_id,
+    )
+    outer = await _make_folder(pool, ws_id, owner_id, name="outer")
+    inner = await _make_folder(pool, ws_id, owner_id, name="inner", parent_folder_id=outer)
+    page_id = await _make_page(pool, ws_id, owner_id, folder_id=inner)
+
+    await permission_service.set_visibility("folder", outer, "private")
 
     assert not await permission_service.check_access("page", page_id, member_id)
 

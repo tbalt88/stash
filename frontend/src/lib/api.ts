@@ -5,13 +5,11 @@ import {
   History,
   HistoryWithWorkspace,
   JoinRequest,
-  Notebook,
-  NotebookFolder,
-  NotebookPage,
-  NotebookWithWorkspace,
+  Folder,
+  Page,
   PageGraph,
   PageLink,
-  PageTree,
+  WorkspaceTree,
   ObjectPermission,
   RegisterResponse,
   User,
@@ -288,7 +286,7 @@ export interface CatalogCard {
   creator_display_name: string | null;
   member_count: number;
   fork_count: number;
-  notebook_count: number;
+  page_count: number;
   table_count: number;
   file_count: number;
   history_event_count: number;
@@ -299,7 +297,14 @@ export interface CatalogCard {
 
 export interface PublicWorkspaceDetail {
   workspace: CatalogCard;
-  notebooks: { id: string; name: string; description: string; page_count: number; updated_at: string }[];
+  folders: {
+    id: string;
+    name: string;
+    parent_folder_id: string | null;
+    page_count: number;
+    updated_at: string;
+  }[];
+  root_pages: { id: string; name: string; updated_at: string }[];
   tables: { id: string; name: string; row_count: number; updated_at: string }[];
   files: { id: string; name: string; size_bytes: number; created_at: string }[];
 }
@@ -317,49 +322,56 @@ export async function fetchPublicWorkspace(
   return res.json();
 }
 
-// --- Notebooks ---
-// workspaceId = string for workspace-scoped, null for personal.
+// --- Wiki: folders (nested) and pages ---
 
-export async function listNotebooks(workspaceId: string | null): Promise<{ notebooks: Notebook[] }> {
-  return apiFetch(`${scope(workspaceId)}/notebooks`);
+export async function getWorkspaceTree(workspaceId: string): Promise<WorkspaceTree> {
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/tree`);
 }
 
-export async function createNotebook(
-  workspaceId: string | null,
+export async function listFolders(workspaceId: string): Promise<{ folders: Folder[] }> {
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/folders`);
+}
+
+export async function createFolder(
+  workspaceId: string,
   name: string,
-  description?: string
-): Promise<Notebook> {
-  return apiFetch(`${scope(workspaceId)}/notebooks`, {
+  parentFolderId?: string | null
+): Promise<Folder> {
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/folders`, {
     method: "POST",
-    body: JSON.stringify({ name, description: description || "" }),
+    body: JSON.stringify({
+      name,
+      parent_folder_id: parentFolderId || null,
+    }),
   });
 }
 
-export async function deleteNotebook(
-  workspaceId: string | null,
-  notebookId: string
-): Promise<void> {
-  await apiFetch(`${scope(workspaceId)}/notebooks/${notebookId}`, { method: "DELETE" });
+export async function updateFolder(
+  workspaceId: string,
+  folderId: string,
+  data: { name?: string; parent_folder_id?: string | null; move_to_root?: boolean }
+): Promise<Folder> {
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/folders/${folderId}`, {
+    method: "PATCH",
+    body: JSON.stringify(data),
+  });
 }
 
-// --- Notebook Pages ---
-
-export async function listPageTree(
-  workspaceId: string | null,
-  notebookId: string
-): Promise<PageTree> {
-  return apiFetch(`${scope(workspaceId)}/notebooks/${notebookId}/pages`);
+export async function deleteFolder(
+  workspaceId: string,
+  folderId: string
+): Promise<void> {
+  await apiFetch(`/api/v1/workspaces/${workspaceId}/folders/${folderId}`, { method: "DELETE" });
 }
 
 export async function createPage(
-  workspaceId: string | null,
-  notebookId: string,
+  workspaceId: string,
   name: string,
-  folderId?: string,
+  folderId?: string | null,
   content?: string,
   options?: { content_type?: "markdown" | "html"; content_html?: string }
-): Promise<NotebookPage> {
-  return apiFetch(`${scope(workspaceId)}/notebooks/${notebookId}/pages`, {
+): Promise<Page> {
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/pages/new`, {
     method: "POST",
     body: JSON.stringify({
       name,
@@ -371,72 +383,30 @@ export async function createPage(
   });
 }
 
-export async function getPage(
-  workspaceId: string | null,
-  notebookId: string,
-  pageId: string
-): Promise<NotebookPage> {
-  return apiFetch(`${scope(workspaceId)}/notebooks/${notebookId}/pages/${pageId}`);
+export async function getPage(workspaceId: string, pageId: string): Promise<Page> {
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/pages/${pageId}`);
 }
 
 export async function updatePage(
-  workspaceId: string | null,
-  notebookId: string,
+  workspaceId: string,
   pageId: string,
   data: {
     name?: string;
-    folder_id?: string;
+    folder_id?: string | null;
     content?: string;
     content_type?: "markdown" | "html";
     content_html?: string;
     move_to_root?: boolean;
   }
-): Promise<NotebookPage> {
-  return apiFetch(`${scope(workspaceId)}/notebooks/${notebookId}/pages/${pageId}`, {
+): Promise<Page> {
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/pages/${pageId}`, {
     method: "PATCH",
     body: JSON.stringify(data),
   });
 }
 
-export async function deletePage(
-  workspaceId: string | null,
-  notebookId: string,
-  pageId: string
-): Promise<void> {
-  await apiFetch(`${scope(workspaceId)}/notebooks/${notebookId}/pages/${pageId}`, { method: "DELETE" });
-}
-
-// --- Page Folders ---
-
-export async function createPageFolder(
-  workspaceId: string | null,
-  notebookId: string,
-  name: string
-): Promise<NotebookFolder> {
-  return apiFetch(`${scope(workspaceId)}/notebooks/${notebookId}/folders`, {
-    method: "POST",
-    body: JSON.stringify({ name }),
-  });
-}
-
-export async function renamePageFolder(
-  workspaceId: string | null,
-  notebookId: string,
-  folderId: string,
-  name: string
-): Promise<NotebookFolder> {
-  return apiFetch(`${scope(workspaceId)}/notebooks/${notebookId}/folders/${folderId}`, {
-    method: "PATCH",
-    body: JSON.stringify({ name }),
-  });
-}
-
-export async function deletePageFolder(
-  workspaceId: string | null,
-  notebookId: string,
-  folderId: string
-): Promise<void> {
-  await apiFetch(`${scope(workspaceId)}/notebooks/${notebookId}/folders/${folderId}`, { method: "DELETE" });
+export async function deletePage(workspaceId: string, pageId: string): Promise<void> {
+  await apiFetch(`/api/v1/workspaces/${workspaceId}/pages/${pageId}`, { method: "DELETE" });
 }
 
 // --- History ---
@@ -508,8 +478,20 @@ export async function searchHistoryEvents(
 
 // --- Aggregate (cross-workspace) ---
 
-export async function listAllNotebooks(): Promise<{ notebooks: NotebookWithWorkspace[] }> {
-  return apiFetch("/api/v1/me/notebooks");
+// Cross-workspace flat page list, used by wiki-link autocomplete to resolve
+// links to pages outside the active workspace.
+export async function listAllPages(): Promise<{ pages: UserPageEntry[] }> {
+  return apiFetch("/api/v1/me/pages");
+}
+
+export interface UserPageEntry {
+  id: string;
+  name: string;
+  workspace_id: string;
+  folder_id: string | null;
+  folder_path: string[];
+  workspace_name: string;
+  updated_at: string;
 }
 
 export async function listAllHistories(): Promise<{ stores: HistoryWithWorkspace[] }> {
@@ -840,7 +822,7 @@ export async function removeShare(
 
 export type ShareableObjectType =
   | "workspace"
-  | "notebook"
+  | "folder"
   | "page"
   | "table"
   | "file"
@@ -979,8 +961,8 @@ export async function listMySessions(workspaceId?: string, limit = 50): Promise<
 }
 
 export interface MaterializedSession {
-  page: { id: string; notebook_id: string; name: string };
-  notebook_id: string;
+  page: { id: string; workspace_id: string; folder_id: string | null; name: string };
+  folder_id: string;
 }
 
 export async function materializeSession(
@@ -994,7 +976,7 @@ export async function materializeSession(
 
 // --- Views (curated bundles of items shareable as /v/{slug}) ---
 
-export type CollectableObjectType = "notebook" | "page" | "table" | "file" | "history";
+export type CollectableObjectType = "folder" | "page" | "table" | "file" | "history";
 
 export interface ViewItemSpec {
   object_type: CollectableObjectType;
@@ -1070,23 +1052,24 @@ export async function createSharedView(
   });
 }
 
-// --- Cross-notebook page index ---
+// --- Workspace-wide page index (used by wiki-link autocomplete + click-resolve) ---
 
 export interface WorkspacePageEntry {
   id: string;
   name: string;
-  notebook_id: string;
-  notebook_name: string;
+  workspace_id: string;
   folder_id: string | null;
-  folder_name: string | null;
+  // Chain of folder names from the workspace root down to the page's folder.
+  // Empty for pages at the workspace root.
+  folder_path: string[];
   updated_at: string;
 }
 
 export async function listWorkspacePages(
-  workspaceId: string | null
+  workspaceId: string
 ): Promise<WorkspacePageEntry[]> {
   const data = await apiFetch<{ pages: WorkspacePageEntry[] }>(
-    `${scope(workspaceId)}/pages`
+    `/api/v1/workspaces/${workspaceId}/pages`
   );
   return data.pages;
 }
@@ -1095,43 +1078,39 @@ export async function listWorkspacePages(
 // --- Wiki: Backlinks, Outlinks, Page Graph, Semantic Search ---
 
 export async function getBacklinks(
-  workspaceId: string | null,
-  notebookId: string,
+  workspaceId: string,
   pageId: string
 ): Promise<PageLink[]> {
   const data = await apiFetch<{ backlinks: PageLink[] }>(
-    `${scope(workspaceId)}/notebooks/${notebookId}/pages/${pageId}/backlinks`
+    `/api/v1/workspaces/${workspaceId}/pages/${pageId}/backlinks`
   );
   return data.backlinks;
 }
 
 export async function getOutlinks(
-  workspaceId: string | null,
-  notebookId: string,
+  workspaceId: string,
   pageId: string
 ): Promise<PageLink[]> {
   const data = await apiFetch<{ outlinks: PageLink[] }>(
-    `${scope(workspaceId)}/notebooks/${notebookId}/pages/${pageId}/outlinks`
+    `/api/v1/workspaces/${workspaceId}/pages/${pageId}/outlinks`
   );
   return data.outlinks;
 }
 
-export async function getPageGraph(
-  workspaceId: string | null,
-  notebookId: string
+export async function getWorkspaceGraph(
+  workspaceId: string
 ): Promise<PageGraph> {
-  return apiFetch<PageGraph>(`${scope(workspaceId)}/notebooks/${notebookId}/graph`);
+  return apiFetch<PageGraph>(`/api/v1/workspaces/${workspaceId}/graph`);
 }
 
 export async function semanticSearchPages(
-  workspaceId: string | null,
-  notebookId: string,
+  workspaceId: string,
   query: string,
   limit = 20
-): Promise<NotebookPage[]> {
+): Promise<Page[]> {
   const params = new URLSearchParams({ q: query, limit: String(limit) });
-  const data = await apiFetch<{ pages: NotebookPage[] }>(
-    `${scope(workspaceId)}/notebooks/${notebookId}/pages/semantic-search?${params}`
+  const data = await apiFetch<{ pages: Page[] }>(
+    `/api/v1/workspaces/${workspaceId}/pages/semantic-search?${params}`
   );
   return data.pages;
 }

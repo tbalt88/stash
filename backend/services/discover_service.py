@@ -13,7 +13,7 @@ SELECT
     w.creator_id, u.name AS creator_name, u.display_name AS creator_display_name,
     w.fork_count, w.forked_from_workspace_id, w.created_at, w.updated_at,
     (SELECT COUNT(*) FROM workspace_members wm WHERE wm.workspace_id = w.id) AS member_count,
-    (SELECT COUNT(*) FROM notebooks nb WHERE nb.workspace_id = w.id) AS notebook_count,
+    (SELECT COUNT(*) FROM pages p WHERE p.workspace_id = w.id) AS page_count,
     (SELECT COUNT(*) FROM tables t WHERE t.workspace_id = w.id) AS table_count,
     (SELECT COUNT(*) FROM files f WHERE f.workspace_id = w.id) AS file_count,
     (SELECT COUNT(*) FROM history_events he WHERE he.workspace_id = w.id) AS history_event_count
@@ -39,7 +39,9 @@ async def list_catalog(
     idx = 1
 
     if query:
-        where.append(f"(w.name ILIKE ${idx} OR w.summary ILIKE ${idx} OR w.description ILIKE ${idx})")
+        where.append(
+            f"(w.name ILIKE ${idx} OR w.summary ILIKE ${idx} OR w.description ILIKE ${idx})"
+        )
         args.append(f"%{query}%")
         idx += 1
     if category:
@@ -103,10 +105,15 @@ async def get_public_detail(workspace_id: UUID) -> dict | None:
     if not ws_row:
         return None
 
-    notebooks = await pool.fetch(
-        "SELECT nb.id, nb.name, nb.description, nb.updated_at, "
-        "(SELECT COUNT(*) FROM notebook_pages p WHERE p.notebook_id = nb.id) AS page_count "
-        "FROM notebooks nb WHERE nb.workspace_id = $1 ORDER BY nb.updated_at DESC",
+    folders = await pool.fetch(
+        "SELECT f.id, f.name, f.parent_folder_id, f.updated_at, "
+        "(SELECT COUNT(*) FROM pages p WHERE p.folder_id = f.id) AS page_count "
+        "FROM folders f WHERE f.workspace_id = $1 ORDER BY f.parent_folder_id NULLS FIRST, f.name",
+        workspace_id,
+    )
+    root_pages = await pool.fetch(
+        "SELECT id, name, updated_at FROM pages "
+        "WHERE workspace_id = $1 AND folder_id IS NULL ORDER BY name",
         workspace_id,
     )
     tables = await pool.fetch(
@@ -122,7 +129,8 @@ async def get_public_detail(workspace_id: UUID) -> dict | None:
     )
     return {
         "workspace": dict(ws_row),
-        "notebooks": [dict(r) for r in notebooks],
+        "folders": [dict(r) for r in folders],
+        "root_pages": [dict(r) for r in root_pages],
         "tables": [dict(r) for r in tables],
         "files": [dict(r) for r in files],
     }

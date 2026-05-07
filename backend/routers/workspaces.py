@@ -105,7 +105,9 @@ async def update_workspace(
     if role not in ("owner", "admin"):
         raise HTTPException(status_code=403, detail="Only owner/admin can update workspace")
     if req.is_public is not None and role != "owner":
-        raise HTTPException(status_code=403, detail="Only the workspace owner can change visibility")
+        raise HTTPException(
+            status_code=403, detail="Only the workspace owner can change visibility"
+        )
     ws = await workspace_service.update_workspace(
         workspace_id,
         name=req.name,

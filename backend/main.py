@@ -18,7 +18,6 @@ from .routers import (
     discover,
     files,
     memory,
-    notebooks,
     permissions,
     public,
     publish,
@@ -28,6 +27,7 @@ from .routers import (
     transcripts,
     users,
     views,
+    wiki,
     workspaces,
 )
 from .services.row_validation import RowValidationError
@@ -90,8 +90,7 @@ app.include_router(workspaces.router)
 app.include_router(discover.router)
 app.include_router(views.ws_router)
 app.include_router(views.public_router)
-app.include_router(notebooks.ws_router)
-app.include_router(notebooks.ws_pages_router)
+app.include_router(wiki.router)
 app.include_router(memory.ws_router)
 app.include_router(tables.ws_router)
 app.include_router(files.ws_router)

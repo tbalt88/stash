@@ -9,7 +9,8 @@ from ..models import (
     WorkspaceCatalogCard,
     WorkspacePublicDetail,
     WorkspacePublicFileSummary,
-    WorkspacePublicNotebookSummary,
+    WorkspacePublicFolderSummary,
+    WorkspacePublicRootPageSummary,
     WorkspacePublicTableSummary,
 )
 from ..services import discover_service, view_service
@@ -47,7 +48,8 @@ async def public_workspace(workspace_id: UUID):
         raise HTTPException(status_code=404, detail="Workspace not found")
     return WorkspacePublicDetail(
         workspace=WorkspaceCatalogCard(**detail["workspace"]),
-        notebooks=[WorkspacePublicNotebookSummary(**n) for n in detail["notebooks"]],
+        folders=[WorkspacePublicFolderSummary(**f) for f in detail["folders"]],
+        root_pages=[WorkspacePublicRootPageSummary(**p) for p in detail["root_pages"]],
         tables=[WorkspacePublicTableSummary(**t) for t in detail["tables"]],
         files=[WorkspacePublicFileSummary(**f) for f in detail["files"]],
     )

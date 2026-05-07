@@ -6,35 +6,33 @@ Access logic:
 3. visibility='public'/'link' → anyone can read. Write requires share entry.
 4. visibility='private' → only users in object_shares.
 5. visibility='inherit' (default) → workspace members + object_shares.
+
+Pages and folders inherit visibility up the folder chain: a private folder
+denies access to every page (and every subfolder/page) inside it, even if
+the workspace itself is public.
 """
 
 from uuid import UUID
 
 from ..database import get_pool
 
-
-# Object types that live inside a workspace and don't have their own workspace_id
-# column. resolve_workspace_id maps object_id → parent workspace via a join.
+# Object types that live inside a workspace and have a workspace_id column
+# directly. Pages/folders also have workspace_id but their effective
+# visibility walks the folder chain first.
 _WORKSPACE_LOOKUP = {
     "workspace": ("workspaces", "id"),
-    "notebook": ("notebooks", "workspace_id"),
     "table": ("tables", "workspace_id"),
     "file": ("files", "workspace_id"),
     "history": ("history_events", "workspace_id"),
     "view": ("views", "workspace_id"),
+    "folder": ("folders", "workspace_id"),
+    "page": ("pages", "workspace_id"),
 }
 
 
 async def resolve_workspace_id(object_type: str, object_id: UUID) -> UUID | None:
-    """Look up the workspace_id for an object. Pages walk through their notebook."""
+    """Look up the workspace_id for an object."""
     pool = get_pool()
-    if object_type == "page":
-        row = await pool.fetchrow(
-            "SELECT n.workspace_id FROM notebook_pages p "
-            "JOIN notebooks n ON n.id = p.notebook_id WHERE p.id = $1",
-            object_id,
-        )
-        return row["workspace_id"] if row else None
     if object_type in _WORKSPACE_LOOKUP:
         table, col = _WORKSPACE_LOOKUP[object_type]
         row = await pool.fetchrow(f"SELECT {col} AS ws FROM {table} WHERE id = $1", object_id)
@@ -42,37 +40,73 @@ async def resolve_workspace_id(object_type: str, object_id: UUID) -> UUID | None
     return None
 
 
+async def _folder_chain_for_page(page_id: UUID) -> list[UUID]:
+    """Folder ids from the page's immediate folder up to the root, in order."""
+    pool = get_pool()
+    rows = await pool.fetch(
+        "WITH RECURSIVE chain AS ("
+        "  SELECT f.id, f.parent_folder_id FROM folders f "
+        "  JOIN pages p ON p.folder_id = f.id WHERE p.id = $1"
+        "  UNION ALL"
+        "  SELECT f.id, f.parent_folder_id FROM folders f "
+        "  JOIN chain c ON f.id = c.parent_folder_id"
+        ") SELECT id FROM chain",
+        page_id,
+    )
+    return [r["id"] for r in rows]
+
+
+async def _folder_chain(folder_id: UUID) -> list[UUID]:
+    """The folder itself plus its ancestors, root last."""
+    pool = get_pool()
+    rows = await pool.fetch(
+        "WITH RECURSIVE chain AS ("
+        "  SELECT id, parent_folder_id FROM folders WHERE id = $1"
+        "  UNION ALL"
+        "  SELECT f.id, f.parent_folder_id FROM folders f "
+        "  JOIN chain c ON f.id = c.parent_folder_id"
+        ") SELECT id FROM chain",
+        folder_id,
+    )
+    return [r["id"] for r in rows]
+
+
 async def _effective_read_visibility(
     object_type: str, object_id: UUID, workspace_id: UUID | None
 ) -> str:
     """Resolve read inheritance for anonymous/link readers.
 
-    Pages inherit from their notebook first, then the workspace. Other
-    workspace objects inherit directly from the workspace. Explicit object
-    visibility always wins, including `private` children inside a public parent.
+    Pages walk: page → folder chain → workspace. Folders walk: folder chain →
+    workspace. The first non-'inherit' setting along the chain wins, so a
+    private folder hides everything beneath it.
     """
     vis = await get_visibility(object_type, object_id)
     if vis != "inherit":
         return vis
 
     if object_type == "page":
-        pool = get_pool()
-        row = await pool.fetchrow(
-            "SELECT p.notebook_id, n.workspace_id FROM notebook_pages p "
-            "JOIN notebooks n ON n.id = p.notebook_id WHERE p.id = $1",
-            object_id,
-        )
-        if not row:
+        for folder_id in await _folder_chain_for_page(object_id):
+            folder_vis = await get_visibility("folder", folder_id)
+            if folder_vis != "inherit":
+                return folder_vis
+        if workspace_id is None:
             return "inherit"
-        notebook_vis = await get_visibility("notebook", row["notebook_id"])
-        if notebook_vis != "inherit":
-            return notebook_vis
-        return await get_visibility("workspace", row["workspace_id"])
+        return await get_visibility("workspace", workspace_id)
+
+    if object_type == "folder":
+        for folder_id in await _folder_chain(object_id):
+            if folder_id == object_id:
+                continue
+            folder_vis = await get_visibility("folder", folder_id)
+            if folder_vis != "inherit":
+                return folder_vis
+        if workspace_id is None:
+            return "inherit"
+        return await get_visibility("workspace", workspace_id)
 
     if object_type == "workspace" or workspace_id is None:
         return "inherit"
-    parent_vis = await get_visibility("workspace", workspace_id)
-    return parent_vis
+    return await get_visibility("workspace", workspace_id)
 
 
 async def check_access(
@@ -88,43 +122,17 @@ async def check_access(
     if workspace_id is None:
         workspace_id = await resolve_workspace_id(object_type, object_id)
 
-    vis = await get_visibility(object_type, object_id)
-
-    # Anonymous viewers only get read, and only when the effective visibility
-    # (own row or — if 'inherit' — the parent workspace's row) is link or public.
     if user_id is None:
         if require_write:
             return False
         effective = await _effective_read_visibility(object_type, object_id, workspace_id)
         return effective in ("public", "link")
 
-    # Owner of personal (workspace-less) items always has full access
-    if workspace_id is None:
-        table_map = {
-            "chat": ("chats", "creator_id"),
-            "notebook": ("notebooks", "created_by"),
-            "history": ("histories", "created_by"),
-            "deck": ("decks", "created_by"),
-            "table": ("tables", "created_by"),
-        }
-        if object_type in table_map:
-            table, col = table_map[object_type]
-            row = await pool.fetchrow(
-                f"SELECT 1 FROM {table} WHERE id = $1 AND {col} = $2 AND workspace_id IS NULL",
-                object_id,
-                user_id,
-            )
-            if row:
-                return True
-
     role = await get_workspace_role(workspace_id, user_id) if workspace_id else None
 
     if role in ("owner", "admin"):
         return True
 
-    # 'public' and 'link' grant read to any viewer; write still requires a
-    # share entry. Use effective visibility so logged-in non-members can read
-    # inherited pages from a link/public notebook, matching anonymous behavior.
     effective = await _effective_read_visibility(object_type, object_id, workspace_id)
     if effective in ("public", "link") and not require_write:
         return True
@@ -141,22 +149,32 @@ async def check_access(
             return True
         return share["permission"] in ("write", "admin")
 
-    if object_type == "page" and vis == "inherit":
-        row = await pool.fetchrow(
-            "SELECT notebook_id FROM notebook_pages WHERE id = $1",
-            object_id,
-        )
-        if not row:
-            return False
-        return await check_access(
-            "notebook",
-            row["notebook_id"],
+    # Walk up the folder chain for explicit shares against any ancestor.
+    chain: list[tuple[str, UUID]] = []
+    if object_type == "page":
+        chain = [("folder", fid) for fid in await _folder_chain_for_page(object_id)]
+    elif object_type == "folder":
+        chain = [("folder", fid) for fid in await _folder_chain(object_id) if fid != object_id]
+    for ancestor_type, ancestor_id in chain:
+        share = await pool.fetchrow(
+            "SELECT permission FROM object_shares "
+            "WHERE object_type = $1 AND object_id = $2 AND user_id = $3",
+            ancestor_type,
+            ancestor_id,
             user_id,
-            workspace_id=workspace_id,
-            require_write=require_write,
         )
+        if share:
+            if not require_write:
+                return True
+            if share["permission"] in ("write", "admin"):
+                return True
 
-    if vis == "inherit" and workspace_id and role is not None:
+    # Workspace members fall through to the workspace default for objects
+    # whose effective visibility hasn't been pinned down by anything along
+    # the chain. Read-only — write still requires a share. We use the
+    # effective visibility here (not the direct one) so a private ancestor
+    # folder hides its descendants from members without a share.
+    if effective in ("inherit", "public", "link") and workspace_id and role is not None:
         if not require_write:
             return True
 
@@ -164,7 +182,6 @@ async def check_access(
 
 
 async def get_workspace_role(workspace_id: UUID, user_id: UUID) -> str | None:
-    """Get a user's role in a workspace, or None if not a member."""
     pool = get_pool()
     row = await pool.fetchrow(
         "SELECT role FROM workspace_members WHERE workspace_id = $1 AND user_id = $2",
@@ -179,10 +196,9 @@ async def is_workspace_member(workspace_id: UUID, user_id: UUID) -> bool:
 
 
 async def get_visibility(object_type: str, object_id: UUID) -> str:
-    """Get object visibility. Returns 'inherit' if no row exists."""
     pool = get_pool()
     row = await pool.fetchrow(
-        "SELECT visibility FROM object_permissions " "WHERE object_type = $1 AND object_id = $2",
+        "SELECT visibility FROM object_permissions WHERE object_type = $1 AND object_id = $2",
         object_type,
         object_id,
     )
@@ -190,7 +206,6 @@ async def get_visibility(object_type: str, object_id: UUID) -> str:
 
 
 async def set_visibility(object_type: str, object_id: UUID, visibility: str) -> None:
-    """Set object visibility (inherit/private/link/public)."""
     pool = get_pool()
     if visibility == "inherit":
         await pool.execute(
@@ -208,9 +223,8 @@ async def set_visibility(object_type: str, object_id: UUID, visibility: str) -> 
             visibility,
         )
 
-    # Workspaces have a legacy is_public column that the Discover catalog still
-    # queries. Mirror visibility=public into it so /discover finds workspaces
-    # shared via the new sheet, and clear it on demote.
+    # Workspaces have a legacy is_public column the Discover catalog still
+    # queries. Mirror visibility=public into it on toggle.
     if object_type == "workspace":
         await pool.execute(
             "UPDATE workspaces SET is_public = $1 WHERE id = $2",
@@ -226,7 +240,6 @@ async def add_share(
     permission: str,
     granted_by: UUID,
 ) -> dict:
-    """Grant a user access to an object."""
     pool = get_pool()
     row = await pool.fetchrow(
         "INSERT INTO object_shares (object_type, object_id, user_id, permission, granted_by) "
@@ -243,7 +256,6 @@ async def add_share(
 
 
 async def remove_share(object_type: str, object_id: UUID, user_id: UUID) -> bool:
-    """Remove a user's share. Returns True if removed."""
     pool = get_pool()
     result = await pool.execute(
         "DELETE FROM object_shares WHERE object_type = $1 AND object_id = $2 AND user_id = $3",
@@ -255,7 +267,6 @@ async def remove_share(object_type: str, object_id: UUID, user_id: UUID) -> bool
 
 
 async def get_shares(object_type: str, object_id: UUID) -> list[dict]:
-    """Get all shares for an object."""
     pool = get_pool()
     rows = await pool.fetch(
         "SELECT os.user_id, u.name AS user_name, os.permission, os.granted_by, os.created_at "
@@ -269,7 +280,6 @@ async def get_shares(object_type: str, object_id: UUID) -> list[dict]:
 
 
 async def get_permissions(object_type: str, object_id: UUID) -> dict:
-    """Get full permissions info for an object (visibility + shares)."""
     vis = await get_visibility(object_type, object_id)
     shares = await get_shares(object_type, object_id)
     return {

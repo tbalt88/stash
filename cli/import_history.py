@@ -26,9 +26,7 @@ CURSOR_PROJECTS_DIR = Path.home() / ".cursor" / "projects"
 CODEX_SESSIONS_DIR = Path.home() / ".codex" / "sessions"
 
 if platform.system() == "Darwin":
-    CURSOR_STORAGE_DIR = (
-        Path.home() / "Library" / "Application Support" / "Cursor" / "User"
-    )
+    CURSOR_STORAGE_DIR = Path.home() / "Library" / "Application Support" / "Cursor" / "User"
 else:
     CURSOR_STORAGE_DIR = Path.home() / ".config" / "Cursor" / "User"
 
@@ -243,8 +241,7 @@ def _extract_composer_ids(ws_db_path: Path) -> list[str]:
     try:
         # composerChatViewPane entries contain inner aichat.view.<composer-uuid> refs
         cur = db.execute(
-            "SELECT value FROM ItemTable "
-            "WHERE key LIKE 'workbench.panel.composerChatViewPane.%'"
+            "SELECT value FROM ItemTable " "WHERE key LIKE 'workbench.panel.composerChatViewPane.%'"
         )
         for (val,) in cur:
             try:
@@ -256,9 +253,7 @@ def _extract_composer_ids(ws_db_path: Path) -> list[str]:
                     ids.add(k.split("aichat.view.")[1])
 
         # Also grab currently-selected composers
-        cur = db.execute(
-            "SELECT value FROM ItemTable WHERE key = 'composer.composerData'"
-        )
+        cur = db.execute("SELECT value FROM ItemTable WHERE key = 'composer.composerData'")
         row = cur.fetchone()
         if row:
             try:

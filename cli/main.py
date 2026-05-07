@@ -1,4 +1,4 @@
-"""Stash CLI — command-line interface for workspaces, notebooks, tables, history, and search."""
+"""Stash CLI — command-line interface for workspaces, wiki pages, tables, history, and search."""
 
 from __future__ import annotations
 
@@ -29,7 +29,7 @@ from .config import (
 )
 from .formatting import console, output_json, print_members, print_rooms, print_user
 
-app = typer.Typer(name="stash", help="Stash CLI — workspaces, notebooks, tables, history.")
+app = typer.Typer(name="stash", help="Stash CLI — workspaces, wiki pages, tables, history.")
 
 
 def _client() -> StashClient:
@@ -693,7 +693,7 @@ def browse(
         for w in workspaces:
             owner = w.get("creator_display_name") or w.get("creator_name") or "unknown"
             shape = (
-                f"{w['notebook_count']}nb · {w['table_count']}t · "
+                f"{w['page_count']}p · {w['table_count']}t · "
                 f"{w['file_count']}f · {w['history_event_count']}h"
             )
             console.print(
@@ -706,7 +706,7 @@ def browse(
     choices = []
     for w in workspaces:
         owner = w.get("creator_display_name") or w.get("creator_name") or "unknown"
-        label = f"{w['name']:<32} by {owner:<14} ★{w['fork_count']:<4} ({w['notebook_count']}nb, {w['table_count']}t)"
+        label = f"{w['name']:<32} by {owner:<14} ★{w['fork_count']:<4} ({w['page_count']}p, {w['table_count']}t)"
         choices.append(questionary.Choice(label, value=w))
     choices.append(questionary.Choice("(quit)", value=None))
 
@@ -723,7 +723,7 @@ def browse(
                 (f"by {picked.get('creator_display_name') or picked['creator_name']}  ", "dim"),
                 (
                     f"★ {picked['fork_count']} forks · {picked['member_count']} members · "
-                    f"{picked['notebook_count']} notebooks · {picked['table_count']} tables · "
+                    f"{picked['page_count']} pages · {picked['table_count']} tables · "
                     f"{picked['file_count']} files",
                     "dim",
                 ),
@@ -766,16 +766,10 @@ def _do_fork(workspace_id: str, suggested_name: str = "") -> None:
             new_ws = c.fork_workspace(workspace_id, name=name.strip())
         except StashError as e:
             _err(e)
-    console.print(
-        f"[green]Forked into '{new_ws['name']}'[/green]  ID: {new_ws['id']}"
-    )
-    console.print(
-        f"  Open it: [cyan]{_web_app_url()}/workspaces/{new_ws['id']}[/cyan]"
-    )
+    console.print(f"[green]Forked into '{new_ws['name']}'[/green]  ID: {new_ws['id']}")
+    console.print(f"  Open it: [cyan]{_web_app_url()}/workspaces/{new_ws['id']}[/cyan]")
 
-    bind = questionary.confirm(
-        "Bind this repo (.stash) to the new fork?", default=False
-    ).ask()
+    bind = questionary.confirm("Bind this repo (.stash) to the new fork?", default=False).ask()
     if bind:
         repo_root = Path.cwd()
         manifest_path = repo_root / MANIFEST_FILE
@@ -900,7 +894,11 @@ def _extract_artifact(raw_jsonl: str) -> tuple[str, str, str]:
         blocks = content if isinstance(content, list) else [{"type": "text", "text": content}]
         text_parts = []
         for block in blocks:
-            if isinstance(block, dict) and block.get("type") == "text" and block.get("text", "").strip():
+            if (
+                isinstance(block, dict)
+                and block.get("type") == "text"
+                and block.get("text", "").strip()
+            ):
                 text_parts.append(block["text"].strip())
 
         if not text_parts:
@@ -918,7 +916,9 @@ def _extract_artifact(raw_jsonl: str) -> tuple[str, str, str]:
 @app.command("share")
 def share_session(
     title: str = typer.Option("", "--title", "-t", help="Title for the shared artifact."),
-    session_id: str = typer.Option("", "--session", "-s", help="Session ID. Auto-detected if omitted."),
+    session_id: str = typer.Option(
+        "", "--session", "-s", help="Session ID. Auto-detected if omitted."
+    ),
     files: list[str] = typer.Option([], "--file", "-f", help="Files to attach (repeatable)."),
     workspace_id: str = typer.Option(None, "--ws"),
 ):
@@ -979,18 +979,18 @@ def share_session(
     console.print(f"[dim]Sharing session {sid[:8]}…[/dim]")
 
     with _client() as c:
-        # Create notebook with two pages: Summary + Full Transcript
-        nb = c.create_notebook(ws, page_title, description="Shared session artifact")
-        c.create_page(ws, nb["id"], "Summary", content=summary_md)
-        c.create_page(ws, nb["id"], "Full Transcript", content=full_md)
+        # Create a folder for this session, then drop Summary + Full Transcript inside.
+        folder = c.create_folder(ws, page_title)
+        c.create_page(ws, "Summary", content=summary_md, folder_id=folder["id"])
+        c.create_page(ws, "Full Transcript", content=full_md, folder_id=folder["id"])
 
         for sa_label, sa_raw, _sa_path in subagent_entries:
             sa_md = _transcript_to_markdown(sa_raw)
-            c.create_page(ws, nb["id"], f"Subagent: {sa_label}", content=sa_md)
+            c.create_page(ws, f"Subagent: {sa_label}", content=sa_md, folder_id=folder["id"])
             console.print(f"  [dim]Included subagent: {sa_label}[/dim]")
 
         view_items: list[dict] = [
-            {"object_type": "notebook", "object_id": nb["id"], "position": 0},
+            {"object_type": "folder", "object_id": folder["id"], "position": 0},
         ]
 
         # Upload attached files
@@ -1000,17 +1000,21 @@ def share_session(
                 console.print(f"[yellow]Skipping {fp} (not found)[/yellow]")
                 continue
             uploaded = c.upload_ws_file(ws, str(p))
-            view_items.append({
-                "object_type": "file",
-                "object_id": uploaded["id"],
-                "position": len(view_items),
-                "label_override": p.name,
-            })
+            view_items.append(
+                {
+                    "object_type": "file",
+                    "object_id": uploaded["id"],
+                    "position": len(view_items),
+                    "label_override": p.name,
+                }
+            )
             console.print(f"  [dim]Attached {p.name}[/dim]")
 
         # Upload the full transcript blob (may already exist via hooks — that's fine)
         try:
-            c.upload_transcript(ws, sid, str(jsonl_path), agent_name="claude", cwd=str(jsonl_path.parent))
+            c.upload_transcript(
+                ws, sid, str(jsonl_path), agent_name="claude", cwd=str(jsonl_path.parent)
+            )
         except StashError as e:
             if e.status_code != 409:
                 raise
@@ -1018,7 +1022,13 @@ def share_session(
         for sa_label, _sa_raw, sa_path in subagent_entries:
             sa_session_id = Path(sa_path).stem
             try:
-                c.upload_transcript(ws, sa_session_id, sa_path, agent_name="claude-subagent", cwd=str(jsonl_path.parent))
+                c.upload_transcript(
+                    ws,
+                    sa_session_id,
+                    sa_path,
+                    agent_name="claude-subagent",
+                    cwd=str(jsonl_path.parent),
+                )
             except StashError as e:
                 if e.status_code != 409:
                     raise
@@ -1098,7 +1108,7 @@ def views_create(
     items_json: str = typer.Option(
         "[]",
         "--items",
-        help='JSON array of items: [{"object_type":"notebook","object_id":"..."}, ...]',
+        help='JSON array of items: [{"object_type":"folder","object_id":"..."}, ...]',
     ),
     as_json: bool = typer.Option(False, "--json"),
 ):
@@ -1278,82 +1288,113 @@ def invite_revoke(
 
 
 # ===========================================================================
-# Notebooks
+# Wiki: folders (nestable) + pages
 # ===========================================================================
 
-nb_app = typer.Typer(help="Notebook collections (folders + markdown pages).")
-app.add_typer(nb_app, name="notebooks")
+wiki_app = typer.Typer(help="Wiki — nested folders and markdown/HTML pages.")
+app.add_typer(wiki_app, name="wiki")
 
 
-@nb_app.command("list")
-def nb_list(
+@wiki_app.command("tree")
+def wiki_tree(
     workspace_id: str = typer.Option(None, "--ws"),
-    all_: bool = typer.Option(False, "--all"),
     as_json: bool = typer.Option(False, "--json"),
 ):
-    """List notebooks. --all for cross-workspace, --ws for single workspace."""
+    """Show the nested folder + page tree for the workspace."""
     with _client() as c:
         try:
-            data = (
-                c.all_notebooks()
-                if all_
-                else c.list_notebooks(workspace_id or _resolve_workspace())
-            )
+            ws = workspace_id or _resolve_workspace()
+            data = c.get_workspace_tree(ws)
+        except StashError as e:
+            _err(e)
+    if _use_json(as_json):
+        output_json(data)
+        return
+
+    def _print_folder(folder: dict, depth: int) -> None:
+        pad = "  " * depth
+        console.print(f"{pad}[bold]{folder['name']}/[/bold]  (id: {str(folder['id'])[:8]})")
+        for sub in folder.get("folders", []):
+            _print_folder(sub, depth + 1)
+        for p in folder.get("pages", []):
+            console.print(f"{pad}  {p['name']}  (id: {str(p['id'])[:8]})")
+
+    for folder in data.get("folders", []):
+        _print_folder(folder, 0)
+    for p in data.get("pages", []):
+        console.print(f"  {p['name']}  (id: {str(p['id'])[:8]})")
+
+
+@wiki_app.command("folders")
+def wiki_folders(
+    workspace_id: str = typer.Option(None, "--ws"),
+    as_json: bool = typer.Option(False, "--json"),
+):
+    """Flat list of every folder in the workspace."""
+    with _client() as c:
+        try:
+            ws = workspace_id or _resolve_workspace()
+            data = c.list_folders(ws)
         except StashError as e:
             _err(e)
     if _use_json(as_json):
         output_json(data)
     else:
         if not data:
-            console.print("[dim]No notebooks.[/dim]")
+            console.print("[dim]No folders.[/dim]")
         else:
-            for nb in data:
-                ws = f" [{nb.get('workspace_name', '')}]" if nb.get("workspace_name") else ""
-                console.print(f"  {nb['name']}{ws}  (id: {str(nb['id'])[:8]})")
+            for f in data:
+                parent = (
+                    f"  parent: {str(f['parent_folder_id'])[:8]}"
+                    if f.get("parent_folder_id")
+                    else ""
+                )
+                console.print(f"  {f['name']}  (id: {str(f['id'])[:8]}){parent}")
 
 
-@nb_app.command("create")
-def nb_create(
+@wiki_app.command("create-folder")
+def wiki_create_folder(
     name: str = typer.Argument(...),
     workspace_id: str = typer.Option(None, "--ws"),
-    description: str = typer.Option(""),
+    parent: str = typer.Option(None, "--parent", help="parent folder id (omit for root)"),
     as_json: bool = typer.Option(False, "--json"),
 ):
-    """Create a notebook collection."""
+    """Create a folder. Omit --parent to create at workspace root."""
     with _client() as c:
         try:
             ws = workspace_id or _resolve_workspace()
-            data = c.create_notebook(ws, name, description=description)
+            data = c.create_folder(ws, name, parent_folder_id=parent)
         except StashError as e:
             _err(e)
     if _use_json(as_json):
         output_json(data)
     else:
-        console.print(f"[green]Notebook '{data['name']}' created.[/green]  ID: {data['id']}")
+        console.print(f"[green]Folder '{data['name']}' created.[/green]  ID: {data['id']}")
 
 
-@nb_app.command("pages")
-def nb_pages(
-    notebook_id: str = typer.Argument(...),
+@wiki_app.command("pages")
+def wiki_pages(
     workspace_id: str = typer.Option(None, "--ws"),
+    all_: bool = typer.Option(False, "--all", help="list pages across every workspace"),
     as_json: bool = typer.Option(False, "--json"),
 ):
-    """List pages in a notebook."""
+    """List pages. --all for cross-workspace, default for the active workspace."""
     with _client() as c:
         try:
-            ws = workspace_id or _resolve_workspace()
-            data = c.list_page_tree(ws, notebook_id)
+            data = c.all_pages() if all_ else c.list_pages(workspace_id or _resolve_workspace())
         except StashError as e:
             _err(e)
     if _use_json(as_json):
         output_json(data)
     else:
-        for folder in data.get("folders", []):
-            console.print(f"  [bold]{folder['name']}/[/bold]")
-            for f in folder.get("files", []):
-                console.print(f"    {f['name']}  (id: {str(f['id'])[:8]})")
-        for f in data.get("root_files", []):
-            console.print(f"  {f['name']}  (id: {str(f['id'])[:8]})")
+        if not data:
+            console.print("[dim]No pages.[/dim]")
+            return
+        for p in data:
+            path = "/".join(p.get("folder_path") or [])
+            label = f"{path}/{p['name']}" if path else p["name"]
+            ws = f" [{p.get('workspace_name', '')}]" if p.get("workspace_name") else ""
+            console.print(f"  {label}{ws}  (id: {str(p['id'])[:8]})")
 
 
 def _markdown_snippet(file_resp: dict) -> str:
@@ -1376,11 +1417,11 @@ def _prepend_attachments(
     return f"{block}\n\n{content}" if content else block
 
 
-@nb_app.command("add-page")
-def nb_add_page(
-    notebook_id: str = typer.Argument(...),
+@wiki_app.command("add-page")
+def wiki_add_page(
     name: str = typer.Argument(...),
     workspace_id: str = typer.Option(None, "--ws"),
+    folder: str = typer.Option(None, "--folder", help="folder id; omit for workspace root"),
     content: str = typer.Option(""),
     page_type: str = typer.Option(
         "markdown", "--type", help="Page type: markdown (default) or html.", case_sensitive=False
@@ -1393,7 +1434,7 @@ def nb_add_page(
     ),
     as_json: bool = typer.Option(False, "--json"),
 ):
-    """Add a page to a notebook. Use --type html and --html-file for AI-generated slides."""
+    """Create a page. --folder drops it into a folder, otherwise it goes to the workspace root."""
     page_type = page_type.lower()
     if page_type not in ("markdown", "html"):
         console.print(f"[red]--type must be 'markdown' or 'html', got: {page_type}[/red]")
@@ -1404,7 +1445,7 @@ def nb_add_page(
             raise typer.Exit(1)
         html_body = Path(html_file).read_text()
     elif page_type == "html":
-        html_body = content  # caller can pass --content with raw HTML
+        html_body = content
         content = ""
     else:
         html_body = ""
@@ -1424,9 +1465,9 @@ def nb_add_page(
                     console.print("[yellow]--attach is ignored for html pages[/yellow]")
             data = c.create_page(
                 ws,
-                notebook_id,
                 name,
                 content=body,
+                folder_id=folder,
                 content_type=page_type,
                 content_html=html_body,
             )
@@ -1441,9 +1482,8 @@ def nb_add_page(
         )
 
 
-@nb_app.command("read-page")
-def nb_read_page(
-    notebook_id: str = typer.Argument(...),
+@wiki_app.command("read-page")
+def wiki_read_page(
     page_id: str = typer.Argument(...),
     workspace_id: str = typer.Option(None, "--ws"),
     as_json: bool = typer.Option(False, "--json"),
@@ -1452,7 +1492,7 @@ def nb_read_page(
     with _client() as c:
         try:
             ws = workspace_id or _resolve_workspace()
-            data = c.get_page(ws, notebook_id, page_id)
+            data = c.get_page(ws, page_id)
         except StashError as e:
             _err(e)
     if _use_json(as_json):
@@ -1465,9 +1505,8 @@ def nb_read_page(
             console.print(data.get("content_markdown", ""))
 
 
-@nb_app.command("edit-page")
-def nb_edit_page(
-    notebook_id: str = typer.Argument(...),
+@wiki_app.command("edit-page")
+def wiki_edit_page(
     page_id: str = typer.Argument(...),
     content: str = typer.Option(None, "--content"),
     name: str = typer.Option(None, "--name"),
@@ -1483,11 +1522,7 @@ def nb_edit_page(
     ),
     as_json: bool = typer.Option(False, "--json"),
 ):
-    """Update a page. Reads from stdin if --content not given.
-
-    For html pages: pass --html-file to replace content_html, or pipe HTML on
-    stdin and pass --type html.
-    """
+    """Update a page. Reads from stdin if --content not given."""
     html_body: str | None = None
     if html_file:
         if not Path(html_file).is_file():
@@ -1501,10 +1536,8 @@ def nb_edit_page(
         if page_type not in ("markdown", "html"):
             console.print(f"[red]--type must be 'markdown' or 'html', got: {page_type}[/red]")
             raise typer.Exit(1)
-    # If --html-file is set without --type, infer html.
     if html_body is not None and page_type is None:
         page_type = "html"
-    # If --type html and only --content (no --html-file), treat content as HTML.
     if page_type == "html" and html_body is None and content is not None:
         html_body = content
         content = None
@@ -1520,12 +1553,12 @@ def nb_edit_page(
                 base = (
                     content
                     if content is not None
-                    else c.get_page(ws, notebook_id, page_id).get("content_markdown", "")
+                    else c.get_page(ws, page_id).get("content_markdown", "")
                 )
                 content = _prepend_attachments(c, ws, base, attach)
             elif attach:
                 console.print("[yellow]--attach is ignored for html pages[/yellow]")
-            kwargs = {}
+            kwargs: dict = {}
             if content is not None:
                 kwargs["content"] = content
             if name is not None:
@@ -1534,7 +1567,7 @@ def nb_edit_page(
                 kwargs["content_type"] = page_type
             if html_body is not None:
                 kwargs["content_html"] = html_body
-            data = c.update_page(ws, notebook_id, page_id, **kwargs)
+            data = c.update_page(ws, page_id, **kwargs)
         except StashError as e:
             _err(e)
     if _use_json(as_json):
@@ -1612,7 +1645,9 @@ def hist_push(
     attach_id: list[str] = typer.Option(
         None, "--attach-id", help="Pre-uploaded file id to attach (repeatable)."
     ),
-    created_at: str = typer.Option(None, "--created-at", help="ISO-8601 timestamp (e.g. 2026-04-22T10:30:00Z)."),
+    created_at: str = typer.Option(
+        None, "--created-at", help="ISO-8601 timestamp (e.g. 2026-04-22T10:30:00Z)."
+    ),
     as_json: bool = typer.Option(False, "--json"),
 ):
     """Push an event to the workspace history."""
@@ -1791,7 +1826,9 @@ def _transcript_to_markdown(raw_jsonl: str) -> str:
                     text = sub
                 elif isinstance(sub, list):
                     text = "\n".join(
-                        s.get("text", "") for s in sub if isinstance(s, dict) and s.get("type") == "text"
+                        s.get("text", "")
+                        for s in sub
+                        if isinstance(s, dict) and s.get("type") == "text"
                     )
                 if text.strip():
                     preview = text.strip()[:2000]
@@ -1803,7 +1840,9 @@ def _transcript_to_markdown(raw_jsonl: str) -> str:
 @hist_app.command("share")
 def hist_share(
     session_id: str = typer.Argument(...),
-    title: str = typer.Option("", "--title", help="Title for the shared page. Auto-generated if omitted."),
+    title: str = typer.Option(
+        "", "--title", help="Title for the shared page. Auto-generated if omitted."
+    ),
     workspace_id: str = typer.Option(None, "--ws"),
 ):
     """Share a session transcript as a public Stash link.
@@ -1834,17 +1873,17 @@ def hist_share(
     # 2. Format into markdown
     md = _transcript_to_markdown(body)
 
-    # 3. Create notebook + page + public view
+    # 3. Create folder + page + public view
     page_title = title or f"Session {session_id[:8]}"
     with _client() as c:
-        nb = c.create_notebook(ws, page_title, description="Shared transcript")
-        c.create_page(ws, nb["id"], page_title, content=md)
+        folder = c.create_folder(ws, page_title)
+        c.create_page(ws, page_title, content=md, folder_id=folder["id"])
         view = c.create_view(
             ws,
             title=page_title,
             description="Shared session transcript",
             is_public=True,
-            items=[{"object_type": "notebook", "object_id": nb["id"]}],
+            items=[{"object_type": "folder", "object_id": folder["id"]}],
         )
 
     public_url = f"{_web_app_url()}/v/{view['slug']}"
@@ -2756,7 +2795,7 @@ Common reads (all support `--json`):
 - `stash history search "<query>"` — full-text search across transcripts
 - `stash history query --limit 20` — latest events
 - `stash history agents` — who's been active
-- `stash notebooks list --all` — shared notebooks
+- `stash wiki pages --all` — shared wiki pages across workspaces
 
 Common writes:
 - `stash share --title "..."` — share this session as a public artifact with a shareable link
@@ -3543,9 +3582,11 @@ def config_cmd(
 
 @app.command("share-object")
 def share_object_cmd(
-    object_type: str = typer.Argument(..., help="workspace|notebook|page|table|file|history|view"),
+    object_type: str = typer.Argument(..., help="workspace|folder|page|table|file|history|view"),
     object_id: str = typer.Argument(..., help="UUID of the object"),
-    ensure: str = typer.Option("link", "--ensure", help="Raise visibility to at least this level: ''|'link'|'public'"),
+    ensure: str = typer.Option(
+        "link", "--ensure", help="Raise visibility to at least this level: ''|'link'|'public'"
+    ),
 ):
     """Mint a share URL for any object. Idempotent."""
     cfg = load_config()
@@ -3556,7 +3597,7 @@ def share_object_cmd(
 
 @app.command("visibility")
 def visibility_cmd(
-    object_type: str = typer.Argument(..., help="workspace|notebook|page|table|file|history|view"),
+    object_type: str = typer.Argument(..., help="workspace|folder|page|table|file|history|view"),
     object_id: str = typer.Argument(..., help="UUID of the object"),
     level: str = typer.Argument(..., help="inherit|private|link|public"),
 ):
@@ -3572,7 +3613,9 @@ def publish_cmd(
     file_path: str = typer.Argument(..., help="Path to .html or .md file to publish"),
     title: str = typer.Option(None, "--title", "-t", help="Page title (defaults to filename)"),
     workspace_id: str = typer.Option(None, "--workspace", "-w"),
-    notebook_id: str = typer.Option(None, "--notebook", "-n", help="Defaults to auto-created 'AI Drafts'"),
+    folder_id: str = typer.Option(
+        None, "--folder", "-f", help="Defaults to auto-created 'AI Drafts' folder"
+    ),
     audience: str = typer.Option("link", "--audience", help="link | public"),
 ):
     """Publish a local file as a Stash page and print the share URL.
@@ -3596,7 +3639,7 @@ def publish_cmd(
         content=p.read_text(),
         content_type=content_type,
         audience=audience,
-        notebook_id=notebook_id,
+        folder_id=folder_id,
     )
     console.print(result["url"])
 

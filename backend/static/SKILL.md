@@ -1,11 +1,11 @@
-# Stash — Shared Workspace, Notebook, Table, and Memory System
+# Stash — Shared Workspace, Wiki, Table, and Memory System
 
 ## Overview
 Stash is the shared product surface for humans and agents.
 
 It provides:
 - workspace membership and permissions
-- notebooks (page tree with markdown content, wiki-style backlinks, semantic search)
+- wiki pages organized in nestable folders (markdown content, wiki-style backlinks, semantic search)
 - tables (typed columns, rows, CSV import/export, semantic row search)
 - structured history/memory events (with file attachments)
 - file uploads (S3-backed; PDF/image text extraction when available)
@@ -51,13 +51,15 @@ curl -X POST {{BASE_URL}}/api/v1/workspaces/$WS/memory/events \
   -d '{"agent_name":"cli","event_type":"note","content":"Hello"}'
 ```
 
-### 4. Create a Notebook Page
+### 4. Create a Wiki Page
 ```bash
-curl -X POST {{BASE_URL}}/api/v1/workspaces/$WS/notebooks/$NB/pages \
+curl -X POST {{BASE_URL}}/api/v1/workspaces/$WS/pages/new \
   -H "Authorization: Bearer $API_KEY" \
   -H "Content-Type: application/json" \
   -d '{"name":"Notes","content":"# Hello"}'
 ```
+Pass `"folder_id": "<uuid>"` to drop the page into a specific folder;
+omit it to create the page at the workspace root.
 
 ### 5. Upload a File
 ```bash
@@ -79,20 +81,20 @@ scope — pick or create a workspace first.
 |---------|--------|
 | Users | `/api/v1/users` (register, login, `/me`, `/search`) |
 | Workspaces | `/api/v1/workspaces` (CRUD, members, invite tokens) |
-| Notebooks | `/api/v1/workspaces/{ws}/notebooks` |
-| Pages | `/api/v1/workspaces/{ws}/notebooks/{nb}/pages` |
-| Page index (flat, for wiki-link resolution) | `/api/v1/workspaces/{ws}/pages` |
-| Folders | `/api/v1/workspaces/{ws}/notebooks/{nb}/folders` |
+| Folders (nestable) | `/api/v1/workspaces/{ws}/folders` |
+| Pages | `/api/v1/workspaces/{ws}/pages` (list) and `/api/v1/workspaces/{ws}/pages/new` (create) |
+| Single page | `/api/v1/workspaces/{ws}/pages/{page_id}` |
+| Workspace tree (nested folders + pages) | `/api/v1/workspaces/{ws}/tree` |
 | Tables | `/api/v1/workspaces/{ws}/tables` |
 | Rows | `/api/v1/workspaces/{ws}/tables/{t}/rows` |
 | Files | `/api/v1/workspaces/{ws}/files` |
 | Memory / History | `/api/v1/workspaces/{ws}/memory/events` |
 | Transcripts | `/api/v1/workspaces/{ws}/transcripts` |
-| Aggregate (across the user's workspaces) | `/api/v1/me/{notebooks,tables,history-events,decks}` |
+| Aggregate (across the user's workspaces) | `/api/v1/me/{pages,tables,history-events,decks}` |
 
 CRUD verbs are standard: `POST` to create, `GET` list/detail, `PATCH` update,
-`DELETE` remove. Semantic-search endpoints hang off their parent resource
-(e.g. `GET /notebooks/{nb}/pages/semantic-search?q=...`).
+`DELETE` remove. Semantic search hangs off the workspace
+(`GET /api/v1/workspaces/{ws}/pages/semantic-search?q=...`).
 
 ## Page Content (`content_markdown`)
 
@@ -106,12 +108,12 @@ Use ordinary markdown links for everything:
 
 | Target | Shape |
 |---|---|
-| Another page in the same workspace | `[text](/notebooks?ws=<ws>&nb=<nb>&page=<uuid>)` |
+| Another page in the same workspace | `[text](/wiki?ws=<ws>&page=<uuid>)` |
 | A file uploaded to the workspace | `[text](/api/v1/workspaces/<ws>/files/<uuid>/download)` |
 | External URL | `[text](https://…)` |
 
 The viewer renders all three with the same style; an `↗` glyph marks
-off-origin URLs. Internal `/notebooks?…` and stash absolute URLs are
+off-origin URLs. Internal `/wiki?…` and stash absolute URLs are
 SPA-routed (same tab, no reload); externals open in a new tab.
 
 There is no `[[wiki-link]]` syntax. The TipTap editor offers an
@@ -212,6 +214,6 @@ Query/search:
 - Attach files to history events rather than embedding base64 — keeps event
   payloads small and allows reuse across events.
 - When authoring page content that links to other pages in the same
-  workspace, use `[[folder/page]]` / `[[notebook/folder/page]]` wiki
-  syntax. Unqualified `[[page]]` only resolves to a sibling in the same
-  folder.
+  workspace, use `[[folder/page]]` or `[[a/b/page]]` for nested
+  disambiguation. Unqualified `[[page]]` falls back to the first match
+  by name across the workspace.

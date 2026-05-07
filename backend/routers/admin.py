@@ -13,7 +13,9 @@ router = APIRouter(prefix="/api/v1/admin", tags=["admin"])
 def require_admin_token(x_admin_token: str | None = Header(default=None)) -> None:
     expected = settings.ADMIN_PASSWORD
     if not expected:
-        raise HTTPException(status_code=503, detail="Admin endpoints disabled (ADMIN_PASSWORD unset)")
+        raise HTTPException(
+            status_code=503, detail="Admin endpoints disabled (ADMIN_PASSWORD unset)"
+        )
     if not x_admin_token or not hmac.compare_digest(x_admin_token, expected):
         raise HTTPException(status_code=401, detail="Invalid admin token")
 

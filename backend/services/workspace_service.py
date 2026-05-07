@@ -250,9 +250,9 @@ async def fork_workspace(
 ) -> dict | None:
     """Fork a public workspace into a new private workspace owned by forker.
 
-    Clones notebooks (with folders, pages, page_links), tables (schema + rows),
-    and history_events. Skips files, session_transcripts, members, webhooks,
-    and invite tokens.
+    Clones folders (preserving nesting), pages, page_links, tables (schema +
+    rows), and history_events. Skips files, session_transcripts, members,
+    webhooks, and invite tokens.
     """
     pool = get_pool()
     source = await pool.fetchrow(
@@ -266,9 +266,7 @@ async def fork_workspace(
     invite_code = ""
     for _ in range(5):
         invite_code = secrets.token_urlsafe(6)[:8]
-        if not await pool.fetchval(
-            "SELECT 1 FROM workspaces WHERE invite_code = $1", invite_code
-        ):
+        if not await pool.fetchval("SELECT 1 FROM workspaces WHERE invite_code = $1", invite_code):
             break
 
     async with pool.acquire() as conn:
@@ -296,60 +294,74 @@ async def fork_workspace(
                 forker_id,
             )
 
-            # Notebooks: clone each, then folders (id remap), then pages (id remap),
-            # then page_links using the page-id maps.
-            notebooks = await conn.fetch(
-                "SELECT id, name, description FROM notebooks WHERE workspace_id = $1",
+            # Folders first (BFS by parent_folder_id so each insert sees its
+            # parent already in the map), then pages, then page_links.
+            folders = await conn.fetch(
+                "SELECT id, parent_folder_id, name FROM folders WHERE workspace_id = $1",
                 source_id,
             )
-            page_id_map: dict = {}
-            for nb in notebooks:
-                new_nb_id = await conn.fetchval(
-                    "INSERT INTO notebooks (workspace_id, name, description, created_by) "
-                    "VALUES ($1, $2, $3, $4) RETURNING id",
-                    new_ws_id,
-                    nb["name"],
-                    nb["description"] or "",
-                    forker_id,
-                )
-                folders = await conn.fetch(
-                    "SELECT id, name FROM notebook_folders WHERE notebook_id = $1",
-                    nb["id"],
-                )
-                folder_id_map: dict = {}
-                for f in folders:
-                    new_folder_id = await conn.fetchval(
-                        "INSERT INTO notebook_folders (notebook_id, name, created_by) "
-                        "VALUES ($1, $2, $3) RETURNING id",
-                        new_nb_id,
+            folder_id_map: dict = {}
+            remaining = list(folders)
+            while remaining:
+                progressed = False
+                next_round = []
+                for f in remaining:
+                    if f["parent_folder_id"] is None:
+                        new_parent = None
+                    elif f["parent_folder_id"] in folder_id_map:
+                        new_parent = folder_id_map[f["parent_folder_id"]]
+                    else:
+                        next_round.append(f)
+                        continue
+                    new_id = await conn.fetchval(
+                        "INSERT INTO folders (workspace_id, parent_folder_id, name, created_by) "
+                        "VALUES ($1, $2, $3, $4) RETURNING id",
+                        new_ws_id,
+                        new_parent,
                         f["name"],
                         forker_id,
                     )
-                    folder_id_map[f["id"]] = new_folder_id
+                    folder_id_map[f["id"]] = new_id
+                    progressed = True
+                if not progressed:
+                    # Orphan rows (parent_folder_id pointing nowhere); reparent
+                    # them to the workspace root rather than dropping them.
+                    for f in next_round:
+                        new_id = await conn.fetchval(
+                            "INSERT INTO folders (workspace_id, parent_folder_id, name, created_by) "
+                            "VALUES ($1, NULL, $2, $3) RETURNING id",
+                            new_ws_id,
+                            f["name"],
+                            forker_id,
+                        )
+                        folder_id_map[f["id"]] = new_id
+                    break
+                remaining = next_round
 
-                pages = await conn.fetch(
-                    "SELECT id, folder_id, name, content_markdown, content_html, "
-                    "content_type, content_hash, metadata "
-                    "FROM notebook_pages WHERE notebook_id = $1",
-                    nb["id"],
+            page_id_map: dict = {}
+            pages = await conn.fetch(
+                "SELECT id, folder_id, name, content_markdown, content_html, "
+                "content_type, content_hash, metadata "
+                "FROM pages WHERE workspace_id = $1",
+                source_id,
+            )
+            for p in pages:
+                new_page_id = await conn.fetchval(
+                    "INSERT INTO pages "
+                    "(workspace_id, folder_id, name, content_markdown, content_html, "
+                    "content_type, content_hash, metadata, created_by) "
+                    "VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id",
+                    new_ws_id,
+                    folder_id_map.get(p["folder_id"]) if p["folder_id"] else None,
+                    p["name"],
+                    p["content_markdown"] or "",
+                    p["content_html"] or "",
+                    p["content_type"],
+                    p["content_hash"],
+                    p["metadata"] or {},
+                    forker_id,
                 )
-                for p in pages:
-                    new_page_id = await conn.fetchval(
-                        "INSERT INTO notebook_pages "
-                        "(notebook_id, folder_id, name, content_markdown, content_html, "
-                        "content_type, content_hash, metadata, created_by) "
-                        "VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id",
-                        new_nb_id,
-                        folder_id_map.get(p["folder_id"]) if p["folder_id"] else None,
-                        p["name"],
-                        p["content_markdown"] or "",
-                        p["content_html"] or "",
-                        p["content_type"],
-                        p["content_hash"],
-                        p["metadata"] or {},
-                        forker_id,
-                    )
-                    page_id_map[p["id"]] = new_page_id
+                page_id_map[p["id"]] = new_page_id
 
             # Page links — only re-create links where both endpoints were cloned.
             if page_id_map:

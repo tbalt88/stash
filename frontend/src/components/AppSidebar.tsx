@@ -15,7 +15,7 @@ interface NavItem {
 const NAV_ITEMS: NavItem[] = [
   { href: "/search", label: "Search", icon: "S" },
   { href: "/memory", label: "History", icon: "H" },
-  { href: "/notebooks", label: "Wiki", icon: "W" },
+  { href: "/wiki", label: "Wiki", icon: "W" },
   { href: "/tables", label: "Tables", icon: "T" },
 ];
 

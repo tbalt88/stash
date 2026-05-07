@@ -5,16 +5,18 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Query
 
 from ..auth import get_current_user
-from ..services import analytics_service, memory_service, notebook_service, table_service
+from ..models import UserPageEntry, UserPageListResponse
+from ..services import analytics_service, memory_service, table_service, wiki_service
 
 router = APIRouter(prefix="/api/v1/me", tags=["aggregate"])
 
 
-@router.get("/notebooks")
-async def list_all_notebooks(current_user: dict = Depends(get_current_user)):
-    """All notebooks from workspaces + personal."""
-    notebooks = await notebook_service.list_all_user_notebooks(current_user["id"])
-    return {"notebooks": notebooks}
+@router.get("/pages", response_model=UserPageListResponse)
+async def list_all_pages(current_user: dict = Depends(get_current_user)):
+    """Every page across every workspace the user is a member of, with the
+    folder path so wiki-link autocomplete can resolve `[[a/b/page]]`."""
+    rows = await wiki_service.list_user_pages(current_user["id"])
+    return UserPageListResponse(pages=[UserPageEntry(**r) for r in rows])
 
 
 @router.get("/history-events")

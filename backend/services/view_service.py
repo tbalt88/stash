@@ -81,10 +81,10 @@ async def _object_title(object_type: str, object_id: UUID) -> str:
     """Best-effort human label for an underlying object — used as the default
     View title when minting a share-link View."""
     pool = get_pool()
-    if object_type == "notebook":
-        row = await pool.fetchrow("SELECT name FROM notebooks WHERE id = $1", object_id)
+    if object_type == "folder":
+        row = await pool.fetchrow("SELECT name FROM folders WHERE id = $1", object_id)
     elif object_type == "page":
-        row = await pool.fetchrow("SELECT name FROM notebook_pages WHERE id = $1", object_id)
+        row = await pool.fetchrow("SELECT name FROM pages WHERE id = $1", object_id)
     elif object_type == "table":
         row = await pool.fetchrow("SELECT name FROM tables WHERE id = $1", object_id)
     elif object_type == "file":
@@ -95,7 +95,7 @@ async def _object_title(object_type: str, object_id: UUID) -> str:
         )
     else:
         row = None
-    return (row["name"] if row else "Shared item")
+    return row["name"] if row else "Shared item"
 
 
 async def find_or_create_share_link_view(
@@ -250,21 +250,23 @@ async def list_public_views(
                 readable = False
                 break
         if readable:
-            out.append({
-                "id": str(view["id"]),
-                "slug": view["slug"],
-                "title": view["title"],
-                "description": view["description"],
-                "cover_image_url": view["cover_image_url"],
-                "view_count": view["view_count"],
-                "owner_name": view.get("owner_name"),
-                "owner_display_name": view.get("owner_display_name"),
-                "workspace_id": str(view["workspace_id"]),
-                "workspace_name": view.get("workspace_name"),
-                "item_count": len(view["items"]),
-                "created_at": view["created_at"].isoformat(),
-                "updated_at": view["updated_at"].isoformat(),
-            })
+            out.append(
+                {
+                    "id": str(view["id"]),
+                    "slug": view["slug"],
+                    "title": view["title"],
+                    "description": view["description"],
+                    "cover_image_url": view["cover_image_url"],
+                    "view_count": view["view_count"],
+                    "owner_name": view.get("owner_name"),
+                    "owner_display_name": view.get("owner_display_name"),
+                    "workspace_id": str(view["workspace_id"]),
+                    "workspace_name": view.get("workspace_name"),
+                    "item_count": len(view["items"]),
+                    "created_at": view["created_at"].isoformat(),
+                    "updated_at": view["updated_at"].isoformat(),
+                }
+            )
             if len(out) >= limit:
                 break
     return out
@@ -335,16 +337,23 @@ async def inline_items(view: dict, viewer_id: UUID | None = None) -> list[dict]:
         obj_id = item["object_id"]
         label = item.get("label_override") or ""
         inline: dict = {}
-        if obj_type == "notebook":
-            nb = await pool.fetchrow(
-                "SELECT name, description FROM notebooks WHERE id = $1", obj_id
-            )
-            if nb:
-                label = label or nb["name"]
+        if obj_type == "folder":
+            folder = await pool.fetchrow("SELECT name FROM folders WHERE id = $1", obj_id)
+            if folder:
+                label = label or folder["name"]
+                # Recursive: include every page in this folder and its
+                # descendants so a shared folder behaves like the old
+                # "shared notebook" did.
                 pages = await pool.fetch(
-                    "SELECT id, name, content_markdown, content_html, content_type, "
-                    "updated_at FROM notebook_pages "
-                    "WHERE notebook_id = $1 ORDER BY created_at, name",
+                    "WITH RECURSIVE subtree AS ("
+                    "  SELECT id FROM folders WHERE id = $1"
+                    "  UNION ALL"
+                    "  SELECT f.id FROM folders f JOIN subtree s ON f.parent_folder_id = s.id"
+                    ") "
+                    "SELECT p.id, p.name, p.content_markdown, p.content_html, p.content_type, "
+                    "p.updated_at FROM pages p "
+                    "WHERE p.folder_id IN (SELECT id FROM subtree) "
+                    "ORDER BY p.created_at, p.name",
                     obj_id,
                 )
                 visible_pages = []
@@ -354,7 +363,6 @@ async def inline_items(view: dict, viewer_id: UUID | None = None) -> list[dict]:
                     ):
                         visible_pages.append(p)
                 inline = {
-                    "description": nb["description"],
                     "pages": [
                         {
                             "id": str(p["id"]),
@@ -370,7 +378,7 @@ async def inline_items(view: dict, viewer_id: UUID | None = None) -> list[dict]:
         elif obj_type == "page":
             p = await pool.fetchrow(
                 "SELECT id, name, content_markdown, content_html, content_type, updated_at "
-                "FROM notebook_pages WHERE id = $1",
+                "FROM pages WHERE id = $1",
                 obj_id,
             )
             if p:
@@ -433,13 +441,15 @@ async def inline_items(view: dict, viewer_id: UUID | None = None) -> list[dict]:
             # the curator can see and prune it, but don't crash.
             label = label or "(missing)"
 
-        out.append({
-            "object_type": obj_type,
-            "object_id": obj_id,
-            "position": item["position"],
-            "label": label,
-            "inline": inline,
-        })
+        out.append(
+            {
+                "object_type": obj_type,
+                "object_id": obj_id,
+                "position": item["position"],
+                "label": label,
+                "inline": inline,
+            }
+        )
     return out
 
 
@@ -453,7 +463,7 @@ def items_to_text(title: str, items: list[dict]) -> str:
         if not inline:
             continue
 
-        if obj_type == "notebook":
+        if obj_type == "folder":
             for page in inline.get("pages", []):
                 if page.get("content_markdown"):
                     parts.append(page["content_markdown"])
@@ -513,9 +523,7 @@ async def fork_view(slug: str, forker_id: UUID, name: str | None = None) -> dict
     invite_code = ""
     for _ in range(5):
         invite_code = secrets.token_urlsafe(6)[:8]
-        if not await pool.fetchval(
-            "SELECT 1 FROM workspaces WHERE invite_code = $1", invite_code
-        ):
+        if not await pool.fetchval("SELECT 1 FROM workspaces WHERE invite_code = $1", invite_code):
             break
 
     async with pool.acquire() as conn:
@@ -542,67 +550,70 @@ async def fork_view(slug: str, forker_id: UUID, name: str | None = None) -> dict
                 forker_id,
             )
 
-            page_nb_id: UUID | None = None
             for item in view["items"]:
                 t = item["object_type"]
                 src_id = item["object_id"]
 
-                if t == "notebook":
-                    nb = await conn.fetchrow(
-                        "SELECT name, description FROM notebooks WHERE id = $1", src_id
-                    )
-                    if not nb:
+                if t == "folder":
+                    folder = await conn.fetchrow("SELECT name FROM folders WHERE id = $1", src_id)
+                    if not folder:
                         continue
-                    new_nb_id = await conn.fetchval(
-                        "INSERT INTO notebooks (workspace_id, name, description, created_by) "
-                        "VALUES ($1, $2, $3, $4) RETURNING id",
-                        new_ws_id,
-                        nb["name"],
-                        nb["description"] or "",
-                        forker_id,
-                    )
-                    pages = await conn.fetch(
-                        "SELECT id, folder_id, name, content_markdown, content_html, "
-                        "content_type, content_hash, metadata "
-                        "FROM notebook_pages WHERE notebook_id = $1",
+                    # Clone the folder's entire subtree (recursive folders +
+                    # their pages) so the fork preserves nesting.
+                    subtree = await conn.fetch(
+                        "WITH RECURSIVE chain AS ("
+                        "  SELECT id, parent_folder_id, name FROM folders WHERE id = $1"
+                        "  UNION ALL"
+                        "  SELECT f.id, f.parent_folder_id, f.name FROM folders f "
+                        "  JOIN chain c ON f.parent_folder_id = c.id"
+                        ") SELECT id, parent_folder_id, name FROM chain",
                         src_id,
                     )
-                    visible_pages = []
+                    folder_id_map: dict = {}
+                    remaining = list(subtree)
+                    while remaining:
+                        progressed = False
+                        next_round = []
+                        for f in remaining:
+                            if f["id"] == src_id:
+                                new_parent = None
+                            elif f["parent_folder_id"] in folder_id_map:
+                                new_parent = folder_id_map[f["parent_folder_id"]]
+                            else:
+                                next_round.append(f)
+                                continue
+                            new_id = await conn.fetchval(
+                                "INSERT INTO folders (workspace_id, parent_folder_id, name, created_by) "
+                                "VALUES ($1, $2, $3, $4) RETURNING id",
+                                new_ws_id,
+                                new_parent,
+                                f["name"],
+                                forker_id,
+                            )
+                            folder_id_map[f["id"]] = new_id
+                            progressed = True
+                        if not progressed:
+                            break
+                        remaining = next_round
+
+                    pages = await conn.fetch(
+                        "SELECT id, folder_id, name, content_markdown, content_html, "
+                        "content_type, content_hash, metadata FROM pages "
+                        "WHERE folder_id = ANY($1::uuid[])",
+                        list(folder_id_map.keys()),
+                    )
                     for p in pages:
-                        if await permission_service.check_access(
+                        if not await permission_service.check_access(
                             "page", p["id"], None, workspace_id=view["workspace_id"]
                         ):
-                            visible_pages.append(p)
-
-                    folder_ids = [p["folder_id"] for p in visible_pages if p["folder_id"]]
-                    folders = (
-                        await conn.fetch(
-                            "SELECT id, name FROM notebook_folders "
-                            "WHERE notebook_id = $1 AND id = ANY($2::uuid[])",
-                            src_id,
-                            folder_ids,
-                        )
-                        if folder_ids
-                        else []
-                    )
-                    folder_id_map: dict = {}
-                    for f in folders:
-                        new_f = await conn.fetchval(
-                            "INSERT INTO notebook_folders (notebook_id, name, created_by) "
-                            "VALUES ($1, $2, $3) RETURNING id",
-                            new_nb_id,
-                            f["name"],
-                            forker_id,
-                        )
-                        folder_id_map[f["id"]] = new_f
-                    for p in visible_pages:
+                            continue
                         await conn.execute(
-                            "INSERT INTO notebook_pages "
-                            "(notebook_id, folder_id, name, content_markdown, content_html, "
+                            "INSERT INTO pages "
+                            "(workspace_id, folder_id, name, content_markdown, content_html, "
                             "content_type, content_hash, metadata, created_by) "
                             "VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
-                            new_nb_id,
-                            folder_id_map.get(p["folder_id"]) if p["folder_id"] else None,
+                            new_ws_id,
+                            folder_id_map.get(p["folder_id"]),
                             p["name"],
                             p["content_markdown"] or "",
                             p["content_html"] or "",
@@ -615,26 +626,17 @@ async def fork_view(slug: str, forker_id: UUID, name: str | None = None) -> dict
                 elif t == "page":
                     src = await conn.fetchrow(
                         "SELECT name, content_markdown, content_html, content_type, "
-                        "content_hash, metadata FROM notebook_pages WHERE id = $1",
+                        "content_hash, metadata FROM pages WHERE id = $1",
                         src_id,
                     )
                     if not src:
                         continue
-                    if page_nb_id is None:
-                        page_nb_id = await conn.fetchval(
-                            "INSERT INTO notebooks (workspace_id, name, description, created_by) "
-                            "VALUES ($1, $2, $3, $4) RETURNING id",
-                            new_ws_id,
-                            "Pages",
-                            f"Pages forked from {view['title']}.",
-                            forker_id,
-                        )
                     await conn.execute(
-                        "INSERT INTO notebook_pages "
-                        "(notebook_id, name, content_markdown, content_html, "
+                        "INSERT INTO pages "
+                        "(workspace_id, name, content_markdown, content_html, "
                         "content_type, content_hash, metadata, created_by) "
                         "VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
-                        page_nb_id,
+                        new_ws_id,
                         src["name"],
                         src["content_markdown"] or "",
                         src["content_html"] or "",
@@ -716,9 +718,7 @@ async def user_can_manage(view_id: UUID, user_id: UUID) -> bool:
     """View management requires either being the view's owner or being an
     owner/admin of the host workspace."""
     pool = get_pool()
-    row = await pool.fetchrow(
-        "SELECT workspace_id, owner_id FROM views WHERE id = $1", view_id
-    )
+    row = await pool.fetchrow("SELECT workspace_id, owner_id FROM views WHERE id = $1", view_id)
     if not row:
         return False
     if row["owner_id"] == user_id:

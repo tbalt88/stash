@@ -6,14 +6,14 @@ import { useRouter } from "next/navigation";
 import AppShell from "../components/AppShell";
 import { useAuth } from "../hooks/useAuth";
 import {
-  listAllNotebooks,
+  listAllPages,
   listMyWorkspaces,
   listPublicWorkspaces,
   createWorkspace,
   joinWorkspace,
+  UserPageEntry,
 } from "../lib/api";
 import {
-  NotebookWithWorkspace,
   Workspace,
 } from "../lib/types";
 
@@ -84,7 +84,7 @@ function CurateViz() {
 function SearchViz() {
   const sources: [string, string][] = [
     ["history/rex:14:02", "62%"],
-    ["notebooks/auth-patterns", "21%"],
+    ["wiki/auth-patterns", "21%"],
     ["files/gateway.py", "11%"],
   ];
   return (
@@ -118,14 +118,14 @@ function LandingPage() {
       n: "02",
       pill: "Curate",
       title: "A curation agent turns noise into a wiki.",
-      body: "On SessionEnd, stash:sleep reads recent history and organizes it into notebooks with [[backlinks]] and a page graph.",
+      body: "On SessionEnd, stash:sleep reads recent history and organizes it into wiki pages with [[backlinks]] and a page graph.",
       viz: <CurateViz />,
     },
     {
       n: "03",
       pill: "Search",
       title: "Every agent queries the whole team's work.",
-      body: "stash search runs a cross-resource agentic loop over files, history, notebooks, tables, and chats. Answers with sources.",
+      body: "stash search runs a cross-resource agentic loop over files, history, wiki pages, tables, and chats. Answers with sources.",
       viz: <SearchViz />,
     },
   ];
@@ -250,7 +250,7 @@ function LoggedInHome({ user, logout }: { user: NonNullable<ReturnType<typeof us
   const router = useRouter();
   const [myWorkspaces, setMyWorkspaces] = useState<Workspace[]>([]);
   const [publicWorkspaces, setPublicWorkspaces] = useState<Workspace[]>([]);
-  const [notebooks, setNotebooks] = useState<NotebookWithWorkspace[]>([]);
+  const [recentPages, setRecentPages] = useState<UserPageEntry[]>([]);
   const [loading, setLoading] = useState(true);
 
   // Create / join state
@@ -268,11 +268,11 @@ function LoggedInHome({ user, logout }: { user: NonNullable<ReturnType<typeof us
     Promise.all([
       listMyWorkspaces().then((r) => r?.workspaces ?? []).catch(() => [] as Workspace[]),
       listPublicWorkspaces().then((r) => r?.workspaces ?? []).catch(() => [] as Workspace[]),
-      listAllNotebooks().then((r) => r?.notebooks ?? []).catch(() => [] as NotebookWithWorkspace[]),
-    ]).then(([mine, pub, nbs]) => {
+      listAllPages().then((r) => r?.pages ?? []).catch(() => [] as UserPageEntry[]),
+    ]).then(([mine, pub, pgs]) => {
       setMyWorkspaces(mine);
       setPublicWorkspaces(pub);
-      setNotebooks(nbs);
+      setRecentPages(pgs);
       setLoading(false);
     });
   }, []);
@@ -377,26 +377,33 @@ function LoggedInHome({ user, logout }: { user: NonNullable<ReturnType<typeof us
               </section>
             )}
 
-            {/* Recent Notebooks */}
-            {notebooks.length > 0 && (
+            {/* Recent pages across workspaces */}
+            {recentPages.length > 0 && (
               <section>
-                <h2 className="text-sm font-medium text-muted uppercase tracking-wider mb-3">Recent Notebooks</h2>
+                <h2 className="text-sm font-medium text-muted uppercase tracking-wider mb-3">Recent Pages</h2>
                 <div className="space-y-0.5">
-                  {notebooks.slice(0, 10).map((nb) => (
-                    <Link key={nb.id} href="/notebooks" className="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-raised transition-colors">
-                      <div className="w-8 h-8 rounded-md bg-green-500/15 text-green-500 flex items-center justify-center text-xs font-bold flex-shrink-0">N</div>
+                  {recentPages.slice(0, 10).map((p) => (
+                    <Link
+                      key={p.id}
+                      href={`/wiki?ws=${p.workspace_id}&page=${p.id}`}
+                      className="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-raised transition-colors"
+                    >
+                      <div className="w-8 h-8 rounded-md bg-green-500/15 text-green-500 flex items-center justify-center text-xs font-bold flex-shrink-0">P</div>
                       <div className="min-w-0 flex-1">
-                        <div className="text-sm text-foreground truncate">{nb.name}</div>
-                        <div className="text-xs text-muted truncate">{nb.workspace_name || "Personal"}</div>
+                        <div className="text-sm text-foreground truncate">{p.name}</div>
+                        <div className="text-xs text-muted truncate">
+                          {p.workspace_name}
+                          {p.folder_path.length > 0 ? ` · ${p.folder_path.join("/")}` : ""}
+                        </div>
                       </div>
-                      <span className="text-xs text-muted flex-shrink-0">{formatRelativeTime(nb.updated_at)}</span>
+                      <span className="text-xs text-muted flex-shrink-0">{formatRelativeTime(p.updated_at)}</span>
                     </Link>
                   ))}
                 </div>
               </section>
             )}
 
-            {myWorkspaces.length === 0 && notebooks.length === 0 && (
+            {myWorkspaces.length === 0 && recentPages.length === 0 && (
               <div className="text-center py-12">
                 <p className="text-dim mb-4">Nothing here yet. Create a workspace to get started.</p>
               </div>

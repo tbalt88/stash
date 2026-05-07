@@ -2,10 +2,7 @@
 
 Sits at /api/v1/objects/{object_type}/{object_id} and gives the share sheet a
 single API to talk to regardless of whether it's sharing a workspace, a
-notebook, a single page, a table, a file, a history event, or a View itself.
-
-The legacy notebook-scoped endpoints under /api/v1/workspaces/.../notebooks/...
-keep working — this is additive.
+folder, a single page, a table, a file, a history event, or a View itself.
 """
 
 from uuid import UUID
@@ -29,7 +26,7 @@ router = APIRouter(prefix="/api/v1/objects", tags=["permissions"])
 
 # Object types the share sheet can operate on. 'view' is included so that a
 # View's curation can be co-edited via object_shares.
-_SHAREABLE = {"workspace", "notebook", "page", "table", "file", "history", "view"}
+_SHAREABLE = {"workspace", "folder", "page", "table", "file", "history", "view"}
 
 
 async def _require_admin(object_type: str, object_id: UUID, user_id: UUID) -> None:
@@ -62,7 +59,9 @@ async def _require_admin(object_type: str, object_id: UUID, user_id: UUID) -> No
         object_type, object_id, user_id, workspace_id=workspace_id, require_write=True
     )
     if not can_write:
-        raise HTTPException(status_code=403, detail="Not allowed to manage permissions for this object")
+        raise HTTPException(
+            status_code=403, detail="Not allowed to manage permissions for this object"
+        )
 
 
 @router.get("/{object_type}/{object_id}/permissions", response_model=PermissionResponse)

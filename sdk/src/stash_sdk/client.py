@@ -295,8 +295,8 @@ class Stash:
     # Aggregate (cross-workspace)
     # =========================================================================
 
-    def all_notebooks(self) -> list:
-        return self._list("/api/v1/me/notebooks", "notebooks")
+    def all_pages(self) -> list:
+        return self._list("/api/v1/me/pages", "pages")
 
     def all_decks(self) -> list:
         return self._list("/api/v1/me/decks", "decks")
@@ -318,32 +318,39 @@ class Stash:
         return self._list("/api/v1/me/tables", "tables")
 
     # =========================================================================
-    # Notebooks
+    # Folders (workspace-scoped, nestable)
     # =========================================================================
 
-    def create_notebook(
-        self, name: str, description: str = "", workspace: str | None = None
-    ) -> dict:
-        return self._post(
-            f"/api/v1/workspaces/{self._ws(workspace)}/notebooks",
-            json={"name": name, "description": description},
-        )
-
-    def list_notebooks(self, workspace: str | None = None) -> list:
+    def list_folders(self, workspace: str | None = None) -> list:
         return self._list(
-            f"/api/v1/workspaces/{self._ws(workspace)}/notebooks", "notebooks"
+            f"/api/v1/workspaces/{self._ws(workspace)}/folders", "folders"
         )
 
-    def delete_notebook(self, notebook_id: str, workspace: str | None = None) -> None:
-        self._delete(f"/api/v1/workspaces/{self._ws(workspace)}/notebooks/{notebook_id}")
+    def create_folder(
+        self,
+        name: str,
+        parent_folder_id: str | None = None,
+        workspace: str | None = None,
+    ) -> dict:
+        body: dict = {"name": name}
+        if parent_folder_id:
+            body["parent_folder_id"] = parent_folder_id
+        return self._post(
+            f"/api/v1/workspaces/{self._ws(workspace)}/folders", json=body
+        )
+
+    def delete_folder(self, folder_id: str, workspace: str | None = None) -> None:
+        self._delete(f"/api/v1/workspaces/{self._ws(workspace)}/folders/{folder_id}")
+
+    def get_workspace_tree(self, workspace: str | None = None) -> dict:
+        return self._get(f"/api/v1/workspaces/{self._ws(workspace)}/tree")
 
     # =========================================================================
-    # Notebook pages
+    # Pages (workspace-scoped)
     # =========================================================================
 
     def create_page(
         self,
-        notebook_id: str,
         name: str,
         content: str = "",
         folder_id: str | None = None,
@@ -360,47 +367,31 @@ class Stash:
         if folder_id:
             body["folder_id"] = folder_id
         return self._post(
-            f"/api/v1/workspaces/{self._ws(workspace)}/notebooks/{notebook_id}/pages",
+            f"/api/v1/workspaces/{self._ws(workspace)}/pages/new",
             json=body,
         )
 
-    def list_page_tree(self, notebook_id: str, workspace: str | None = None) -> dict:
-        return self._get(
-            f"/api/v1/workspaces/{self._ws(workspace)}/notebooks/{notebook_id}/pages"
+    def list_pages(self, workspace: str | None = None) -> list:
+        return self._list(
+            f"/api/v1/workspaces/{self._ws(workspace)}/pages", "pages"
         )
 
-    def get_page(
-        self, notebook_id: str, page_id: str, workspace: str | None = None
-    ) -> dict:
+    def get_page(self, page_id: str, workspace: str | None = None) -> dict:
         return self._get(
-            f"/api/v1/workspaces/{self._ws(workspace)}/notebooks/{notebook_id}/pages/{page_id}"
+            f"/api/v1/workspaces/{self._ws(workspace)}/pages/{page_id}"
         )
 
     def update_page(
-        self, notebook_id: str, page_id: str, workspace: str | None = None, **kwargs
+        self, page_id: str, workspace: str | None = None, **kwargs
     ) -> dict:
         return self._patch(
-            f"/api/v1/workspaces/{self._ws(workspace)}/notebooks/{notebook_id}/pages/{page_id}",
+            f"/api/v1/workspaces/{self._ws(workspace)}/pages/{page_id}",
             json=kwargs,
         )
 
-    def delete_page(
-        self, notebook_id: str, page_id: str, workspace: str | None = None
-    ) -> None:
+    def delete_page(self, page_id: str, workspace: str | None = None) -> None:
         self._delete(
-            f"/api/v1/workspaces/{self._ws(workspace)}/notebooks/{notebook_id}/pages/{page_id}"
-        )
-
-    # =========================================================================
-    # Notebook folders
-    # =========================================================================
-
-    def create_folder(
-        self, notebook_id: str, name: str, workspace: str | None = None
-    ) -> dict:
-        return self._post(
-            f"/api/v1/workspaces/{self._ws(workspace)}/notebooks/{notebook_id}/folders",
-            json={"name": name},
+            f"/api/v1/workspaces/{self._ws(workspace)}/pages/{page_id}"
         )
 
     # =========================================================================

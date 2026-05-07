@@ -7,7 +7,6 @@ import { useAuth } from "../../hooks/useAuth";
 import {
   listMyWorkspaces,
   listHistories,
-  listNotebooks,
   listTables,
   searchHistoryEvents,
   semanticSearchPages,
@@ -16,8 +15,7 @@ import {
 import type {
   HistoryEvent,
   History,
-  Notebook,
-  NotebookPage,
+  Page,
   Table,
   TableRow,
   Workspace,
@@ -25,7 +23,7 @@ import type {
 
 interface SearchResults {
   historyEvents: { event: HistoryEvent; storeName: string }[];
-  wikiPages: { page: NotebookPage; notebookName: string }[];
+  wikiPages: Page[];
   tableRows: { row: TableRow; tableName: string; tableId: string }[];
 }
 
@@ -35,12 +33,12 @@ const EMPTY_RESULTS: SearchResults = {
   tableRows: [],
 };
 
-type Tab = "all" | "history" | "notebooks" | "tables";
+type Tab = "all" | "history" | "wiki" | "tables";
 
 const TABS: { id: Tab; label: string }[] = [
   { id: "all", label: "All" },
   { id: "history", label: "History" },
-  { id: "notebooks", label: "Notebooks" },
+  { id: "wiki", label: "Wiki" },
   { id: "tables", label: "Tables" },
 ];
 
@@ -120,18 +118,16 @@ function SearchPageInner() {
     setSearchedQuery(q);
 
     const historyEvents: SearchResults["historyEvents"] = [];
-    const wikiPages: SearchResults["wikiPages"] = [];
+    let wikiPages: Page[] = [];
     const tableRows: SearchResults["tableRows"] = [];
 
     try {
-      const [historiesRes, notebooksRes, tablesRes] = await Promise.all([
+      const [historiesRes, tablesRes] = await Promise.all([
         listHistories(selectedWs).catch(() => ({ stores: [] as History[] })),
-        listNotebooks(selectedWs).catch(() => ({ notebooks: [] as Notebook[] })),
         listTables(selectedWs).catch(() => ({ tables: [] as Table[] })),
       ]);
 
       const stores = historiesRes.stores ?? [];
-      const notebooks = notebooksRes.notebooks ?? [];
       const tables = tablesRes.tables ?? [];
 
       const searches = await Promise.allSettled([
@@ -141,12 +137,9 @@ function SearchPageInner() {
             historyEvents.push({ event, storeName: store.name });
           }
         }),
-        ...notebooks.map(async (nb) => {
-          const pages = await semanticSearchPages(selectedWs, nb.id, q, 10);
-          for (const page of pages ?? []) {
-            wikiPages.push({ page, notebookName: nb.name });
-          }
-        }),
+        (async () => {
+          wikiPages = await semanticSearchPages(selectedWs, q, 20);
+        })(),
         ...tables.map(async (table) => {
           try {
             const rows = await semanticSearchTableRows(selectedWs, table.id, q, 10);
@@ -186,7 +179,7 @@ function SearchPageInner() {
 
   const show = {
     history: tab === "all" || tab === "history",
-    wiki: tab === "all" || tab === "notebooks",
+    wiki: tab === "all" || tab === "wiki",
     tables: tab === "all" || tab === "tables",
   };
 
@@ -260,7 +253,7 @@ function SearchPageInner() {
 
         {searching && (
           <p className="py-8 text-center text-[13px] text-muted">
-            Searching across history, notebooks, and tables…
+            Searching across history, wiki, and tables…
           </p>
         )}
 
@@ -328,10 +321,10 @@ function SearchPageInner() {
                   Wiki · {results.wikiPages.length}
                 </p>
                 <div className="space-y-2">
-                  {results.wikiPages.map(({ page, notebookName }) => (
+                  {results.wikiPages.map((page) => (
                     <a
                       key={page.id}
-                      href={`/notebooks?ws=${selectedWs}&nb=${page.notebook_id}&page=${page.id}`}
+                      href={`/wiki?ws=${selectedWs}&page=${page.id}`}
                       className="block rounded-lg border border-border-subtle bg-base px-4 py-3.5 transition-colors hover:border-brand"
                     >
                       <div className="mb-1.5 flex items-center gap-2">
@@ -341,8 +334,6 @@ function SearchPageInner() {
                         <span className="text-[14px] font-semibold text-foreground">
                           {page.name}
                         </span>
-                        <span className="text-[12px] text-dim">·</span>
-                        <span className="text-[12px] text-dim">{notebookName}</span>
                         <span className="ml-auto font-mono text-[11px] text-muted">
                           {formatDate(page.updated_at)}
                         </span>

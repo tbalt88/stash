@@ -7,7 +7,7 @@ import HtmlPageView from "../../../../components/workspace/HtmlPageView";
 const BACKEND_ORIGIN = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3456";
 
 type ViewItemInlined = {
-  object_type: "notebook" | "page" | "table" | "file" | "history";
+  object_type: "folder" | "page" | "table" | "file" | "history";
   object_id: string;
   position: number;
   label: string;
@@ -68,7 +68,7 @@ function ItemBody({ item }: { item: ViewItemInlined }) {
       </div>
     );
   }
-  if (item.object_type === "notebook") {
+  if (item.object_type === "folder") {
     const inline = item.inline as {
       pages?: { id: string; name: string; content_type?: string; content_markdown?: string; content_html?: string }[];
     };

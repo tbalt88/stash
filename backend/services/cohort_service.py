@@ -43,7 +43,9 @@ def _bucket_label(start: datetime, bucket: Bucket) -> str:
 def _period_offset(cohort_start: datetime, event_start: datetime, bucket: Bucket) -> int:
     """How many bucket-periods after cohort_start does event_start fall in?"""
     if bucket == "month":
-        return (event_start.year - cohort_start.year) * 12 + (event_start.month - cohort_start.month)
+        return (event_start.year - cohort_start.year) * 12 + (
+            event_start.month - cohort_start.month
+        )
     if bucket == "week":
         return (event_start.date() - cohort_start.date()).days // 7
     if bucket == "rolling_7d":
@@ -138,9 +140,7 @@ def compute_engagement_cohorts(
     cohorts_out = cohorts_out[:cap]
 
     total_users = sum(c["size"] for c in cohorts_out)
-    total_events = sum(
-        sum(counts.values()) for counts in user_event_counts_by_period.values()
-    )
+    total_events = sum(sum(counts.values()) for counts in user_event_counts_by_period.values())
 
     return {
         "bucket": bucket,

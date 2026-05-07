@@ -157,12 +157,14 @@ function buildSuggestions(
     : ranked;
   return matches.slice(0, 8).map((p) => {
     const label = p.name;
-    const hint =
-      p.notebook_id === ctx.notebookId && p.folder_id === ctx.folderId
-        ? ""
-        : p.notebook_id === ctx.notebookId
-          ? `in ${p.folder_name ?? "notebook root"}`
-          : `in ${p.notebook_name}${p.folder_name ? ` / ${p.folder_name}` : ""}`;
+    const samePath =
+      p.folder_path.length === ctx.folderPath.length &&
+      p.folder_path.every((seg, i) => seg === ctx.folderPath[i]);
+    const hint = samePath
+      ? ""
+      : p.folder_path.length
+        ? `in ${p.folder_path.join("/")}`
+        : "in workspace root";
     return { page: p, label, hint };
   });
 }
@@ -174,7 +176,7 @@ export const WikiLink = Extension.create<WikiLinkOptions>({
     return {
       pageIndex: [],
       workspaceId: "",
-      context: { notebookId: null, folderId: null },
+      context: { folderId: null, folderPath: [] },
     };
   },
 

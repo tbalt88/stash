@@ -11,7 +11,7 @@ const WS_STORAGE_KEY = "stash_selected_workspace";
 
 const SEGMENT_LABELS: Record<string, { label: string; href: string }> = {
   memory: { label: "History", href: "/memory" },
-  notebooks: { label: "Wiki", href: "/notebooks" },
+  wiki: { label: "Wiki", href: "/wiki" },
   search: { label: "Search", href: "/search" },
   files: { label: "Files", href: "/files" },
   rooms: { label: "Workspaces", href: "/rooms" },

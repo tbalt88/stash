@@ -45,9 +45,7 @@ CREATE TABLE IF NOT EXISTS view_items (
 )
 """)
 
-    op.execute(
-        "CREATE INDEX IF NOT EXISTS idx_views_workspace ON views(workspace_id)"
-    )
+    op.execute("CREATE INDEX IF NOT EXISTS idx_views_workspace ON views(workspace_id)")
     op.execute(
         "CREATE INDEX IF NOT EXISTS idx_views_public_updated "
         "ON views(updated_at DESC) WHERE is_public = true"

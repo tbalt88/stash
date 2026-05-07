@@ -21,9 +21,7 @@ def _client() -> tuple[StashClient, str]:
 
 def _require_ws(ws_id: str | None) -> str:
     if not ws_id:
-        raise ValueError(
-            "No workspace. Pass workspace_id or run `stash connect` in a repo first."
-        )
+        raise ValueError("No workspace. Pass workspace_id or run `stash connect` in a repo first.")
     return ws_id
 
 
@@ -52,12 +50,14 @@ def stash_query_events(
     """Query recent history events, optionally filtered by agent or event type."""
     client, default_ws = _client()
     ws = _require_ws(workspace_id or default_ws)
-    return _json(client.query_events(
-        ws,
-        agent_name=agent_name or None,
-        event_type=event_type or None,
-        limit=limit,
-    ))
+    return _json(
+        client.query_events(
+            ws,
+            agent_name=agent_name or None,
+            event_type=event_type or None,
+            limit=limit,
+        )
+    )
 
 
 @mcp.tool()
@@ -80,96 +80,109 @@ def stash_push_event(
     """Push a new event into workspace history."""
     client, default_ws = _client()
     ws = _require_ws(workspace_id or default_ws)
-    return _json(client.push_event(
-        ws,
-        agent_name=agent_name,
-        event_type=event_type,
-        content=content,
-        session_id=session_id or None,
-        tool_name=tool_name or None,
-    ))
+    return _json(
+        client.push_event(
+            ws,
+            agent_name=agent_name,
+            event_type=event_type,
+            content=content,
+            session_id=session_id or None,
+            tool_name=tool_name or None,
+        )
+    )
 
 
-# ── Notebooks ─────────────────────────────────────────────────────
-
-
-@mcp.tool()
-def stash_list_notebooks(workspace_id: str = "") -> str:
-    """List notebooks in the workspace."""
-    client, default_ws = _client()
-    ws = _require_ws(workspace_id or default_ws)
-    return _json(client.list_notebooks(ws))
+# ── Folders + pages (wiki) ────────────────────────────────────────
 
 
 @mcp.tool()
-def stash_create_notebook(name: str, description: str = "", workspace_id: str = "") -> str:
-    """Create a new notebook in the workspace."""
+def stash_list_folders(workspace_id: str = "") -> str:
+    """List folders in the workspace (flat)."""
     client, default_ws = _client()
     ws = _require_ws(workspace_id or default_ws)
-    return _json(client.create_notebook(ws, name, description=description))
+    return _json(client.list_folders(ws))
 
 
 @mcp.tool()
-def stash_delete_notebook(notebook_id: str, workspace_id: str = "") -> str:
-    """Delete a notebook from the workspace."""
+def stash_create_folder(
+    name: str,
+    parent_folder_id: str = "",
+    workspace_id: str = "",
+) -> str:
+    """Create a folder in the workspace. Pass parent_folder_id to nest."""
     client, default_ws = _client()
     ws = _require_ws(workspace_id or default_ws)
-    client.delete_notebook(ws, notebook_id)
-    return _json({"deleted": notebook_id})
+    return _json(client.create_folder(ws, name, parent_folder_id=parent_folder_id or None))
 
 
 @mcp.tool()
-def stash_list_pages(notebook_id: str, workspace_id: str = "") -> str:
-    """List pages in a notebook."""
+def stash_delete_folder(folder_id: str, workspace_id: str = "") -> str:
+    """Delete a folder (and everything inside it) from the workspace."""
     client, default_ws = _client()
     ws = _require_ws(workspace_id or default_ws)
-    return _json(client.list_page_tree(ws, notebook_id))
+    client.delete_folder(ws, folder_id)
+    return _json({"deleted": folder_id})
 
 
 @mcp.tool()
-def stash_read_page(notebook_id: str, page_id: str, workspace_id: str = "") -> str:
-    """Read the content of a notebook page."""
+def stash_workspace_tree(workspace_id: str = "") -> str:
+    """Nested folder/page tree for the workspace."""
     client, default_ws = _client()
     ws = _require_ws(workspace_id or default_ws)
-    return _json(client.get_page(ws, notebook_id, page_id))
+    return _json(client.get_workspace_tree(ws))
+
+
+@mcp.tool()
+def stash_list_pages(workspace_id: str = "") -> str:
+    """Flat list of every page in the workspace."""
+    client, default_ws = _client()
+    ws = _require_ws(workspace_id or default_ws)
+    return _json(client.list_pages(ws))
+
+
+@mcp.tool()
+def stash_read_page(page_id: str, workspace_id: str = "") -> str:
+    """Read a page's content."""
+    client, default_ws = _client()
+    ws = _require_ws(workspace_id or default_ws)
+    return _json(client.get_page(ws, page_id))
 
 
 @mcp.tool()
 def stash_create_page(
-    notebook_id: str,
     name: str,
     content: str = "",
+    folder_id: str = "",
     workspace_id: str = "",
 ) -> str:
-    """Create a new page in a notebook."""
+    """Create a page. Pass folder_id to drop it into a folder; omit for the workspace root."""
     client, default_ws = _client()
     ws = _require_ws(workspace_id or default_ws)
-    return _json(client.create_page(ws, notebook_id, name=name, content=content))
+    return _json(client.create_page(ws, name=name, content=content, folder_id=folder_id or None))
 
 
 @mcp.tool()
 def stash_edit_page(
-    notebook_id: str,
     page_id: str,
     content: str,
     name: str = "",
     workspace_id: str = "",
 ) -> str:
-    """Update an existing notebook page."""
+    """Update an existing page's content (and optionally rename)."""
     client, default_ws = _client()
     ws = _require_ws(workspace_id or default_ws)
     kwargs: dict = {"content": content}
     if name:
         kwargs["name"] = name
-    return _json(client.update_page(ws, notebook_id, page_id, **kwargs))
+    return _json(client.update_page(ws, page_id, **kwargs))
 
 
 @mcp.tool()
-def stash_delete_page(notebook_id: str, page_id: str, workspace_id: str = "") -> str:
-    """Delete a page from a notebook."""
+def stash_delete_page(page_id: str, workspace_id: str = "") -> str:
+    """Delete a page."""
     client, default_ws = _client()
     ws = _require_ws(workspace_id or default_ws)
-    client.delete_page(ws, notebook_id, page_id)
+    client.delete_page(ws, page_id)
     return _json({"deleted": page_id})
 
 
@@ -228,12 +241,17 @@ def stash_query_table(
     """Query rows from a table with optional sorting and filtering."""
     client, default_ws = _client()
     ws = _require_ws(workspace_id or default_ws)
-    return _json(client.list_table_rows(
-        ws, table_id,
-        limit=limit, offset=offset,
-        sort_by=sort_by, sort_order=sort_order,
-        filters=filters,
-    ))
+    return _json(
+        client.list_table_rows(
+            ws,
+            table_id,
+            limit=limit,
+            offset=offset,
+            sort_by=sort_by,
+            sort_order=sort_order,
+            filters=filters,
+        )
+    )
 
 
 @mcp.tool()
@@ -275,7 +293,9 @@ def stash_add_column(
     client, default_ws = _client()
     ws = _require_ws(workspace_id or default_ws)
     opts = json.loads(options) if isinstance(options, str) else options
-    return _json(client.add_table_column(ws, table_id, name, col_type=col_type, options=opts or None))
+    return _json(
+        client.add_table_column(ws, table_id, name, col_type=col_type, options=opts or None)
+    )
 
 
 @mcp.tool()
@@ -400,7 +420,9 @@ def stash_create_view(
     client, default_ws = _client()
     ws = _require_ws(workspace_id or default_ws)
     item_list = json.loads(items) if isinstance(items, str) else items
-    return _json(client.create_view(ws, title, description=description, is_public=is_public, items=item_list))
+    return _json(
+        client.create_view(ws, title, description=description, is_public=is_public, items=item_list)
+    )
 
 
 @mcp.tool()
@@ -475,7 +497,11 @@ def stash_create_deck(
     """Create a new deck in the workspace."""
     client, default_ws = _client()
     ws = _require_ws(workspace_id or default_ws)
-    return _json(client.create_deck(ws, name, description=description, html_content=html_content, deck_type=deck_type))
+    return _json(
+        client.create_deck(
+            ws, name, description=description, html_content=html_content, deck_type=deck_type
+        )
+    )
 
 
 @mcp.tool()
@@ -519,7 +545,7 @@ def stash_whoami() -> str:
 
 @mcp.tool()
 def stash_get_permissions(object_type: str, object_id: str) -> str:
-    """Get visibility + shares for any object (workspace|notebook|page|table|file|history|view)."""
+    """Get visibility + shares for any object (workspace|folder|page|table|file|history|view)."""
     client, _ = _client()
     return _json(client.get_object_permissions(object_type, object_id))
 
@@ -566,12 +592,12 @@ def stash_publish_html(
     html: str,
     workspace_id: str = "",
     audience: str = "link",
-    notebook_id: str = "",
+    folder_id: str = "",
 ) -> str:
     """Single-call publish: create an HTML page and return a share URL.
 
-    If notebook_id is omitted, the page lands in the workspace's auto-created
-    'AI Drafts' notebook. audience: 'link' (anyone with URL) or 'public'
+    If folder_id is omitted, the page lands in the workspace's auto-created
+    'AI Drafts' folder. audience: 'link' (anyone with URL) or 'public'
     (also listed in /discover)."""
     client, default_ws = _client()
     ws = _require_ws(workspace_id or default_ws)
@@ -582,7 +608,7 @@ def stash_publish_html(
             content=html,
             content_type="html",
             audience=audience,
-            notebook_id=notebook_id or None,
+            folder_id=folder_id or None,
         )
     )
 
@@ -593,7 +619,7 @@ def stash_publish_markdown(
     markdown: str,
     workspace_id: str = "",
     audience: str = "link",
-    notebook_id: str = "",
+    folder_id: str = "",
 ) -> str:
     """Single-call publish: create a markdown page and return a share URL.
     Same flow as stash_publish_html but for markdown content."""
@@ -606,12 +632,13 @@ def stash_publish_markdown(
             content=markdown,
             content_type="markdown",
             audience=audience,
-            notebook_id=notebook_id or None,
+            folder_id=folder_id or None,
         )
     )
 
 
 # ── Entry point ───────────────────────────────────────────────────
+
 
 def main():
     mcp.run(transport="stdio")

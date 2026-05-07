@@ -218,7 +218,8 @@ async def create_cli_auth_session(request: Request):
         pass
     await pool.execute(
         "INSERT INTO cli_auth_sessions (session_id, device_name) VALUES ($1, $2)",
-        session_id, device_name,
+        session_id,
+        device_name,
     )
     await pool.execute(
         f"DELETE FROM cli_auth_sessions WHERE created_at < now() - interval '{_CLI_AUTH_TTL_INTERVAL}'"
@@ -291,6 +292,8 @@ async def approve_cli_auth_session(
     api_key = await create_api_key(current_user["id"], name=f"CLI ({device_name})")
     await pool.execute(
         "UPDATE cli_auth_sessions SET api_key = $1, username = $2 WHERE session_id = $3",
-        api_key, current_user["name"], session_id,
+        api_key,
+        current_user["name"],
+        session_id,
     )
     return {"status": "approved"}

@@ -252,35 +252,39 @@ class StashClient:
 
     # --- Aggregate ---
 
-    def all_notebooks(self) -> list:
-        return self._list("/api/v1/me/notebooks", "notebooks")
+    def all_pages(self) -> list:
+        return self._list("/api/v1/me/pages", "pages")
 
     def all_decks(self) -> list:
         return self._list("/api/v1/me/decks", "decks")
 
-    # --- Notebooks (collections) ---
+    # --- Folders (workspace-scoped, nestable) ---
 
-    def create_notebook(self, workspace_id: str, name: str, description: str = "") -> dict:
-        return self._post(
-            f"/api/v1/workspaces/{workspace_id}/notebooks",
-            json={
-                "name": name,
-                "description": description,
-            },
-        )
+    def list_folders(self, workspace_id: str) -> list:
+        return self._list(f"/api/v1/workspaces/{workspace_id}/folders", "folders")
 
-    def list_notebooks(self, workspace_id: str) -> list:
-        return self._list(f"/api/v1/workspaces/{workspace_id}/notebooks", "notebooks")
+    def create_folder(
+        self,
+        workspace_id: str,
+        name: str,
+        parent_folder_id: str | None = None,
+    ) -> dict:
+        body: dict = {"name": name}
+        if parent_folder_id:
+            body["parent_folder_id"] = parent_folder_id
+        return self._post(f"/api/v1/workspaces/{workspace_id}/folders", json=body)
 
-    def delete_notebook(self, workspace_id: str, notebook_id: str) -> None:
-        self._delete(f"/api/v1/workspaces/{workspace_id}/notebooks/{notebook_id}")
+    def delete_folder(self, workspace_id: str, folder_id: str) -> None:
+        self._delete(f"/api/v1/workspaces/{workspace_id}/folders/{folder_id}")
 
-    # --- Notebook Pages ---
+    def get_workspace_tree(self, workspace_id: str) -> dict:
+        return self._get(f"/api/v1/workspaces/{workspace_id}/tree")
+
+    # --- Pages (workspace-scoped) ---
 
     def create_page(
         self,
         workspace_id: str,
-        notebook_id: str,
         name: str,
         content: str = "",
         folder_id: str | None = None,
@@ -295,34 +299,22 @@ class StashClient:
         }
         if folder_id:
             body["folder_id"] = folder_id
-        return self._post(
-            f"/api/v1/workspaces/{workspace_id}/notebooks/{notebook_id}/pages", json=body
-        )
+        return self._post(f"/api/v1/workspaces/{workspace_id}/pages/new", json=body)
 
-    def list_page_tree(self, workspace_id: str, notebook_id: str) -> dict:
-        return self._get(f"/api/v1/workspaces/{workspace_id}/notebooks/{notebook_id}/pages")
+    def list_pages(self, workspace_id: str) -> list:
+        return self._list(f"/api/v1/workspaces/{workspace_id}/pages", "pages")
 
-    def get_page(self, workspace_id: str, notebook_id: str, page_id: str) -> dict:
-        return self._get(
-            f"/api/v1/workspaces/{workspace_id}/notebooks/{notebook_id}/pages/{page_id}"
-        )
+    def get_page(self, workspace_id: str, page_id: str) -> dict:
+        return self._get(f"/api/v1/workspaces/{workspace_id}/pages/{page_id}")
 
-    def update_page(self, workspace_id: str, notebook_id: str, page_id: str, **kwargs) -> dict:
+    def update_page(self, workspace_id: str, page_id: str, **kwargs) -> dict:
         return self._patch(
-            f"/api/v1/workspaces/{workspace_id}/notebooks/{notebook_id}/pages/{page_id}",
+            f"/api/v1/workspaces/{workspace_id}/pages/{page_id}",
             json=kwargs,
         )
 
-    def delete_page(self, workspace_id: str, notebook_id: str, page_id: str) -> None:
-        self._delete(f"/api/v1/workspaces/{workspace_id}/notebooks/{notebook_id}/pages/{page_id}")
-
-    # --- Notebook Folders ---
-
-    def create_folder(self, workspace_id: str, notebook_id: str, name: str) -> dict:
-        return self._post(
-            f"/api/v1/workspaces/{workspace_id}/notebooks/{notebook_id}/folders",
-            json={"name": name},
-        )
+    def delete_page(self, workspace_id: str, page_id: str) -> None:
+        self._delete(f"/api/v1/workspaces/{workspace_id}/pages/{page_id}")
 
     # --- History (workspace events) ---
 
@@ -578,7 +570,7 @@ class StashClient:
         base = f"/api/v1/workspaces/{workspace_id}/tables" if workspace_id else "/api/v1/tables"
         return self._request("DELETE", f"{base}/{table_id}/columns/{column_id}").json()
 
-    # ── Unified sharing API (object_type: workspace|notebook|page|table|file|history|view) ──
+    # ── Unified sharing API (object_type: workspace|folder|page|table|file|history|view) ──
 
     def get_object_permissions(self, object_type: str, object_id: str) -> dict:
         return self._get(f"/api/v1/objects/{object_type}/{object_id}/permissions")
@@ -600,9 +592,7 @@ class StashClient:
     def remove_object_share(self, object_type: str, object_id: str, user_id: str) -> None:
         self._delete(f"/api/v1/objects/{object_type}/{object_id}/shares/{user_id}")
 
-    def share_link(
-        self, object_type: str, object_id: str, ensure: str | None = None
-    ) -> dict:
+    def share_link(self, object_type: str, object_id: str, ensure: str | None = None) -> dict:
         path = f"/api/v1/objects/{object_type}/{object_id}/share-link"
         if ensure:
             path += f"?ensure={ensure}"
@@ -615,7 +605,7 @@ class StashClient:
         content: str,
         content_type: str = "markdown",
         audience: str = "link",
-        notebook_id: str | None = None,
+        folder_id: str | None = None,
     ) -> dict:
         body: dict = {
             "workspace_id": workspace_id,
@@ -624,6 +614,6 @@ class StashClient:
             "content_type": content_type,
             "audience": audience,
         }
-        if notebook_id:
-            body["notebook_id"] = notebook_id
+        if folder_id:
+            body["folder_id"] = folder_id
         return self._post("/api/v1/publish", json=body)

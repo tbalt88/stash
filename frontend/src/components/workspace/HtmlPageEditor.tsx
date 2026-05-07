@@ -3,13 +3,13 @@
 import { useEffect, useRef, useState } from "react";
 
 import HtmlPageView from "./HtmlPageView";
-import { NotebookPage } from "../../lib/types";
+import { Page } from "../../lib/types";
 import type { SaveStatus } from "./MarkdownEditor";
 
 const AUTOSAVE_DEBOUNCE_MS = 1500;
 
 interface HtmlPageEditorProps {
-  file: NotebookPage;
+  file: Page;
   onSave: (html: string) => void;
   onSaveStatusChange?: (status: SaveStatus) => void;
 }

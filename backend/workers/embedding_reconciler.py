@@ -30,10 +30,10 @@ def _text_hash(text: str) -> str:
     return hashlib.sha256(text.encode()).hexdigest()
 
 
-async def _reconcile_notebook_pages() -> int:
+async def _reconcile_pages() -> int:
     pool = get_pool()
     rows = await pool.fetch(
-        "SELECT id, content_markdown FROM notebook_pages " "WHERE embed_stale LIMIT $1",
+        "SELECT id, content_markdown FROM pages WHERE embed_stale LIMIT $1",
         BATCH_SIZE,
     )
     if not rows:
@@ -44,7 +44,7 @@ async def _reconcile_notebook_pages() -> int:
     if not vecs:
         return 0
     await pool.executemany(
-        "UPDATE notebook_pages SET embedding = $1, embed_stale = FALSE WHERE id = $2",
+        "UPDATE pages SET embedding = $1, embed_stale = FALSE WHERE id = $2",
         list(zip(vecs, ids)),
     )
     return len(ids)
@@ -105,7 +105,7 @@ async def _tick() -> int:
     if not embedding_service.is_configured():
         return 0
     done = 0
-    for reconcile in (_reconcile_notebook_pages, _reconcile_table_rows, _reconcile_history_events):
+    for reconcile in (_reconcile_pages, _reconcile_table_rows, _reconcile_history_events):
         done += await reconcile()
     return done
 

@@ -1,9 +1,9 @@
 """Sessions router: GUI-friendly endpoints for browsing and sharing sessions.
 
 A "session" in Stash is a sequence of `history_events` rows tied by
-session_id. The CLI's `stash share` materializes a session into a notebook
-page from a local .jsonl file. This router provides the same materialize
-step server-side, sourced from the events the workspace already has, so the
+session_id. The CLI's `stash share` materializes a session into a wiki page
+from a local .jsonl file. This router provides the same materialize step
+server-side, sourced from the events the workspace already has, so the
 frontend /history page can ship a Share button without involving the CLI.
 """
 
@@ -13,12 +13,12 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 from ..auth import get_current_user
 from ..database import get_pool
-from ..services import notebook_service, workspace_service
+from ..services import wiki_service, workspace_service
 
 router = APIRouter(prefix="/api/v1", tags=["sessions"])
 
-# Stable name for the auto-created notebook that holds materialized sessions.
-SESSIONS_NOTEBOOK_NAME = "Sessions"
+# Stable name for the auto-created folder that holds materialized sessions.
+SESSIONS_FOLDER_NAME = "Sessions"
 
 
 @router.get("/me/sessions")
@@ -71,21 +71,9 @@ async def list_my_sessions(
     return {"sessions": [dict(r) for r in rows]}
 
 
-async def _find_or_create_sessions_notebook(workspace_id: UUID, user_id: UUID) -> dict:
-    pool = get_pool()
-    row = await pool.fetchrow(
-        "SELECT id, workspace_id, name, description, created_by, created_at, updated_at "
-        "FROM notebooks WHERE workspace_id = $1 AND name = $2 LIMIT 1",
-        workspace_id,
-        SESSIONS_NOTEBOOK_NAME,
-    )
-    if row:
-        return dict(row)
-    return await notebook_service.create_notebook(
-        workspace_id=workspace_id,
-        name=SESSIONS_NOTEBOOK_NAME,
-        description="Materialized agent sessions, auto-created when you share a session.",
-        created_by=user_id,
+async def _find_or_create_sessions_folder(workspace_id: UUID, user_id: UUID) -> dict:
+    return await wiki_service.find_or_create_root_folder(
+        workspace_id, SESSIONS_FOLDER_NAME, user_id
     )
 
 
@@ -116,8 +104,8 @@ async def materialize_session(
     session_id: str,
     current_user: dict = Depends(get_current_user),
 ):
-    """Idempotent: turn a session_id into a notebook page in the workspace's
-    Sessions notebook, returning the page so the frontend can open ShareSheet
+    """Idempotent: turn a session_id into a wiki page in the workspace's
+    Sessions folder, returning the page so the frontend can open ShareSheet
     on it. Re-materializing the same session updates the existing page rather
     than spawning duplicates."""
     if not await workspace_service.is_member(workspace_id, current_user["id"]):
@@ -134,12 +122,8 @@ async def materialize_session(
     if not events:
         raise HTTPException(status_code=404, detail="No events for that session in this workspace")
 
-    notebook = await _find_or_create_sessions_notebook(workspace_id, current_user["id"])
+    folder = await _find_or_create_sessions_folder(workspace_id, current_user["id"])
 
-    # Title format: "{agent} · {date} · {short_id}". Naive prefix-truncation
-    # produced ugly names like "Session session-" for non-UUID session_ids;
-    # combining agent + date + short_id reads naturally and avoids collisions
-    # within an agent in the same minute.
     agent = (events[0]["agent_name"] or "agent").strip() or "agent"
     started = events[0]["created_at"]
     date_str = started.strftime("%Y-%m-%d %H:%M")
@@ -150,24 +134,26 @@ async def materialize_session(
     # Idempotency by metadata.session_id, not by name — that way we can change
     # the display name format without orphaning previously-materialized pages.
     existing = await pool.fetchrow(
-        "SELECT id FROM notebook_pages "
-        "WHERE notebook_id = $1 AND metadata->>'session_id' = $2 LIMIT 1",
-        notebook["id"],
+        "SELECT id FROM pages "
+        "WHERE workspace_id = $1 AND folder_id = $2 AND metadata->>'session_id' = $3 LIMIT 1",
+        workspace_id,
+        folder["id"],
         session_id,
     )
     if existing:
-        page = await notebook_service.update_page(
+        page = await wiki_service.update_page(
             existing["id"],
-            notebook["id"],
+            workspace_id,
             current_user["id"],
             content=content,
         )
     else:
-        page = await notebook_service.create_page(
-            notebook_id=notebook["id"],
+        page = await wiki_service.create_page(
+            workspace_id=workspace_id,
             name=page_name,
             content=content,
             created_by=current_user["id"],
+            folder_id=folder["id"],
             metadata={"session_id": session_id, "materialized": True},
         )
-    return {"page": page, "notebook_id": str(notebook["id"])}
+    return {"page": page, "folder_id": str(folder["id"])}

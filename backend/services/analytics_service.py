@@ -45,21 +45,20 @@ def _accessible_events_cte(ws_idx: int | None = None) -> str:
     """
 
 
-def _accessible_notebooks_cte(ws_idx: int | None = None) -> str:
+def _accessible_pages_cte(ws_idx: int | None = None) -> str:
     if ws_idx is not None:
         return f"""
-        WITH accessible_notebooks AS (
-            SELECT n.id AS notebook_id
-            FROM notebooks n
-            WHERE n.workspace_id = ${ws_idx}
+        WITH accessible_pages AS (
+            SELECT p.id AS page_id
+            FROM pages p
+            WHERE p.workspace_id = ${ws_idx}
         )
         """
     return """
-    WITH accessible_notebooks AS (
-        SELECT n.id AS notebook_id
-        FROM notebooks n
-        WHERE n.workspace_id IN (SELECT workspace_id FROM workspace_members WHERE user_id = $1)
-           OR (n.workspace_id IS NULL AND n.created_by = $1)
+    WITH accessible_pages AS (
+        SELECT p.id AS page_id
+        FROM pages p
+        WHERE p.workspace_id IN (SELECT workspace_id FROM workspace_members WHERE user_id = $1)
     )
     """
 
@@ -273,9 +272,9 @@ async def _get_source_counts(user_id: UUID, workspace_id: UUID | None = None) ->
         row = await pool.fetchrow(
             """
             SELECT
-                (SELECT COUNT(*) FROM notebook_pages np
-                 WHERE np.notebook_id IN (SELECT n.id FROM notebooks n WHERE n.workspace_id = $1)
-                   AND np.content_markdown IS NOT NULL AND np.content_markdown != '') AS pages,
+                (SELECT COUNT(*) FROM pages p
+                 WHERE p.workspace_id = $1
+                   AND p.content_markdown IS NOT NULL AND p.content_markdown != '') AS pages,
                 (SELECT COUNT(*) FROM table_rows tr
                  WHERE tr.table_id IN (SELECT t.id FROM tables t WHERE t.workspace_id = $1)
                    AND tr.data IS NOT NULL) AS rows,
@@ -287,12 +286,9 @@ async def _get_source_counts(user_id: UUID, workspace_id: UUID | None = None) ->
         row = await pool.fetchrow(
             """
             SELECT
-                (SELECT COUNT(*) FROM notebook_pages np
-                 WHERE np.notebook_id IN (
-                     SELECT n.id FROM notebooks n
-                     WHERE n.workspace_id IN (SELECT workspace_id FROM workspace_members WHERE user_id = $1)
-                        OR (n.workspace_id IS NULL AND n.created_by = $1))
-                   AND np.content_markdown IS NOT NULL AND np.content_markdown != '') AS pages,
+                (SELECT COUNT(*) FROM pages p
+                 WHERE p.workspace_id IN (SELECT workspace_id FROM workspace_members WHERE user_id = $1)
+                   AND p.content_markdown IS NOT NULL AND p.content_markdown != '') AS pages,
                 (SELECT COUNT(*) FROM table_rows tr
                  WHERE tr.table_id IN (
                      SELECT t.id FROM tables t
@@ -355,14 +351,14 @@ async def compute_knowledge_density(
 
     # One scan per source: stem → doc_count + newest_at.
     page_rows = await pool.fetch(
-        _accessible_notebooks_cte(ws_idx=ws_idx) + """
+        _accessible_pages_cte(ws_idx=ws_idx) + """
         SELECT stem, COUNT(DISTINCT doc_id) AS ndoc, MAX(ts) AS newest_at
         FROM (
             SELECT word AS stem, np.id AS doc_id, np.updated_at AS ts
-            FROM notebook_pages np,
+            FROM pages np,
                  LATERAL unnest(to_tsvector('english', COALESCE(np.content_markdown, '')))
                      AS t(word, positions, weights)
-            WHERE np.notebook_id IN (SELECT notebook_id FROM accessible_notebooks)
+            WHERE np.id IN (SELECT page_id FROM accessible_pages)
               AND np.content_markdown IS NOT NULL AND np.content_markdown != ''
               AND length(word) > 2
         ) x
@@ -435,11 +431,11 @@ async def compute_knowledge_density(
     # source) maps top stems → their most frequent original word. ts_lexize
     # returns the same stems Postgres tsvector produced, so the join is exact.
     word_rows = await pool.fetch(
-        _accessible_notebooks_cte(ws_idx=ws_idx) + """
+        _accessible_pages_cte(ws_idx=ws_idx) + """
         SELECT w AS word, ts_lexize('english_stem', w) AS stems, COUNT(*) AS freq
-        FROM notebook_pages np,
+        FROM pages np,
              LATERAL regexp_split_to_table(lower(COALESCE(np.content_markdown, '')), '[^a-z]+') AS w
-        WHERE np.notebook_id IN (SELECT notebook_id FROM accessible_notebooks)
+        WHERE np.id IN (SELECT page_id FROM accessible_pages)
           AND length(w) > 3
         GROUP BY w
         ORDER BY freq DESC
@@ -550,11 +546,11 @@ async def get_embedding_projection(
 
     # Count current embeddings
     total_count = 0
-    if source is None or source == "notebook_pages":
+    if source is None or source == "pages":
         row = await pool.fetchval(
-            _accessible_notebooks_cte(ws_idx=ws_idx) + """
-            SELECT COUNT(*) FROM notebook_pages np
-            WHERE np.notebook_id IN (SELECT notebook_id FROM accessible_notebooks)
+            _accessible_pages_cte(ws_idx=ws_idx) + """
+            SELECT COUNT(*) FROM pages np
+            WHERE np.id IN (SELECT page_id FROM accessible_pages)
               AND np.embedding IS NOT NULL
             """,
             scope_arg,
@@ -601,12 +597,12 @@ async def get_embedding_projection(
     all_items: list[dict] = []
     per_source_limit = max_points if source else max_points // 3
 
-    if source is None or source == "notebook_pages":
+    if source is None or source == "pages":
         rows = await pool.fetch(
-            _accessible_notebooks_cte(ws_idx=ws_idx) + """
+            _accessible_pages_cte(ws_idx=ws_idx) + """
             SELECT np.id, np.name AS label, np.embedding, np.created_at
-            FROM notebook_pages np
-            WHERE np.notebook_id IN (SELECT notebook_id FROM accessible_notebooks)
+            FROM pages np
+            WHERE np.id IN (SELECT page_id FROM accessible_pages)
               AND np.embedding IS NOT NULL
             ORDER BY np.updated_at DESC
             LIMIT $2
@@ -619,7 +615,7 @@ async def get_embedding_projection(
                 {
                     "id": str(r["id"]),
                     "label": r["label"],
-                    "source": "notebook_pages",
+                    "source": "pages",
                     "created_at": r["created_at"].isoformat() if r["created_at"] else None,
                     "embedding": np.array(r["embedding"]),
                 }

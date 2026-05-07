@@ -103,7 +103,6 @@ async def _get_user_from_api_key(token: str) -> dict:
 
 
 async def _get_user_from_jwt(token: str) -> dict:
-    from .config import settings
     from .managed.auth0.jwt import validate_auth0_token
 
     claims = await validate_auth0_token(token)

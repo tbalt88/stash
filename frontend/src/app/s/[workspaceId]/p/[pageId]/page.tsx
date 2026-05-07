@@ -4,7 +4,7 @@ import { notFound } from "next/navigation";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
-import HtmlPageView from "../../../../../../../components/workspace/HtmlPageView";
+import HtmlPageView from "../../../../../components/workspace/HtmlPageView";
 
 const BACKEND_ORIGIN = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3456";
 
@@ -16,8 +16,11 @@ export async function generateMetadata({
   const { pageId } = await params;
   const page = await loadPage(pageId);
   if (!page) return { title: "Page not found · Stash" };
-  const title = `${page.name} · ${page.notebook_name}`;
-  const description = `A page in ${page.notebook_name}.`;
+  const folder = page.folder_name ? ` · ${page.folder_name}` : "";
+  const title = `${page.name}${folder} · Stash`;
+  const description = page.folder_name
+    ? `A page in folder "${page.folder_name}".`
+    : "A page in Stash.";
   return {
     title,
     description,
@@ -32,8 +35,8 @@ interface PublicPage {
   content_type: "markdown" | "html";
   content_markdown: string;
   content_html: string;
-  notebook_id: string;
-  notebook_name: string;
+  folder_id: string | null;
+  folder_name: string | null;
   workspace_id: string;
   updated_at: string;
 }
@@ -50,9 +53,9 @@ async function loadPage(pageId: string): Promise<PublicPage | null> {
 export default async function PublicPageReader({
   params,
 }: {
-  params: Promise<{ workspaceId: string; notebookId: string; pageId: string }>;
+  params: Promise<{ workspaceId: string; pageId: string }>;
 }) {
-  const { workspaceId, notebookId, pageId } = await params;
+  const { workspaceId, pageId } = await params;
   const page = await loadPage(pageId);
   if (!page) notFound();
 
@@ -61,11 +64,16 @@ export default async function PublicPageReader({
       <nav className="font-mono text-[11px] uppercase tracking-wider text-muted">
         <Link href={`/s/${workspaceId}`} className="hover:text-ink">
           Workspace
-        </Link>{" "}
-        ›{" "}
-        <Link href={`/s/${workspaceId}/n/${notebookId}`} className="hover:text-ink">
-          {page.notebook_name}
         </Link>
+        {page.folder_id && page.folder_name && (
+          <>
+            {" "}
+            ›{" "}
+            <Link href={`/s/${workspaceId}/f/${page.folder_id}`} className="hover:text-ink">
+              {page.folder_name}
+            </Link>
+          </>
+        )}
       </nav>
 
       <header className="mt-4 border-b border-border-subtle pb-6">

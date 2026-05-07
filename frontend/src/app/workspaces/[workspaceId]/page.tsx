@@ -7,10 +7,9 @@ import AppShell from "../../../components/AppShell";
 import WorkspaceSidebar from "../../../components/workspace/WorkspaceSidebar";
 import { useAuth } from "../../../hooks/useAuth";
 import {
-  createNotebook,
-  deleteNotebook,
   getWorkspace,
-  listNotebooks,
+  getWorkspaceTree,
+  getWorkspaceGraph,
   listFiles,
   listTables,
   createTable,
@@ -24,14 +23,13 @@ import {
   getActivityTimeline,
   getKnowledgeDensity,
   getEmbeddingProjection,
-  getPageGraph,
   listJoinRequests,
 } from "../../../lib/api";
 import {
   ActivityTimeline,
   EmbeddingProjection,
   KnowledgeDensity,
-  Notebook,
+  WorkspaceTree,
   FileInfo,
   PageGraph,
   Table,
@@ -83,7 +81,7 @@ export default function WorkspacePage() {
   const { user, loading, logout } = useAuth();
 
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
-  const [notebooks, setNotebooks] = useState<Notebook[]>([]);
+  const [tree, setTree] = useState<WorkspaceTree>({ folders: [], pages: [] });
   const [tables, setTables] = useState<Table[]>([]);
   const [recentFiles, setRecentFiles] = useState<FileInfo[]>([]);
   const [members, setMembers] = useState<WorkspaceMember[]>([]);
@@ -97,10 +95,9 @@ export default function WorkspacePage() {
   const [projection, setProjection] = useState<EmbeddingProjection | null>(null);
   const [vizLoading, setVizLoading] = useState(true);
 
-  // Page graph state
+  // Workspace-wide page graph state
   const [showGraph, setShowGraph] = useState(false);
   const [pageGraph, setPageGraph] = useState<PageGraph | null>(null);
-  const [graphNotebookId, setGraphNotebookId] = useState<string | null>(null);
   const [graphAutoLoaded, setGraphAutoLoaded] = useState(false);
   const [pendingRequestCount, setPendingRequestCount] = useState(0);
 
@@ -110,13 +107,13 @@ export default function WorkspacePage() {
 
   const loadData = useCallback(async () => {
     try {
-      const [nbRes, m, tblRes, filesRes] = await Promise.all([
-        listNotebooks(workspaceId).then(r => r?.notebooks ?? []).catch(() => [] as Notebook[]),
+      const [treeRes, m, tblRes, filesRes] = await Promise.all([
+        getWorkspaceTree(workspaceId).catch(() => ({ folders: [], pages: [] }) as WorkspaceTree),
         getWorkspaceMembers(workspaceId).catch(() => [] as WorkspaceMember[]),
         listTables(workspaceId).then(r => r?.tables ?? []).catch(() => [] as Table[]),
         listFiles(workspaceId).catch(() => [] as FileInfo[]),
       ]);
-      setNotebooks(nbRes);
+      setTree(treeRes);
       setMembers(m);
       setTables(tblRes);
       setRecentFiles(filesRes.slice(0, 5));
@@ -140,17 +137,15 @@ export default function WorkspacePage() {
     }).finally(() => setVizLoading(false));
   }, [user, workspaceId]);
 
-  // Auto-select first notebook for page graph
+  // Workspace-wide page graph auto-loads once content exists.
   useEffect(() => {
     if (graphAutoLoaded) return;
-    if (notebooks.length === 0) return;
-    const firstId = notebooks[0].id;
-    setGraphNotebookId(firstId);
+    if (tree.folders.length === 0 && tree.pages.length === 0) return;
     setGraphAutoLoaded(true);
-    getPageGraph(workspaceId, firstId)
+    getWorkspaceGraph(workspaceId)
       .then((g) => { setPageGraph(g); setShowGraph(true); })
       .catch(() => {});
-  }, [notebooks, graphAutoLoaded, workspaceId]);
+  }, [tree, graphAutoLoaded, workspaceId]);
 
   const handleJoin = async () => {
     if (!workspace) return;
@@ -158,18 +153,6 @@ export default function WorkspacePage() {
     catch (err) { setError(err instanceof Error ? err.message : "Failed to join"); }
   };
 
-  const handleCreateNotebook = async () => {
-    const name = prompt("Notebook name:");
-    if (!name) return;
-    try { await createNotebook(workspaceId, name); await loadData(); }
-    catch (err) { setError(err instanceof Error ? err.message : "Failed to create notebook"); }
-  };
-
-  const handleDeleteNotebook = async (nbId: string) => {
-    if (!confirm("Delete this notebook and all its pages?")) return;
-    try { await deleteNotebook(workspaceId, nbId); await loadData(); }
-    catch (err) { setError(err instanceof Error ? err.message : "Failed to delete"); }
-  };
 
 
   const handleCreateTable = async () => {
@@ -273,41 +256,18 @@ export default function WorkspacePage() {
                 </div>
               ) : null}
 
-              {/* Page Graph */}
-              {notebooks.length > 0 && (
+              {/* Workspace-wide page graph */}
+              {(tree.folders.length > 0 || tree.pages.length > 0) && (
                 <div className="bg-surface border border-border rounded-xl px-5 py-4">
-                  <div className="flex items-center justify-between">
-                    <h2 className="text-sm font-semibold text-foreground uppercase tracking-wider">Page Graph</h2>
-                    <select
-                      className="text-xs bg-raised border border-border rounded px-2 py-1 text-foreground"
-                      value={graphNotebookId || ""}
-                      onChange={async (e) => {
-                        const nbId = e.target.value || null;
-                        setGraphNotebookId(nbId);
-                        if (!nbId) { setPageGraph(null); setShowGraph(false); return; }
-                        try {
-                          const g = await getPageGraph(workspaceId, nbId);
-                          setPageGraph(g);
-                          setShowGraph(true);
-                        } catch { /* ignore */ }
-                      }}
-                    >
-                      {notebooks.map((nb) => (
-                        <option key={nb.id} value={nb.id}>{nb.name}</option>
-                      ))}
-                    </select>
-                  </div>
+                  <h2 className="text-sm font-semibold text-foreground uppercase tracking-wider">Page Graph</h2>
                   {showGraph && pageGraph && (
                     <div className="mt-4 pt-4 border-t border-border-subtle">
                       <PageGraphView
                         graph={pageGraph}
                         onClose={() => setShowGraph(false)}
-                        onSelectPage={(pageId) => {
-                          if (!graphNotebookId) return;
-                          router.push(
-                            `/notebooks?ws=${workspaceId}&nb=${graphNotebookId}&page=${pageId}`
-                          );
-                        }}
+                        onSelectPage={(pageId) =>
+                          router.push(`/wiki?ws=${workspaceId}&page=${pageId}`)
+                        }
                         inline
                       />
                     </div>
@@ -317,25 +277,41 @@ export default function WorkspacePage() {
 
               <WorkspaceSection
                 title="Wiki"
-                description="Notebooks and wiki pages with backlinks."
-                actionLabel="+ New"
-                onAction={handleCreateNotebook}
+                description="Folders, pages, and wiki backlinks."
+                actionLabel="Open"
+                onAction={() => router.push(`/wiki?ws=${workspaceId}`)}
               >
-                {notebooks.length === 0 ? (
-                  <p className="text-sm text-muted">No notebooks yet.</p>
+                {tree.folders.length === 0 && tree.pages.length === 0 ? (
+                  <p className="text-sm text-muted">No pages yet.</p>
                 ) : (
                   <div className="space-y-1">
-                    {notebooks.map(nb => (
-                      <div key={nb.id} className="flex items-center justify-between px-3 py-2 rounded-lg hover:bg-raised transition-colors">
-                        <Link href="/notebooks" className="flex items-center gap-3 flex-1 min-w-0">
-                          <div className="w-7 h-7 rounded-md bg-green-500/15 text-green-500 flex items-center justify-center text-xs font-bold">N</div>
-                          <div>
-                            <div className="text-sm text-foreground">{nb.name}</div>
-                            {nb.description && <div className="text-xs text-muted">{nb.description}</div>}
+                    {tree.folders.slice(0, 8).map((f) => (
+                      <Link
+                        key={f.id}
+                        href={`/wiki?ws=${workspaceId}`}
+                        className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-raised transition-colors"
+                      >
+                        <div className="w-7 h-7 rounded-md bg-green-500/15 text-green-500 flex items-center justify-center text-xs font-bold">📁</div>
+                        <div>
+                          <div className="text-sm text-foreground">{f.name}</div>
+                          <div className="text-xs text-muted">
+                            {f.pages.length} page{f.pages.length === 1 ? "" : "s"}
+                            {f.folders.length > 0
+                              ? ` · ${f.folders.length} subfolder${f.folders.length === 1 ? "" : "s"}`
+                              : ""}
                           </div>
-                        </Link>
-                        <button onClick={() => handleDeleteNotebook(nb.id)} className="text-xs text-red-400 hover:text-red-300 px-2 py-1 opacity-0 group-hover:opacity-100">Delete</button>
-                      </div>
+                        </div>
+                      </Link>
+                    ))}
+                    {tree.pages.slice(0, 4).map((p) => (
+                      <Link
+                        key={p.id}
+                        href={`/wiki?ws=${workspaceId}&page=${p.id}`}
+                        className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-raised transition-colors"
+                      >
+                        <div className="w-7 h-7 rounded-md bg-cyan-500/15 text-cyan-500 flex items-center justify-center text-xs font-bold">P</div>
+                        <div className="text-sm text-foreground">{p.name}</div>
+                      </Link>
                     ))}
                   </div>
                 )}
