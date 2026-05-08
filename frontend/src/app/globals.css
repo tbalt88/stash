@@ -41,10 +41,11 @@
   --color-border: var(--border-color);
   --color-border-subtle: var(--border-subtle-color);
 
-  /* Brand (orange) */
-  --color-brand: #F97316;
-  --color-brand-hover: #EA580C;
-  --color-brand-muted: oklch(0.7 0.14 55 / 0.15);
+  /* Brand (olive/forest — Stash 2026) */
+  --color-brand: #527559;
+  --color-brand-hover: #43614a;
+  --color-brand-muted: oklch(0.55 0.06 145 / 0.15);
+  --color-brand-deep: #36503c;
 
   /* Agent (violet) */
   --color-agent: #8B5CF6;
@@ -64,7 +65,7 @@
 
   /* Typography */
   --font-sans: var(--font-instrument-sans), 'Instrument Sans', sans-serif;
-  --font-display: 'Satoshi', sans-serif;
+  --font-display: var(--font-space-grotesk), 'Space Grotesk', 'Satoshi', sans-serif;
   --font-mono: var(--font-jetbrains-mono), 'JetBrains Mono', monospace;
 }
 

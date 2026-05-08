@@ -1,4 +1,40 @@
-# Stash — Shared Workspace, Wiki, Table, and Memory System
+# Stash — Shared Stashes, Skills, and Memory System
+
+## Concept: Stashes and Skills
+
+A **stash** is a shared bundle a team works out of. Each stash maps to three
+folders matching how memory works for an agent:
+
+- **Sessions** (episodic) — agent transcripts uploaded under
+  `/api/v1/stashes/{id}/transcripts`.
+- **Skills** (procedural) — wiki folders that contain a `SKILL.md`
+  frontmatter file. See below.
+- **Drive** (semantic) — files + non-skill wiki pages.
+
+To give your agents a skill, **create a wiki folder** in a stash whose immediate
+children include a file named `SKILL.md`. The body of `SKILL.md` starts with
+YAML frontmatter:
+
+```yaml
+---
+name: dd-respond
+description: Draft response packets to investor diligence asks
+when_to_use: When an investor sends a DD checklist
+version: 2.1
+mcp_exposed: true
+---
+```
+
+The folder may contain any number of supporting `.md` files (`examples.md`,
+`checklist.md`, etc.) — they all become part of the skill payload. Stash
+exposes skills via:
+
+- `GET /api/v1/stashes/{id}/skills` — list skills in a stash
+- `GET /api/v1/stashes/{id}/skills/{name}` — full skill (SKILL.md + siblings)
+- MCP: `stash_list_skills`, `stash_read_skill`
+
+This is the same skills convention Claude Code uses, so a skill authored in a
+stash works directly when dropped into any agent's `~/.claude/skills/` folder.
 
 ## Overview
 Stash is the shared product surface for humans and agents.

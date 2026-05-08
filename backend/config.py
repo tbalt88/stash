@@ -65,5 +65,10 @@ class Settings:
     # browser. Leave unset to disable admin endpoints entirely.
     ADMIN_PASSWORD: str | None = os.getenv("ADMIN_PASSWORD")
 
+    # --- LLM (Anthropic, for Ask-the-stash agent) ---
+    ANTHROPIC_API_KEY: str | None = os.getenv("ANTHROPIC_API_KEY")
+    ANTHROPIC_MODEL: str = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-6")
+    ASK_MAX_TURNS: int = int(os.getenv("ASK_MAX_TURNS", "8"))
+
 
 settings = Settings()
