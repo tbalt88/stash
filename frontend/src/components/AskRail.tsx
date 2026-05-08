@@ -97,21 +97,8 @@ export default function AskRail({
   }
 
   if (collapsed) {
-    return (
-      <aside className="flex flex-col items-center gap-1.5 border-l border-border bg-surface py-2">
-        <button
-          onClick={onToggleCollapsed}
-          className="flex h-8 w-8 items-center justify-center rounded-md text-muted hover:bg-raised hover:text-foreground"
-          aria-label="Open Ask"
-          title="Ask this stash (⌘.)"
-        >
-          ✦
-        </button>
-        <div className="font-display text-[10px] font-medium uppercase tracking-wider text-muted [writing-mode:vertical-rl]">
-          Ask this {mode === "recipient" ? "deck" : "stash"}
-        </div>
-      </aside>
-    );
+    // Fully hidden — the top header's rail-toggle button is the way back.
+    return null;
   }
 
   const headerLabel = mode === "recipient" ? "Ask this deck" : "Ask this stash";

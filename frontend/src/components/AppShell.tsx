@@ -160,7 +160,7 @@ export default function AppShell({ user, onLogout, children }: AppShellProps) {
       <div
         className="grid min-h-0 flex-1 overflow-hidden"
         style={{
-          gridTemplateColumns: `${sidebarCollapsed ? "0px" : "260px"} minmax(0, 1fr) ${railCollapsed ? "44px" : "360px"}`,
+          gridTemplateColumns: `${sidebarCollapsed ? "0px" : "260px"} minmax(0, 1fr) ${railCollapsed ? "0px" : "360px"}`,
         }}
       >
         <AppSidebar
