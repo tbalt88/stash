@@ -105,17 +105,19 @@ export default function SkillPage() {
       <div className="scroll-thin flex-1 overflow-y-auto">
         <div className="mx-auto grid max-w-5xl gap-10 px-12 py-10 lg:grid-cols-[1fr_220px]">
           <div className="min-w-0">
-          <div className="mb-2 flex items-center gap-2 text-[12px] uppercase tracking-wider text-[var(--color-brand-700)]">
-            <span>⚡</span> Skill
-            <span className="text-muted">·</span>
-            <span className="italic text-muted">procedural memory</span>
+          <div className="flex items-center gap-3">
+            <span className="text-5xl leading-none">⚡</span>
+            <div>
+              <div className="text-[10.5px] uppercase tracking-wider text-muted">
+                Skill · folder · SKILL.md
+              </div>
+              <h1 className="mt-0.5 font-display text-[30px] font-bold tracking-tight text-foreground">
+                /{skill?.name || name}
+              </h1>
+            </div>
           </div>
-
-          <h1 className="font-display text-[36px] font-bold tracking-tight text-foreground">
-            /{skill?.name || name}
-          </h1>
           {skill?.description && (
-            <p className="mt-1 text-[15px] text-muted">{skill.description}</p>
+            <p className="mt-3 text-[14.5px] leading-relaxed text-muted">{skill.description}</p>
           )}
 
           {error && (
@@ -125,16 +127,29 @@ export default function SkillPage() {
           )}
 
           {frontmatter && (
-            <pre className="mt-5 overflow-auto rounded-md border border-border bg-surface px-4 py-3 font-mono text-[12px] leading-relaxed text-foreground">
-              <span className="text-muted">---</span>
-              {"\n"}
-              {frontmatter}
-              {"\n"}
-              <span className="text-muted">---</span>
-            </pre>
+            <div className="mt-5 overflow-hidden rounded-md border border-border bg-surface text-[12.5px]">
+              <div className="border-b border-border bg-base/60 px-3 py-1 font-mono text-[10.5px] text-muted">
+                SKILL.md · frontmatter
+              </div>
+              <pre className="whitespace-pre-wrap px-3 py-2 font-mono leading-relaxed text-foreground">
+                <span className="text-muted">---</span>
+                {"\n"}
+                {frontmatter}
+                {"\n"}
+                <span className="text-muted">---</span>
+              </pre>
+            </div>
           )}
 
-          <div className="mt-4 flex flex-wrap items-center gap-2">
+          <article className="markdown-content mt-6 text-[14.5px] leading-relaxed text-foreground">
+            {renderedBody ? (
+              <Markdown remarkPlugins={[remarkGfm]}>{renderedBody}</Markdown>
+            ) : (
+              <p className="text-muted">{skill ? "Empty skill body." : "Loading…"}</p>
+            )}
+          </article>
+
+          <div className="mt-6 flex flex-wrap items-center gap-2">
             <button
               onClick={async () => {
                 if (!skill) return;
@@ -142,22 +157,14 @@ export default function SkillPage() {
                 setCopied(true);
                 setTimeout(() => setCopied(false), 1500);
               }}
-              className="rounded-md border border-border bg-base px-3 py-1.5 text-[12px] text-foreground hover:border-[var(--color-brand-400)] hover:text-[var(--color-brand-700)]"
+              className="rounded-md border border-border bg-base px-3 py-1.5 text-[12.5px] font-medium text-foreground hover:bg-raised"
             >
               {copied ? "Copied" : "Copy as markdown"}
             </button>
             <span className="text-[11px] text-muted">
-              Drop into any agent&apos;s skills directory.
+              Drop this file into any agent&apos;s skills directory.
             </span>
           </div>
-
-          <article className="markdown-content mt-8 text-[14.5px] leading-relaxed text-foreground">
-            {renderedBody ? (
-              <Markdown remarkPlugins={[remarkGfm]}>{renderedBody}</Markdown>
-            ) : (
-              <p className="text-muted">{skill ? "Empty skill body." : "Loading…"}</p>
-            )}
-          </article>
 
           </div>
 

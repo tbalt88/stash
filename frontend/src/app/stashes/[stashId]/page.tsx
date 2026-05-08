@@ -153,8 +153,9 @@ export default function StashHomePage() {
   return (
     <AppShell user={user} onLogout={logout}>
       <div className="scroll-thin flex-1 overflow-y-auto">
-        <div className="h-24 bg-gradient-to-r from-[var(--color-brand-200)] via-[var(--color-brand-100)] to-amber-100" />
-        <div className="mx-auto -mt-6 max-w-3xl px-12 pb-16">
+        <div className="h-32 bg-gradient-to-r from-[var(--color-brand-200)] via-amber-100 to-rose-100" />
+        <div className="mx-auto -mt-8 max-w-3xl px-12 pb-16">
+          <div className="mb-2 text-5xl leading-none">📊</div>
           <h1 className="font-display text-[34px] font-bold tracking-tight text-foreground">
             {stash?.name || "Loading…"}
           </h1>
@@ -162,18 +163,26 @@ export default function StashHomePage() {
             <p className="mt-2 text-[14.5px] leading-relaxed text-muted">{stash.description}</p>
           )}
 
-          <div className="mt-3 flex flex-wrap items-center gap-1.5 text-[11px]">
-            <span className="rounded bg-surface px-2 py-0.5 text-muted">
+          <div className="mt-3 flex flex-wrap items-center gap-2 text-[12px] text-muted">
+            <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-rose-200 text-[10px] font-semibold text-rose-800">
+              {(members.find((m) => m.role === "owner")?.display_name ||
+                members.find((m) => m.role === "owner")?.name ||
+                "?")
+                .slice(0, 2)
+                .toUpperCase()}
+            </span>
+            <span className="font-medium text-foreground">
+              {members.find((m) => m.role === "owner")?.display_name ||
+                members.find((m) => m.role === "owner")?.name ||
+                "—"}
+            </span>
+            <span>· updated {stash?.updated_at ? formatRelative(stash.updated_at) : ""}</span>
+            <span className="text-muted">·</span>
+            <span>
               {members.length} member{members.length !== 1 ? "s" : ""}
             </span>
-            <span className="rounded bg-surface px-2 py-0.5 text-muted">
-              {stash?.is_public ? "Public" : "Private"}
-            </span>
-            {(stash?.tags ?? []).map((t) => (
-              <span key={t} className="rounded bg-surface px-2 py-0.5 text-muted">
-                {t}
-              </span>
-            ))}
+            <span className="text-muted">·</span>
+            <span>{stash?.is_public ? "Public" : "Private"}</span>
           </div>
 
           {error && (
@@ -324,6 +333,18 @@ function EmptyState({
       )}
     </div>
   );
+}
+
+function formatRelative(iso: string): string {
+  const ms = Date.now() - new Date(iso).getTime();
+  if (ms < 60_000) return "just now";
+  const m = Math.floor(ms / 60_000);
+  if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ago`;
+  const d = Math.floor(h / 24);
+  if (d < 30) return `${d}d ago`;
+  return new Date(iso).toLocaleDateString();
 }
 
 function formatBytes(b: number): string {

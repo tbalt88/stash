@@ -170,20 +170,26 @@ export default function SessionViewerPage() {
     <AppShell user={user} onLogout={logout}>
       <div className="scroll-thin flex-1 overflow-y-auto">
         <div className="mx-auto max-w-3xl px-12 py-8">
-          {/* Title row — chat-style header */}
-          <div className="mb-6 border-b border-border pb-4">
-            <h1 className="font-display text-[26px] font-bold tracking-tight text-foreground">
-              # {sessionId.replace(/^acme-/, "")}
-            </h1>
-            {summary && (
-              <p className="mt-1 text-[13px] text-muted">{summary.content}</p>
-            )}
-            {transcript && (
-              <p className="mt-2 text-[11.5px] text-muted">
-                {transcript.agent_name} ·{" "}
-                {messageTurns.filter((t) => t.kind === "message").length} messages
-                {stash ? <span> · in <span className="text-foreground">{stash.name}</span></span> : null}
-              </p>
+          {/* Title row — chat-style header (matches mockup chat-customer-discovery) */}
+          <div className="mb-5 flex items-start justify-between gap-4 border-b border-border pb-4">
+            <div className="min-w-0">
+              <h1 className="font-display text-[24px] font-bold tracking-tight text-foreground">
+                #{sessionId.replace(/^acme-/, "")}
+              </h1>
+              {summary && (
+                <p className="mt-1 text-[13px] text-muted">{summary.content}</p>
+              )}
+              {transcript && (
+                <p className="mt-1.5 text-[11.5px] text-muted">
+                  {messageTurns.filter((t) => t.kind === "message").length} messages
+                  {stash ? <span> · in <span className="text-foreground">{stash.name}</span></span> : null}
+                </p>
+              )}
+            </div>
+            {transcript?.agent_name && (
+              <span className="inline-flex items-center gap-1.5 rounded-md border border-border bg-base px-2 py-1 text-[11px] text-foreground">
+                <span className="font-mono">⌘</span> {transcript.agent_name}
+              </span>
             )}
           </div>
 
