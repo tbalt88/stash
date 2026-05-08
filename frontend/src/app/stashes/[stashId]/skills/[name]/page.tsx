@@ -1,12 +1,36 @@
 "use client";
 
-import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import Markdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import AppShell from "../../../../../components/AppShell";
+import { useBreadcrumbs } from "../../../../../components/BreadcrumbContext";
 import { useAuth } from "../../../../../hooks/useAuth";
 import { getStashSkill, getWorkspace, type StashSkillDetail } from "../../../../../lib/api";
 import type { Workspace } from "../../../../../lib/types";
+
+interface Frontmatter {
+  raw: string;
+  fields: Record<string, string>;
+}
+
+function splitFrontmatter(md: string): { fm: Frontmatter | null; body: string } {
+  if (!md.startsWith("---")) return { fm: null, body: md };
+  const end = md.indexOf("\n---", 3);
+  if (end < 0) return { fm: null, body: md };
+  const raw = md.slice(0, end + 4);
+  const fields: Record<string, string> = {};
+  raw
+    .replace(/^---\n?|\n?---$/g, "")
+    .split("\n")
+    .forEach((line) => {
+      const i = line.indexOf(":");
+      if (i > 0) fields[line.slice(0, i).trim()] = line.slice(i + 1).trim();
+    });
+  const body = md.slice(end + 4).replace(/^\n+/, "");
+  return { fm: { raw, fields }, body };
+}
 
 export default function SkillPage() {
   const params = useParams();
@@ -19,6 +43,11 @@ export default function SkillPage() {
   const [skill, setSkill] = useState<StashSkillDetail | null>(null);
   const [error, setError] = useState("");
   const [copied, setCopied] = useState(false);
+
+  useBreadcrumbs(
+    [{ label: "Skills" }, { label: `/${name}` }],
+    `${stashId}/skill/${name}`
+  );
 
   const load = useCallback(async () => {
     try {
@@ -37,41 +66,74 @@ export default function SkillPage() {
     if (!loading && !user) router.push("/login");
   }, [user, loading, router]);
 
-  if (loading) return <div className="flex h-screen items-center justify-center text-muted">Loading…</div>;
+  const { fm, body } = useMemo(() => {
+    const md = skill?.files.find((f) => f.name === "SKILL.md")
+      ? skill?.combined?.split("\n\n## ")[0] ?? ""
+      : "";
+    // Reconstruct: combined starts with "# {name} (SKILL.md)\n\n{body}".
+    // We want the original SKILL.md frontmatter + body. The skill_service
+    // strips frontmatter into `body`, so combined doesn't include the YAML.
+    // Render the description + when_to_use as a synthesized frontmatter card.
+    return splitFrontmatter(md);
+  }, [skill]);
+
+  if (loading)
+    return <div className="flex h-screen items-center justify-center text-muted">Loading…</div>;
   if (!user) return null;
+
+  // Synthesize a frontmatter view from the skill metadata fields.
+  const frontmatter = skill
+    ? [
+        ["name", skill.name],
+        ["description", skill.description],
+        ["when_to_use", skill.when_to_use],
+      ]
+        .filter(([, v]) => v)
+        .map(([k, v]) => `${k}: ${v}`)
+        .join("\n")
+    : "";
+
+  // The skill body ALREADY had its frontmatter stripped server-side. We
+  // render that body directly with a real markdown renderer; the YAML is
+  // shown as its own code block above so readers see what an agent sees.
+  const renderedBody = skill?.body || body || "";
+  const supportingFiles = skill?.files.filter((f) => f.name !== "SKILL.md") ?? [];
+  void fm; // (the in-body frontmatter parser is here for future use)
 
   return (
     <AppShell user={user} onLogout={logout}>
-      <div className="mx-auto grid max-w-5xl grid-cols-1 gap-8 px-8 py-8 lg:grid-cols-[1fr_240px]">
-        <div className="min-w-0">
-          <div className="mb-4 flex items-center gap-2 text-[12px] text-muted">
-            <Link href={`/stashes/${stashId}`} className="hover:text-foreground">
-              {stash?.name || "Stash"}
-            </Link>
-            <span>/</span>
-            <span>Skills</span>
-            <span>/</span>
-            <span className="text-foreground">{name}</span>
+      <div className="scroll-thin flex-1 overflow-y-auto">
+        <div className="mx-auto max-w-3xl px-12 py-10">
+          <div className="mb-2 flex items-center gap-2 text-[12px] uppercase tracking-wider text-[var(--color-brand-700)]">
+            <span>⚡</span> Skill
+            <span className="text-muted">·</span>
+            <span className="italic text-muted">procedural memory</span>
           </div>
 
-          <header className="mb-6">
-            <div className="flex items-center gap-2 text-[11px] uppercase tracking-wider text-brand">
-              <span>⚡</span> Skill · procedural
-            </div>
-            <h1 className="mt-2 font-display text-[34px] font-bold tracking-tight text-foreground">
-              {skill?.name || name}
-            </h1>
-            {skill?.description && (
-              <p className="mt-2 text-[14px] text-dim">{skill.description}</p>
-            )}
-            {skill?.when_to_use && (
-              <p className="mt-1 text-[12px] italic text-muted">
-                When to use: {skill.when_to_use}
-              </p>
-            )}
-          </header>
+          <h1 className="font-display text-[36px] font-bold tracking-tight text-foreground">
+            /{skill?.name || name}
+          </h1>
+          {skill?.description && (
+            <p className="mt-1 text-[15px] text-muted">{skill.description}</p>
+          )}
 
-          <div className="mb-4 flex flex-wrap items-center gap-2">
+          {error && (
+            <div className="mt-4 rounded-lg border border-red-300/40 bg-red-500/10 px-4 py-2 text-[13px] text-red-500">
+              {error}
+            </div>
+          )}
+
+          {frontmatter && (
+            <pre className="mt-5 overflow-auto rounded-md border border-border bg-surface px-4 py-3 font-mono text-[12px] leading-relaxed text-foreground">
+              <span className="text-muted">---</span>
+              {"\n"}
+              {frontmatter}
+              {"\n"}
+              <span className="text-muted">---</span>
+            </pre>
+          )}
+
+          <div className="mt-4 flex flex-wrap items-center gap-2">
             <button
               onClick={async () => {
                 if (!skill) return;
@@ -79,48 +141,58 @@ export default function SkillPage() {
                 setCopied(true);
                 setTimeout(() => setCopied(false), 1500);
               }}
-              className="rounded-md border border-border bg-base px-3 py-1.5 text-[12px] text-foreground hover:border-brand hover:text-brand"
+              className="rounded-md border border-border bg-base px-3 py-1.5 text-[12px] text-foreground hover:border-[var(--color-brand-400)] hover:text-[var(--color-brand-700)]"
             >
-              {copied ? "Copied!" : "Copy as markdown"}
+              {copied ? "Copied" : "Copy as markdown"}
             </button>
             <span className="text-[11px] text-muted">
-              Drop this file into any agent&apos;s skills directory.
+              Drop into any agent&apos;s skills directory.
             </span>
           </div>
 
-          {error && (
-            <div className="mb-4 rounded-lg border border-red-300/40 bg-red-500/10 px-4 py-2 text-[13px] text-red-400">
-              {error}
-            </div>
-          )}
-
-          <article className="markdown-content rounded-2xl border border-border bg-surface px-6 py-6 text-[14px] leading-relaxed text-foreground">
-            {skill?.body ? (
-              <pre className="whitespace-pre-wrap font-sans text-[14px]">{skill.body}</pre>
+          <article className="markdown-content mt-8 text-[14.5px] leading-relaxed text-foreground">
+            {renderedBody ? (
+              <Markdown remarkPlugins={[remarkGfm]}>{renderedBody}</Markdown>
             ) : (
               <p className="text-muted">{skill ? "Empty skill body." : "Loading…"}</p>
             )}
           </article>
-        </div>
 
-        <aside className="lg:sticky lg:top-8 lg:self-start">
-          <div className="rounded-xl border border-border bg-surface p-4">
-            <div className="mb-2 text-[10px] font-medium uppercase tracking-wider text-muted">
-              Files in this skill
+          {supportingFiles.length > 0 && (
+            <div className="mt-10 border-t border-border pt-6">
+              <div className="mb-3 text-[10.5px] font-semibold uppercase tracking-wider text-muted">
+                Supporting files
+              </div>
+              <div className="flex flex-col gap-2">
+                {supportingFiles.map((f) => (
+                  <SkillFileCard key={f.id} stashId={stashId} skillName={name} file={f} />
+                ))}
+              </div>
             </div>
-            <ul className="flex flex-col gap-1.5 text-[12px]">
-              {skill?.files.map((f) => (
-                <li key={f.id} className="truncate text-foreground">
-                  {f.name === "SKILL.md" ? "📜" : "📄"} {f.name}
-                </li>
-              )) ?? null}
-              {skill && skill.files.length === 0 && (
-                <li className="italic text-muted">No files</li>
-              )}
-            </ul>
-          </div>
-        </aside>
+          )}
+        </div>
       </div>
     </AppShell>
+  );
+}
+
+function SkillFileCard({
+  stashId,
+  skillName,
+  file,
+}: {
+  stashId: string;
+  skillName: string;
+  file: { id: string; name: string };
+}) {
+  void stashId;
+  void skillName;
+  return (
+    <div className="rounded-lg border border-border bg-base px-3 py-2 text-[13px]">
+      <div className="flex items-center gap-2">
+        <span>📄</span>
+        <span className="font-medium text-foreground">{file.name}</span>
+      </div>
+    </div>
   );
 }

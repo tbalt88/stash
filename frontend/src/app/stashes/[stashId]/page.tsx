@@ -195,13 +195,13 @@ export default function StashHomePage() {
           )}
 
           {/* Start here narrative CTA */}
-          {spine?.skills && (
+          {spine?.narrative && (
             <div className="mt-6 rounded-lg border border-[var(--color-brand-200)] bg-[var(--color-brand-50)]/60 p-4">
               <div className="text-[11px] font-semibold uppercase tracking-wide text-[var(--color-brand-700)]">
                 📌 Start here
               </div>
               <Link
-                href={`/wiki?ws=${stashId}`}
+                href={`/stashes/${stashId}/p/${spine.narrative.id}`}
                 className="mt-1 block text-left"
               >
                 <div className="text-[15px] font-semibold text-foreground">

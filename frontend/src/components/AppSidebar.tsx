@@ -105,7 +105,11 @@ function StashTree({
       </summary>
       <div className="ml-3 space-y-0.5 border-l border-border pl-2">
         <NavRow
-          href={`/stashes/${stash.id}`}
+          href={
+            spine?.narrative
+              ? `/stashes/${stash.id}/p/${spine.narrative.id}`
+              : `/stashes/${stash.id}`
+          }
           icon="📌"
           label="Narrative"
           active={isActive}

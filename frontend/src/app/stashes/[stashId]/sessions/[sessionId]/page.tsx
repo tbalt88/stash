@@ -1,9 +1,9 @@
 "use client";
 
-import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import AppShell from "../../../../../components/AppShell";
+import { useBreadcrumbs } from "../../../../../components/BreadcrumbContext";
 import { useAuth } from "../../../../../hooks/useAuth";
 import { getStashTranscript, getWorkspace, type SessionTranscript } from "../../../../../lib/api";
 import type { Workspace } from "../../../../../lib/types";
@@ -51,6 +51,11 @@ export default function SessionViewerPage() {
   const [turns, setTurns] = useState<Turn[]>([]);
   const [error, setError] = useState("");
 
+  useBreadcrumbs(
+    [{ label: "Sessions" }, { label: `#${sessionId}` }],
+    `${stashId}/session/${sessionId}`
+  );
+
   const load = useCallback(async () => {
     try {
       setStash(await getWorkspace(stashId));
@@ -87,31 +92,23 @@ export default function SessionViewerPage() {
   return (
     <AppShell user={user} onLogout={logout}>
       <div className="mx-auto max-w-3xl px-12 py-10">
-        <div className="mb-3 flex items-center gap-2 text-[12px] text-muted">
-          <Link href={`/stashes/${stashId}`} className="hover:text-foreground">
-            {stash?.name || "Stash"}
-          </Link>
-          <span>/</span>
-          <span>Sessions</span>
-          <span>/</span>
-          <span className="text-foreground">#{sessionId}</span>
+        <div className="mb-2 flex items-center gap-2 text-[12px] uppercase tracking-wider text-[var(--color-brand-700)]">
+          <span>💬</span> Session
+          <span className="text-muted">·</span>
+          <span className="italic text-muted">episodic memory</span>
         </div>
-
-        <header className="mb-6">
-          <div className="flex items-center gap-2 text-[11px] uppercase tracking-wider text-[var(--color-brand-700)]">
-            <span>💬</span> Session · episodic
-          </div>
-          <h1 className="mt-2 font-display text-[34px] font-bold tracking-tight text-foreground">
-            #{sessionId}
-          </h1>
-          {transcript && (
-            <p className="mt-1 text-[12.5px] text-muted">
-              {transcript.agent_name} · {turns.length} turn{turns.length === 1 ? "" : "s"} ·{" "}
-              {(transcript.size_bytes / 1024).toFixed(1)} KB
-              {transcript.cwd ? <span className="ml-2 font-mono text-[11px]">cwd: {transcript.cwd}</span> : null}
-            </p>
-          )}
-        </header>
+        <h1 className="font-display text-[36px] font-bold tracking-tight text-foreground">
+          #{sessionId}
+        </h1>
+        {transcript && (
+          <p className="mt-1 text-[13px] text-muted">
+            {transcript.agent_name} · {turns.length} turn{turns.length === 1 ? "" : "s"} ·{" "}
+            {(transcript.size_bytes / 1024).toFixed(1)} KB
+            {stash ? <span> · in <span className="text-foreground">{stash.name}</span></span> : null}
+            {transcript.cwd ? <span className="ml-2 font-mono text-[11px]">cwd: {transcript.cwd}</span> : null}
+          </p>
+        )}
+        <div className="mt-6" />
 
         {error && (
           <div className="mb-4 rounded-lg border border-red-300/40 bg-red-500/10 px-4 py-2 text-[13px] text-red-500">
