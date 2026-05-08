@@ -1,11 +1,14 @@
 "use client";
 
 import { ReactNode, useEffect, useState } from "react";
+import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { User } from "../lib/types";
+import { User, Workspace } from "../lib/types";
+import { listMyWorkspaces } from "../lib/api";
 import AppSidebar from "./AppSidebar";
 import AskRail from "./AskRail";
-import TopBar from "./TopBar";
+import ShareModal from "./ShareModal";
+import { useBreadcrumbsValue } from "./BreadcrumbContext";
 
 interface AppShellProps {
   user: User;
@@ -21,15 +24,40 @@ function readBool(key: string): boolean {
   return localStorage.getItem(key) === "1";
 }
 
+function SidebarToggleIcon({ collapsed }: { collapsed: boolean }) {
+  return (
+    <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <rect x="3" y="3" width="18" height="18" rx="2" />
+      <path d="M9 3v18" />
+      {collapsed && <path d="M14 9l3 3-3 3" strokeLinecap="round" strokeLinejoin="round" />}
+    </svg>
+  );
+}
+
+function RailToggleIcon() {
+  return (
+    <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <rect x="3" y="3" width="18" height="18" rx="2" />
+      <path d="M15 3v18" />
+    </svg>
+  );
+}
+
 export default function AppShell({ user, onLogout, children }: AppShellProps) {
   const pathname = usePathname();
+  const breadcrumbs = useBreadcrumbsValue();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [railCollapsed, setRailCollapsed] = useState(false);
   const [activeStashId, setActiveStashId] = useState<string | null>(null);
+  const [stashes, setStashes] = useState<Workspace[]>([]);
+  const [shareOpen, setShareOpen] = useState(false);
 
   useEffect(() => {
     setSidebarCollapsed(readBool(SIDEBAR_KEY));
     setRailCollapsed(readBool(RAIL_KEY));
+    listMyWorkspaces()
+      .then((r) => setStashes(r.workspaces ?? []))
+      .catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -62,40 +90,144 @@ export default function AppShell({ user, onLogout, children }: AppShellProps) {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
+  const activeStash = stashes.find((s) => s.id === activeStashId);
+  const initial = (user.display_name || user.name || "?")[0].toUpperCase();
+
   return (
-    <div
-      className="grid h-screen overflow-hidden"
-      style={{
-        gridTemplateColumns: `${sidebarCollapsed ? "56px" : "260px"} 1fr ${railCollapsed ? "48px" : "360px"}`,
-      }}
-    >
-      <AppSidebar
-        user={user}
-        onLogout={onLogout}
-        collapsed={sidebarCollapsed}
-        onToggleCollapsed={() => {
-          setSidebarCollapsed((c) => {
-            const next = !c;
-            if (typeof window !== "undefined") localStorage.setItem(SIDEBAR_KEY, next ? "1" : "0");
-            return next;
-          });
+    <div className="flex h-screen flex-col overflow-hidden bg-base">
+      {/* Sticky top header — spans all three columns */}
+      <header className="sticky top-0 z-30 flex h-11 flex-shrink-0 items-center justify-between border-b border-border bg-base/85 px-3 backdrop-blur-md">
+        <div className="flex min-w-0 items-center gap-1.5 text-[13px]">
+          <button
+            onClick={() => {
+              setSidebarCollapsed((c) => {
+                const next = !c;
+                if (typeof window !== "undefined")
+                  localStorage.setItem(SIDEBAR_KEY, next ? "1" : "0");
+                return next;
+              });
+            }}
+            className="rounded p-1 text-muted hover:bg-raised"
+            title="Toggle sidebar (⌘\\)"
+          >
+            <SidebarToggleIcon collapsed={sidebarCollapsed} />
+          </button>
+          <Breadcrumb
+            activeStash={activeStash}
+            pageCrumbs={breadcrumbs}
+          />
+        </div>
+
+        <div className="flex items-center gap-1">
+          <Link
+            href="/settings"
+            className="ml-1 inline-flex h-6 w-6 items-center justify-center rounded-full bg-brand-100 text-[10px] font-semibold text-[var(--color-brand-700)]"
+            title={user.display_name || user.name}
+          >
+            {initial}
+          </Link>
+          {activeStashId && (
+            <button
+              className="ml-1 rounded-md bg-[var(--color-brand-600)] px-2.5 py-1 text-[12.5px] font-medium text-white hover:bg-[var(--color-brand-700)]"
+              onClick={() => setShareOpen(true)}
+            >
+              Share
+            </button>
+          )}
+          <button
+            onClick={() => {
+              setRailCollapsed((c) => {
+                const next = !c;
+                if (typeof window !== "undefined") localStorage.setItem(RAIL_KEY, next ? "1" : "0");
+                return next;
+              });
+            }}
+            className="ml-0.5 rounded p-1 text-muted hover:bg-raised"
+            title="Toggle agent sidebar (⌘.)"
+          >
+            <RailToggleIcon />
+          </button>
+          <button onClick={onLogout} className="rounded p-1 text-muted hover:bg-raised" title="Sign out">
+            <svg className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor">
+              <circle cx="5" cy="12" r="1.5" />
+              <circle cx="12" cy="12" r="1.5" />
+              <circle cx="19" cy="12" r="1.5" />
+            </svg>
+          </button>
+        </div>
+      </header>
+
+      <div
+        className="grid min-h-0 flex-1 overflow-hidden"
+        style={{
+          gridTemplateColumns: `${sidebarCollapsed ? "0px" : "260px"} minmax(0, 1fr) ${railCollapsed ? "44px" : "360px"}`,
         }}
-      />
-      <main className="flex min-w-0 flex-col overflow-hidden">
-        <TopBar />
-        <div className="flex-1 overflow-y-auto">{children}</div>
-      </main>
-      <AskRail
-        stashId={activeStashId}
-        collapsed={railCollapsed}
-        onToggleCollapsed={() => {
-          setRailCollapsed((c) => {
-            const next = !c;
-            if (typeof window !== "undefined") localStorage.setItem(RAIL_KEY, next ? "1" : "0");
-            return next;
-          });
-        }}
-      />
+      >
+        <AppSidebar
+          user={user}
+          onLogout={onLogout}
+          collapsed={sidebarCollapsed}
+        />
+        <main className="flex min-w-0 flex-col overflow-y-auto bg-base">{children}</main>
+        <AskRail
+          stashId={activeStashId}
+          collapsed={railCollapsed}
+          onToggleCollapsed={() => {
+            setRailCollapsed((c) => {
+              const next = !c;
+              if (typeof window !== "undefined") localStorage.setItem(RAIL_KEY, next ? "1" : "0");
+              return next;
+            });
+          }}
+        />
+      </div>
+      {activeStashId && (
+        <ShareModal
+          open={shareOpen}
+          stashId={activeStashId}
+          stashName={activeStash?.name || "Stash"}
+          onClose={() => setShareOpen(false)}
+        />
+      )}
     </div>
+  );
+}
+
+function Breadcrumb({
+  activeStash,
+  pageCrumbs,
+}: {
+  activeStash: Workspace | undefined;
+  pageCrumbs: { label: string; href?: string; onClick?: () => void }[] | null;
+}) {
+  const items: { label: string; href?: string }[] = [];
+  if (activeStash) {
+    items.push({ label: activeStash.name, href: `/stashes/${activeStash.id}` });
+  } else {
+    items.push({ label: "Stashes", href: "/" });
+  }
+  if (pageCrumbs && pageCrumbs.length > 0) {
+    pageCrumbs.forEach((c) => items.push({ label: c.label, href: c.href }));
+  }
+
+  return (
+    <span className="ml-1.5 flex min-w-0 items-center gap-1 text-muted">
+      <span className="text-[14px]">📊</span>
+      {items.map((c, i) => {
+        const last = i === items.length - 1;
+        return (
+          <span key={i} className="flex min-w-0 items-center gap-1">
+            {i > 0 && <span className="text-muted/60">/</span>}
+            {!last && c.href ? (
+              <Link href={c.href} className="truncate hover:text-foreground">
+                {c.label}
+              </Link>
+            ) : (
+              <span className="truncate font-medium text-foreground">{c.label}</span>
+            )}
+          </span>
+        );
+      })}
+    </span>
   );
 }

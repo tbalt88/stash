@@ -26,6 +26,9 @@ export interface Workspace {
   created_at: string;
   updated_at: string;
   member_count: number | null;
+  summary?: string | null;
+  tags?: string[];
+  category?: string | null;
 }
 
 export interface WorkspaceMember {

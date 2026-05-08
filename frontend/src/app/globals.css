@@ -3,15 +3,15 @@
 /* === Design System Tokens (DESIGN.md) === */
 
 :root {
-  /* Light mode (default) */
+  /* Notion-tan palette (matches stash-share-mockup) */
   --bg-base: #FFFFFF;
-  --bg-surface: #F8FAFC;
-  --bg-raised: #F1F5F9;
-  --border-color: #E2E8F0;
-  --border-subtle-color: #F1F5F9;
-  --text-primary: #0F172A;
-  --text-dim: #475569;
-  --text-muted: #94A3B8;
+  --bg-surface: #F7F7F5;
+  --bg-raised: #EFEFEE;
+  --border-color: #ECECEA;
+  --border-subtle-color: #F1F1EE;
+  --text-primary: #37352F;
+  --text-dim: #5C5A53;
+  --text-muted: #9B9A97;
 }
 
 [data-theme="dark"] {
@@ -41,11 +41,21 @@
   --color-border: var(--border-color);
   --color-border-subtle: var(--border-subtle-color);
 
-  /* Brand (olive/forest — Stash 2026) */
-  --color-brand: #527559;
-  --color-brand-hover: #43614a;
-  --color-brand-muted: oklch(0.55 0.06 145 / 0.15);
-  --color-brand-deep: #36503c;
+  /* Brand (olive/forest — Stash 2026, matches mockup brand-50…900) */
+  --color-brand-50: #F3F7F4;
+  --color-brand-100: #E3EDE5;
+  --color-brand-200: #C8DBCC;
+  --color-brand-300: #9FBEA6;
+  --color-brand-400: #73A07D;
+  --color-brand-500: #527559;
+  --color-brand-600: #43614A;
+  --color-brand-700: #36503C;
+  --color-brand-800: #2C4031;
+  --color-brand-900: #243429;
+  --color-brand: #43614A;
+  --color-brand-hover: #36503C;
+  --color-brand-muted: #F3F7F4;
+  --color-brand-deep: #36503C;
 
   /* Agent (violet) */
   --color-agent: #8B5CF6;
@@ -74,6 +84,46 @@ body {
   color: var(--text-primary);
   font-family: var(--font-sans), sans-serif;
   transition: background 0.2s ease, color 0.2s ease;
+  font-size: 14px;
+}
+
+/* Notion-style sidebar primitives */
+.scroll-thin::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+.scroll-thin::-webkit-scrollbar-thumb {
+  background: #d8d8d4;
+  border-radius: 3px;
+}
+.scroll-thin::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+details > summary {
+  list-style: none;
+  cursor: pointer;
+}
+details > summary::-webkit-details-marker {
+  display: none;
+}
+details[open] > summary .chev {
+  transform: rotate(90deg);
+}
+.chev {
+  transition: transform 0.12s ease;
+}
+
+.page-row .page-handle {
+  opacity: 0;
+}
+.page-row:hover .page-handle {
+  opacity: 1;
+}
+
+.hl-yellow {
+  background: #fef9c3;
+  border-bottom: 2px solid #facc15;
 }
 
 /* === TipTap Editor === */

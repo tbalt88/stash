@@ -98,7 +98,7 @@ export default function AskRail({
 
   if (collapsed) {
     return (
-      <aside className="flex w-12 flex-shrink-0 flex-col items-center gap-3 border-l border-border bg-surface py-3">
+      <aside className="flex flex-col items-center gap-1.5 border-l border-border bg-surface py-2">
         <button
           onClick={onToggleCollapsed}
           className="flex h-8 w-8 items-center justify-center rounded-md text-muted hover:bg-raised hover:text-foreground"
@@ -121,40 +121,42 @@ export default function AskRail({
       : "Grounded in this stash's content. Citations link to source.";
 
   return (
-    <aside className="flex w-[360px] flex-shrink-0 flex-col border-l border-border bg-surface">
-      <div className="flex items-center justify-between border-b border-border-subtle px-4 py-3">
+    <aside className="flex flex-col border-l border-border bg-surface">
+      <div className="flex items-center justify-between border-b border-border px-3 py-2.5">
         <div className="flex items-center gap-2">
-          <span className="flex h-6 w-6 items-center justify-center rounded-md bg-brand-muted text-brand">
+          <span className="flex h-5 w-5 items-center justify-center rounded bg-[var(--color-brand-100)] text-[var(--color-brand-700)] text-[11px]">
             ✦
           </span>
-          <h2 className="font-display text-[14px] font-semibold tracking-tight text-foreground">
+          <h2 className="font-display text-[13px] font-semibold tracking-tight text-foreground">
             {headerLabel}
           </h2>
         </div>
         {onToggleCollapsed && (
           <button
             onClick={onToggleCollapsed}
-            className="text-[11px] text-muted hover:text-foreground"
+            className="rounded p-1 text-muted hover:bg-raised hover:text-foreground"
             title="Collapse (⌘.)"
           >
-            ⌘.
+            <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M6 18L18 6M6 6l12 12" />
+            </svg>
           </button>
         )}
       </div>
 
-      <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-3">
+      <div ref={scrollRef} className="scroll-thin flex-1 overflow-y-auto px-3 py-3">
         {messages.length === 0 ? (
           <div className="flex flex-col gap-3">
             <p className="text-[12px] text-muted">
               Ask anything about this {mode === "recipient" ? "deck" : "stash"}. The agent
               cites sources by default.
             </p>
-            <div className="flex flex-col gap-2">
+            <div className="flex flex-col gap-1.5">
               {suggestions.map((s) => (
                 <button
                   key={s}
                   onClick={() => submit(s)}
-                  className="rounded-lg border border-border bg-base px-3 py-2 text-left text-[12px] text-foreground transition-colors hover:border-brand hover:bg-brand-muted"
+                  className="rounded-md border border-border bg-base px-3 py-2 text-left text-[12.5px] text-foreground transition-colors hover:border-[var(--color-brand-300)] hover:bg-[var(--color-brand-50)]"
                 >
                   {s}
                 </button>
@@ -169,8 +171,8 @@ export default function AskRail({
                 className={
                   "max-w-[88%] rounded-2xl px-3 py-2 text-[13px] " +
                   (m.role === "user"
-                    ? "self-end bg-brand text-white"
-                    : "self-start bg-base text-foreground border border-border-subtle")
+                    ? "self-end bg-[var(--color-brand-600)] text-white"
+                    : "self-start border border-border bg-base text-foreground")
                 }
               >
                 {m.text || (streaming && i === messages.length - 1 ? "…" : "")}
@@ -198,7 +200,7 @@ export default function AskRail({
           e.preventDefault();
           submit(input);
         }}
-        className="border-t border-border-subtle bg-base px-3 py-3"
+        className="border-t border-border bg-base px-3 py-2.5"
       >
         <textarea
           value={input}
@@ -211,14 +213,14 @@ export default function AskRail({
           }}
           placeholder={`Ask this ${mode === "recipient" ? "deck" : "stash"}…`}
           rows={2}
-          className="w-full resize-none rounded-md border border-border-subtle bg-surface px-2.5 py-2 text-[13px] text-foreground placeholder:text-muted focus:border-brand focus:outline-none"
+          className="w-full resize-none rounded-md border border-border bg-base px-2.5 py-2 text-[13px] text-foreground placeholder:text-muted focus:border-[var(--color-brand-400)] focus:outline-none"
         />
         <div className="mt-2 flex items-center justify-between">
           <span className="text-[10px] text-muted">{footerNote}</span>
           <button
             type="submit"
             disabled={streaming || !input.trim()}
-            className="rounded-md bg-brand px-3 py-1.5 text-[12px] font-medium text-white transition-colors hover:bg-[var(--color-brand-hover)] disabled:opacity-40"
+            className="rounded-md bg-[var(--color-brand-600)] px-3 py-1.5 text-[12px] font-medium text-white transition-colors hover:bg-[var(--color-brand-700)] disabled:opacity-40"
           >
             {streaming ? "…" : "Ask"}
           </button>

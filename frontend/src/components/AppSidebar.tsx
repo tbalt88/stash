@@ -15,393 +15,351 @@ interface AppSidebarProps {
   user?: User;
   onLogout?: () => void;
   collapsed?: boolean;
-  onToggleCollapsed?: () => void;
 }
 
 interface StashNode extends Workspace {
   shared?: boolean;
 }
 
-function Chevron({ open }: { open: boolean }) {
+function Chevron() {
   return (
     <svg
-      width="10"
-      height="10"
-      viewBox="0 0 10 10"
-      className={"transition-transform " + (open ? "rotate-90" : "")}
+      className="chev h-3 w-3 text-muted"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
     >
-      <path
-        d="M3 2.5 L6 5 L3 7.5"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        fill="none"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
+      <polyline points="9 18 15 12 9 6" />
     </svg>
   );
 }
 
-function StashTreeNode({
-  stash,
-  expanded,
-  onToggle,
-  spine,
+function NavRow({
+  href,
+  icon,
+  label,
+  active,
+  trailing,
 }: {
-  stash: StashNode;
-  expanded: boolean;
-  onToggle: () => void;
-  spine: StashSpine | null;
+  href: string;
+  icon: React.ReactNode;
+  label: string;
+  active?: boolean;
+  trailing?: React.ReactNode;
 }) {
-  const [bucket, setBucket] = useState<"sessions" | "skills" | "drive" | null>(null);
-
   return (
-    <div className="text-[12px]">
-      <div className="flex items-center gap-1 rounded-md px-1 py-1 hover:bg-raised">
-        <button
-          onClick={onToggle}
-          className="flex h-4 w-4 items-center justify-center text-muted hover:text-foreground"
-          aria-label={expanded ? "Collapse" : "Expand"}
-        >
-          <Chevron open={expanded} />
-        </button>
-        <Link
-          href={`/stashes/${stash.id}`}
-          className="flex min-w-0 flex-1 items-center gap-1.5 truncate text-foreground hover:text-brand"
-        >
-          <span className="text-[10px]">📦</span>
-          <span className="truncate">{stash.name}</span>
-        </Link>
-      </div>
-      {expanded && (
-        <div className="ml-5 mt-0.5 flex flex-col gap-0.5 border-l border-border-subtle pl-2">
-          {(["sessions", "skills", "drive"] as const).map((b) => {
-            const open = bucket === b;
-            const count =
-              b === "sessions"
-                ? spine?.sessions.length ?? 0
-                : b === "skills"
-                ? spine?.skills.length ?? 0
-                : (spine?.drive.files.length ?? 0) + (spine?.drive.folders.length ?? 0);
-            const icon = b === "sessions" ? "▤" : b === "skills" ? "⚡" : "▦";
-            const label = b === "sessions" ? "Sessions" : b === "skills" ? "Skills" : "Drive";
-            return (
-              <div key={b}>
-                <button
-                  onClick={() => setBucket(open ? null : b)}
-                  className="flex w-full items-center gap-1 rounded-md px-1 py-0.5 text-[11px] text-dim hover:bg-raised hover:text-foreground"
-                >
-                  <Chevron open={open} />
-                  <span>{icon}</span>
-                  <span className="flex-1 text-left">{label}</span>
-                  <span className="text-muted">{count}</span>
-                </button>
-                {open && spine && (
-                  <div className="ml-5 mt-0.5 flex flex-col gap-0.5 border-l border-border-subtle pl-2">
-                    {b === "sessions" &&
-                      spine.sessions.slice(0, 12).map((s) => (
-                        <Link
-                          key={s.session_id}
-                          href={`/stashes/${stash.id}/sessions/${s.session_id}`}
-                          className="truncate rounded px-1 py-0.5 text-[11px] text-dim hover:bg-raised hover:text-foreground"
-                          title={`${s.agent_name} · ${s.session_id}`}
-                        >
-                          {s.agent_name}: {s.session_id.slice(0, 18)}
-                        </Link>
-                      ))}
-                    {b === "skills" &&
-                      spine.skills.map((s) => (
-                        <Link
-                          key={s.folder_id}
-                          href={`/stashes/${stash.id}/skills/${encodeURIComponent(s.name)}`}
-                          className="truncate rounded px-1 py-0.5 text-[11px] text-dim hover:bg-raised hover:text-foreground"
-                        >
-                          ⚙ {s.name}
-                        </Link>
-                      ))}
-                    {b === "drive" && (
-                      <>
-                        {spine.drive.folders.slice(0, 8).map((f) => (
-                          <span
-                            key={f.id}
-                            className="truncate rounded px-1 py-0.5 text-[11px] text-dim"
-                          >
-                            📁 {f.name}
-                          </span>
-                        ))}
-                        {spine.drive.files.slice(0, 8).map((f) => (
-                          <Link
-                            key={f.id}
-                            href={`/files?ws=${stash.id}&file=${f.id}`}
-                            className="truncate rounded px-1 py-0.5 text-[11px] text-dim hover:bg-raised hover:text-foreground"
-                          >
-                            📄 {f.name}
-                          </Link>
-                        ))}
-                      </>
-                    )}
-                    {((b === "sessions" && spine.sessions.length === 0) ||
-                      (b === "skills" && spine.skills.length === 0) ||
-                      (b === "drive" &&
-                        spine.drive.files.length === 0 &&
-                        spine.drive.folders.length === 0)) && (
-                      <span className="px-1 py-0.5 text-[10px] italic text-muted">empty</span>
-                    )}
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      )}
-    </div>
+    <Link
+      href={href}
+      className={
+        "page-row flex items-center gap-2 rounded-md px-2 py-1 text-[13px] transition-colors " +
+        (active
+          ? "bg-[var(--color-brand-50)] text-[var(--color-brand-800)]"
+          : "text-dim hover:bg-raised hover:text-foreground")
+      }
+    >
+      <span className="flex h-4 w-4 items-center justify-center text-[14px]">{icon}</span>
+      <span className="flex-1 truncate">{label}</span>
+      {trailing}
+    </Link>
   );
 }
 
-export default function AppSidebar({
-  user,
-  onLogout,
-  collapsed,
-  onToggleCollapsed,
-}: AppSidebarProps) {
+function StashTree({
+  stash,
+  spine,
+  defaultOpen,
+  onOpen,
+  pathname,
+}: {
+  stash: StashNode;
+  spine: StashSpine | null;
+  defaultOpen: boolean;
+  onOpen: () => void;
+  pathname: string;
+}) {
+  const isActive = pathname === `/stashes/${stash.id}`;
+
+  return (
+    <details
+      open={defaultOpen}
+      onToggle={(e) => {
+        if ((e.target as HTMLDetailsElement).open) onOpen();
+      }}
+      className="group/stash"
+    >
+      <summary className="page-row flex items-center gap-1 rounded-md px-2 py-1 text-[13px] hover:bg-raised">
+        <Chevron />
+        <span className="text-[14px]">📊</span>
+        <Link
+          href={`/stashes/${stash.id}`}
+          className={
+            "flex-1 truncate font-medium " +
+            (isActive ? "text-[var(--color-brand-800)]" : "text-foreground")
+          }
+        >
+          {stash.name}
+        </Link>
+      </summary>
+      <div className="ml-3 space-y-0.5 border-l border-border pl-2">
+        <NavRow
+          href={`/stashes/${stash.id}`}
+          icon="📌"
+          label="Narrative"
+          active={isActive}
+          trailing={
+            <span className="rounded bg-surface px-1 py-0 text-[9px] font-medium uppercase tracking-wide text-muted ring-1 ring-border">
+              readme
+            </span>
+          }
+        />
+        <div className="my-1 ml-3.5 h-px bg-border" />
+
+        <details open className="text-[13px]">
+          <summary className="page-row flex items-center gap-1 rounded-md px-2 py-1 hover:bg-raised">
+            <Chevron />
+            <span className="text-[14px]">💬</span>
+            <span className="flex-1 truncate font-medium text-foreground">Sessions</span>
+            <span className="text-[10.5px] text-muted">{spine?.sessions.length ?? 0}</span>
+          </summary>
+          <div className="ml-3 space-y-0.5 border-l border-border pl-2">
+            {spine?.sessions.slice(0, 8).map((s) => (
+              <NavRow
+                key={s.session_id}
+                href={`/memory?ws=${stash.id}`}
+                icon={<span className="text-muted">#</span>}
+                label={s.session_id.length > 22 ? s.session_id.slice(0, 22) + "…" : s.session_id}
+              />
+            ))}
+            {(!spine || spine.sessions.length === 0) && (
+              <div className="px-2 py-1 text-[11px] italic text-muted">empty</div>
+            )}
+          </div>
+        </details>
+
+        <details className="text-[13px]">
+          <summary className="page-row flex items-center gap-1 rounded-md px-2 py-1 hover:bg-raised">
+            <Chevron />
+            <span className="text-[14px]">⚡</span>
+            <span className="flex-1 truncate font-medium text-foreground">Skills</span>
+            <span className="text-[10.5px] text-muted">{spine?.skills.length ?? 0}</span>
+          </summary>
+          <div className="ml-3 space-y-0.5 border-l border-border pl-2">
+            {spine?.skills.map((s) => (
+              <NavRow
+                key={s.folder_id}
+                href={`/stashes/${stash.id}/skills/${encodeURIComponent(s.name)}`}
+                icon={<span className="text-indigo-600">⚙︎</span>}
+                label={`/${s.name}`}
+              />
+            ))}
+            {(!spine || spine.skills.length === 0) && (
+              <div className="px-2 py-1 text-[11px] italic text-muted">no skills yet</div>
+            )}
+          </div>
+        </details>
+
+        <details open className="text-[13px]">
+          <summary className="page-row flex items-center gap-1 rounded-md px-2 py-1 hover:bg-raised">
+            <Chevron />
+            <span className="text-[14px]">📁</span>
+            <span className="flex-1 truncate font-medium text-foreground">Drive</span>
+            <span className="text-[10.5px] text-muted">
+              {(spine?.drive.files.length ?? 0) + (spine?.drive.folders.length ?? 0)}
+            </span>
+          </summary>
+          <div className="ml-3 space-y-0.5 border-l border-border pl-2">
+            {spine?.drive.folders.slice(0, 4).map((f) => (
+              <NavRow
+                key={f.id}
+                href={`/files?ws=${stash.id}`}
+                icon={<span className="text-muted">📁</span>}
+                label={f.name}
+              />
+            ))}
+            {spine?.drive.files.slice(0, 8).map((f) => (
+              <NavRow
+                key={f.id}
+                href={`/files?ws=${stash.id}&file=${f.id}`}
+                icon={
+                  <span
+                    className={
+                      f.content_type?.includes("pdf")
+                        ? "text-rose-500"
+                        : f.content_type?.includes("csv")
+                        ? "text-emerald-600"
+                        : "text-muted"
+                    }
+                  >
+                    {f.content_type?.includes("csv") ? "▦" : "📄"}
+                  </span>
+                }
+                label={f.name}
+              />
+            ))}
+            {(!spine || (spine.drive.files.length === 0 && spine.drive.folders.length === 0)) && (
+              <div className="px-2 py-1 text-[11px] italic text-muted">empty</div>
+            )}
+          </div>
+        </details>
+      </div>
+    </details>
+  );
+}
+
+export default function AppSidebar({ user, collapsed }: AppSidebarProps) {
   const pathname = usePathname();
   const [mine, setMine] = useState<Workspace[]>([]);
   const [shared, setShared] = useState<Workspace[]>([]);
-  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  const [openStashes, setOpenStashes] = useState<Record<string, boolean>>({});
   const [spines, setSpines] = useState<Record<string, StashSpine>>({});
-  const [showUserMenu, setShowUserMenu] = useState(false);
 
   useEffect(() => {
     listMyWorkspaces()
       .then((r) => setMine(r.workspaces ?? []))
       .catch(() => {});
-    if (user) {
-      listPublicWorkspaces()
-        .then((r) => {
-          const ownIds = new Set((mine || []).map((w) => w.id));
-          setShared((r.workspaces ?? []).filter((w) => !ownIds.has(w.id) && w.creator_id !== user.id).slice(0, 8));
-        })
-        .catch(() => {});
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    listPublicWorkspaces()
+      .then((r) => {
+        if (!user) return;
+        setShared((r.workspaces ?? []).filter((w) => w.creator_id !== user.id).slice(0, 6));
+      })
+      .catch(() => {});
   }, [user?.id]);
 
   useEffect(() => {
-    const stashMatch = pathname.match(/^\/stashes\/([^/]+)/);
-    if (stashMatch?.[1]) {
-      setExpanded((m) => ({ ...m, [stashMatch[1]]: true }));
-    }
-  }, [pathname]);
-
-  function toggleStash(id: string) {
-    setExpanded((m) => {
-      const next = { ...m, [id]: !m[id] };
-      if (next[id] && !spines[id]) {
-        getStashSpine(id)
-          .then((s) => setSpines((sp) => ({ ...sp, [id]: s })))
+    const m = pathname.match(/^\/stashes\/([^/]+)/);
+    if (m?.[1]) {
+      setOpenStashes((s) => ({ ...s, [m[1]]: true }));
+      if (!spines[m[1]]) {
+        getStashSpine(m[1])
+          .then((sp) => setSpines((all) => ({ ...all, [m[1]]: sp })))
           .catch(() => {});
       }
-      return next;
-    });
+    }
+  }, [pathname, spines]);
+
+  function handleOpen(stashId: string) {
+    setOpenStashes((s) => ({ ...s, [stashId]: true }));
+    if (!spines[stashId]) {
+      getStashSpine(stashId)
+        .then((sp) => setSpines((all) => ({ ...all, [stashId]: sp })))
+        .catch(() => {});
+    }
   }
 
-  const displayName = user?.display_name || user?.name;
-  const handle = user?.display_name ? user?.name : null;
-  const avatarInitial = (displayName || "?")[0].toUpperCase();
-
-  if (collapsed) {
-    return (
-      <aside className="flex flex-col items-center gap-3 border-r border-border bg-surface py-3">
-        <button
-          onClick={onToggleCollapsed}
-          className="font-display text-[18px] font-black tracking-[-0.03em] text-foreground hover:text-brand"
-          title="Expand sidebar (⌘\\)"
-        >
-          s
-        </button>
-        <Link
-          href="/discover"
-          className="flex h-8 w-8 items-center justify-center rounded-md text-muted hover:bg-raised hover:text-foreground"
-          title="Discover"
-        >
-          ◐
-        </Link>
-        <Link
-          href="/"
-          className="flex h-8 w-8 items-center justify-center rounded-md text-muted hover:bg-raised hover:text-foreground"
-          title="Activity"
-        >
-          ⏱
-        </Link>
-      </aside>
-    );
-  }
+  if (collapsed) return null;
 
   return (
-    <aside className="flex flex-col overflow-hidden border-r border-border bg-surface">
-      <div className="flex items-center justify-between px-4 pb-2 pt-4">
-        <Link
-          href="/"
-          className="font-display text-[20px] font-black tracking-[-0.03em] text-foreground"
-        >
-          stash
-        </Link>
-        <button
-          className="rounded-md border border-border-subtle bg-base px-2 py-0.5 text-[10px] text-muted hover:text-foreground"
-          title="Search (⌘K)"
-        >
-          ⌘K
-        </button>
-      </div>
-
-      <div className="flex flex-col gap-0.5 px-2">
-        <Link
-          href="/discover"
-          className={
-            "flex items-center gap-2 rounded-md px-2 py-1.5 text-[12px] " +
-            (pathname.startsWith("/discover")
-              ? "bg-brand-muted text-brand"
-              : "text-dim hover:bg-raised hover:text-foreground")
-          }
-        >
-          <span>◐</span> Discover
-        </Link>
-        <Link
-          href="/memory"
-          className={
-            "flex items-center gap-2 rounded-md px-2 py-1.5 text-[12px] " +
-            (pathname.startsWith("/memory")
-              ? "bg-brand-muted text-brand"
-              : "text-dim hover:bg-raised hover:text-foreground")
-          }
-        >
-          <span>⏱</span> Activity
-        </Link>
-      </div>
-
-      <div className="mt-2 flex-1 overflow-y-auto px-2">
-        {shared.length > 0 && (
-          <div className="mb-3">
-            <div className="px-1 pb-1 pt-2 text-[10px] font-medium uppercase tracking-wider text-muted">
-              Shared with me
-            </div>
-            <div className="flex flex-col gap-0.5">
-              {shared.map((s) => (
-                <StashTreeNode
-                  key={s.id}
-                  stash={{ ...s, shared: true }}
-                  expanded={!!expanded[s.id]}
-                  onToggle={() => toggleStash(s.id)}
-                  spine={spines[s.id] ?? null}
-                />
-              ))}
-            </div>
-          </div>
-        )}
-
-        <div className="mb-3">
-          <div className="flex items-center justify-between px-1 pb-1 pt-2">
-            <span className="text-[10px] font-medium uppercase tracking-wider text-muted">
-              My stashes
-            </span>
-            <Link
-              href="/stashes/new"
-              className="text-[11px] text-muted hover:text-foreground"
-              title="New stash"
+    <aside className="scroll-thin overflow-y-auto border-r border-border bg-surface">
+      <div className="px-3 pb-1 pt-3">
+        <Link href="/" className="flex items-center gap-2">
+          <span className="flex h-7 w-7 items-center justify-center rounded-md bg-gradient-to-br from-[var(--color-brand-500)] to-[var(--color-brand-700)] text-white shadow-sm">
+            <svg
+              viewBox="0 0 24 24"
+              className="h-4 w-4"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
             >
-              +
-            </Link>
+              <path d="M12 2 2 7l10 5 10-5z" />
+              <path d="m2 17 10 5 10-5" />
+              <path d="m2 12 10 5 10-5" />
+            </svg>
+          </span>
+          <span className="font-display text-[14px] font-semibold tracking-tight text-foreground">
+            stash
+          </span>
+        </Link>
+      </div>
+
+      <nav className="px-2 pt-2 text-[13px]">
+        <button className="flex w-full items-center gap-2 rounded-md px-2 py-1 text-muted hover:bg-raised">
+          <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <circle cx="11" cy="11" r="8" />
+            <path d="m21 21-4.3-4.3" />
+          </svg>
+          Search
+          <span className="ml-auto rounded bg-base px-1 py-0 font-mono text-[10px] text-muted ring-1 ring-border">
+            ⌘K
+          </span>
+        </button>
+        <NavRow
+          href="/discover"
+          icon={<span>◐</span>}
+          label="Discover"
+          active={pathname.startsWith("/discover")}
+        />
+        <NavRow
+          href="/memory"
+          icon={<span>⏱</span>}
+          label="Activity"
+          active={pathname.startsWith("/memory")}
+        />
+      </nav>
+
+      {shared.length > 0 && (
+        <>
+          <div className="mt-4 flex items-center justify-between px-3 pb-1">
+            <span className="text-[11px] font-semibold tracking-wide text-muted">
+              SHARED WITH ME
+            </span>
           </div>
-          <div className="flex flex-col gap-0.5">
-            {mine.map((s) => (
-              <StashTreeNode
+          <nav className="px-1 text-[13.5px]">
+            {shared.map((s) => (
+              <StashTree
                 key={s.id}
-                stash={s}
-                expanded={!!expanded[s.id]}
-                onToggle={() => toggleStash(s.id)}
+                stash={{ ...s, shared: true }}
                 spine={spines[s.id] ?? null}
+                defaultOpen={!!openStashes[s.id]}
+                onOpen={() => handleOpen(s.id)}
+                pathname={pathname}
               />
             ))}
-            {mine.length === 0 && (
-              <div className="px-1 py-1 text-[11px] italic text-muted">
-                No stashes yet — <Link href="/stashes/new" className="text-brand">create one</Link>
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
+          </nav>
+        </>
+      )}
 
-      <div className="border-t border-border-subtle px-2 py-2">
+      <div className="mt-4 flex items-center justify-between px-3 pb-1">
+        <span className="text-[11px] font-semibold tracking-wide text-muted">MY STASHES</span>
         <Link
-          href="/docs"
-          className="flex items-center gap-2 rounded-md px-2 py-1.5 text-[12px] text-dim hover:bg-raised hover:text-foreground"
+          href="/stashes/new"
+          className="rounded p-0.5 text-muted hover:bg-base hover:text-foreground"
+          title="New stash"
         >
-          <span>?</span> Docs
+          <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M12 5v14M5 12h14" />
+          </svg>
         </Link>
       </div>
+      <nav className="px-1 text-[13.5px]">
+        {mine.map((s) => (
+          <StashTree
+            key={s.id}
+            stash={s}
+            spine={spines[s.id] ?? null}
+            defaultOpen={!!openStashes[s.id]}
+            onOpen={() => handleOpen(s.id)}
+            pathname={pathname}
+          />
+        ))}
+        {mine.length === 0 && (
+          <div className="px-3 py-1.5 text-[12px] italic text-muted">
+            No stashes yet —{" "}
+            <Link href="/stashes/new" className="text-[var(--color-brand-700)] underline">
+              create one
+            </Link>
+          </div>
+        )}
+      </nav>
 
-      {user && (
-        <div className="relative border-t border-border-subtle px-2 py-3">
-          <button
-            type="button"
-            onClick={() => setShowUserMenu((o) => !o)}
-            className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-raised"
-            aria-expanded={showUserMenu}
-          >
-            <span
-              className="inline-flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full font-display text-[10px] font-bold text-white"
-              style={{ background: "var(--color-brand)" }}
-            >
-              {avatarInitial}
-            </span>
-            <div className="flex min-w-0 flex-col">
-              <div className="truncate text-[12px] font-medium text-foreground">
-                {displayName}
-              </div>
-              {handle && <div className="truncate text-[10px] text-muted">@{handle}</div>}
-            </div>
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                onToggleCollapsed?.();
-              }}
-              className="ml-auto rounded px-1 text-[10px] text-muted hover:text-foreground"
-              title="Collapse sidebar (⌘\\)"
-            >
-              ⌘\
-            </button>
-          </button>
-          {showUserMenu && (
-            <>
-              <div
-                className="fixed inset-0 z-40"
-                onClick={() => setShowUserMenu(false)}
-              />
-              <div className="absolute bottom-full left-2 right-2 z-50 mb-1 overflow-hidden rounded-lg border border-border bg-surface py-1 shadow-lg">
-                <Link
-                  href="/settings"
-                  onClick={() => setShowUserMenu(false)}
-                  className="block px-3 py-2 text-[13px] text-foreground transition hover:bg-raised"
-                >
-                  Settings
-                </Link>
-                {onLogout && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowUserMenu(false);
-                      onLogout();
-                    }}
-                    className="block w-full cursor-pointer px-3 py-2 text-left text-[13px] text-foreground transition hover:bg-raised"
-                  >
-                    Log out
-                  </button>
-                )}
-              </div>
-            </>
-          )}
-        </div>
-      )}
+      <div className="mt-6 border-t border-border px-2 py-2">
+        <NavRow href="/docs" icon={<span>?</span>} label="Docs" active={pathname.startsWith("/docs")} />
+        <NavRow href="/settings" icon={<span>⚙</span>} label="Settings" active={pathname.startsWith("/settings")} />
+      </div>
     </aside>
   );
 }
