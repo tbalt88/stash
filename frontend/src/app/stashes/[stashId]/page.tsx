@@ -137,13 +137,14 @@ export default function StashHomePage() {
     subtitle: "Folder",
   }));
   const driveFiles: CardItem[] = (spine?.drive.files ?? []).slice(0, 8).map((f) => ({
-    href: f.url || `/files?ws=${stashId}`,
-    external: !!f.url,
-    icon: f.content_type?.includes("csv") ? "▦" : f.content_type?.includes("pdf") ? "📄" : "📄",
+    href: `/stashes/${stashId}/f/${f.id}`,
+    icon: f.content_type?.includes("csv") ? "▦" : "📄",
     iconColor: f.content_type?.includes("csv")
       ? "text-emerald-600"
       : f.content_type?.includes("pdf")
       ? "text-rose-500"
+      : f.content_type?.includes("html")
+      ? "text-amber-600"
       : undefined,
     title: f.name,
     subtitle: `${f.content_type || "file"} · ${formatBytes(f.size_bytes)}`,

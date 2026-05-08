@@ -184,28 +184,26 @@ function StashTree({
               />
             ))}
             {spine?.drive.files.slice(0, 8).map((f) => (
-              <a
+              <NavRow
                 key={f.id}
-                href={f.url || `/files?ws=${stash.id}`}
-                target={f.url ? "_blank" : undefined}
-                rel={f.url ? "noopener noreferrer" : undefined}
-                className="page-row flex items-center gap-2 rounded-md px-2 py-1 text-[13px] text-dim transition-colors hover:bg-raised hover:text-foreground"
-              >
-                <span className="flex h-4 w-4 items-center justify-center text-[14px]">
+                href={`/stashes/${stash.id}/f/${f.id}`}
+                icon={
                   <span
                     className={
                       f.content_type?.includes("pdf")
                         ? "text-rose-500"
                         : f.content_type?.includes("csv")
                         ? "text-emerald-600"
+                        : f.content_type?.includes("html")
+                        ? "text-amber-600"
                         : "text-muted"
                     }
                   >
                     {f.content_type?.includes("csv") ? "▦" : "📄"}
                   </span>
-                </span>
-                <span className="flex-1 truncate">{f.name}</span>
-              </a>
+                }
+                label={f.name}
+              />
             ))}
             {(!spine || (spine.drive.files.length === 0 && spine.drive.folders.length === 0)) && (
               <div className="px-2 py-1 text-[11px] italic text-muted">empty</div>

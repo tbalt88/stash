@@ -8,35 +8,109 @@ import { useAuth } from "../../../../../hooks/useAuth";
 import { getStashTranscript, getWorkspace, type SessionTranscript } from "../../../../../lib/api";
 import type { Workspace } from "../../../../../lib/types";
 
-interface Turn {
-  role: "user" | "assistant" | "system" | "summary";
+interface MessageTurn {
+  kind: "message";
+  who: string; // "user" / "assistant" / etc.
+  role?: string;
+  name: string;
+  time?: string;
   content: string;
-  raw: Record<string, unknown>;
 }
+interface DateTurn {
+  kind: "date";
+  date: string;
+  isNew?: boolean;
+}
+interface SummaryTurn {
+  kind: "summary";
+  content: string;
+}
+type Turn = MessageTurn | DateTurn | SummaryTurn;
 
 function parseJsonl(text: string): Turn[] {
-  return text
-    .split("\n")
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .map((line) => {
-      try {
-        const obj = JSON.parse(line) as Record<string, unknown>;
-        const t = (obj.type as string) || "user";
-        const content =
-          (obj.content as string) ||
-          (obj.summary as string) ||
-          (obj.text as string) ||
-          JSON.stringify(obj);
-        return {
-          role: (t === "summary" ? "summary" : t === "assistant" ? "assistant" : t === "system" ? "system" : "user") as Turn["role"],
-          content,
-          raw: obj,
-        };
-      } catch {
-        return { role: "user" as Turn["role"], content: line, raw: { error: "parse" } };
-      }
+  const out: Turn[] = [];
+  for (const raw of text.split("\n")) {
+    const line = raw.trim();
+    if (!line) continue;
+    let obj: Record<string, unknown>;
+    try {
+      obj = JSON.parse(line) as Record<string, unknown>;
+    } catch {
+      out.push({ kind: "message", who: "user", name: "user", content: line });
+      continue;
+    }
+    const t = (obj.type as string) || "user";
+    if (t === "summary") {
+      out.push({ kind: "summary", content: (obj.summary as string) || "" });
+    } else if (t === "date") {
+      const date = (obj.date as string) || "";
+      out.push({ kind: "date", date, isNew: /new messages/i.test(date) });
+    } else {
+      out.push({
+        kind: "message",
+        who: t,
+        role: obj.role as string | undefined,
+        name: (obj.name as string) || (t === "assistant" ? "agent" : "user"),
+        time: obj.time as string | undefined,
+        content: (obj.content as string) || (obj.text as string) || "",
+      });
+    }
+  }
+  return out;
+}
+
+const HIGHLIGHT_PHRASES = [
+  "replaced 4 paralegals with Acme on the discovery side",
+  "$380K",
+  "$1.1M-$2.4M",
+  "$190K",
+  "audit-grade citations",
+  "audit-citation primitive",
+];
+
+function highlight(text: string): React.ReactNode {
+  let result: React.ReactNode[] = [text];
+  HIGHLIGHT_PHRASES.forEach((phrase) => {
+    const next: React.ReactNode[] = [];
+    result.forEach((node) => {
+      if (typeof node !== "string") return next.push(node);
+      const idx = node.indexOf(phrase);
+      if (idx === -1) return next.push(node);
+      next.push(node.slice(0, idx));
+      next.push(
+        <span key={phrase + idx + Math.random()} className="hl-yellow rounded px-0.5">
+          {phrase}
+        </span>
+      );
+      next.push(node.slice(idx + phrase.length));
     });
+    result = next;
+  });
+  return <>{result.map((n, i) => <span key={i}>{n}</span>)}</>;
+}
+
+const AVATARS: Record<string, { bg: string; fg: string }> = {
+  "Sam Liu": { bg: "bg-rose-200", fg: "text-rose-800" },
+  "Maya Chen": { bg: "bg-indigo-200", fg: "text-indigo-800" },
+  "Stash agent": { bg: "bg-[var(--color-brand-100)]", fg: "text-[var(--color-brand-800)]" },
+};
+
+function avatarFor(name: string) {
+  return (
+    AVATARS[name] || {
+      bg: "bg-gray-200",
+      fg: "text-gray-700",
+    }
+  );
+}
+
+function initials(name: string): string {
+  return name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((p) => p[0]?.toUpperCase() ?? "")
+    .join("");
 }
 
 export default function SessionViewerPage() {
@@ -89,83 +163,107 @@ export default function SessionViewerPage() {
     return <div className="flex h-screen items-center justify-center text-muted">Loading…</div>;
   if (!user) return null;
 
+  const summary = turns.find((t): t is SummaryTurn => t.kind === "summary");
+  const messageTurns = turns.filter((t) => t.kind !== "summary");
+
   return (
     <AppShell user={user} onLogout={logout}>
-      <div className="mx-auto max-w-3xl px-12 py-10">
-        <div className="mb-2 flex items-center gap-2 text-[12px] uppercase tracking-wider text-[var(--color-brand-700)]">
-          <span>💬</span> Session
-          <span className="text-muted">·</span>
-          <span className="italic text-muted">episodic memory</span>
-        </div>
-        <h1 className="font-display text-[36px] font-bold tracking-tight text-foreground">
-          #{sessionId}
-        </h1>
-        {transcript && (
-          <p className="mt-1 text-[13px] text-muted">
-            {transcript.agent_name} · {turns.length} turn{turns.length === 1 ? "" : "s"} ·{" "}
-            {(transcript.size_bytes / 1024).toFixed(1)} KB
-            {stash ? <span> · in <span className="text-foreground">{stash.name}</span></span> : null}
-            {transcript.cwd ? <span className="ml-2 font-mono text-[11px]">cwd: {transcript.cwd}</span> : null}
-          </p>
-        )}
-        <div className="mt-6" />
-
-        {error && (
-          <div className="mb-4 rounded-lg border border-red-300/40 bg-red-500/10 px-4 py-2 text-[13px] text-red-500">
-            {error}
+      <div className="scroll-thin flex-1 overflow-y-auto">
+        <div className="mx-auto max-w-3xl px-12 py-8">
+          {/* Title row — chat-style header */}
+          <div className="mb-6 border-b border-border pb-4">
+            <h1 className="font-display text-[26px] font-bold tracking-tight text-foreground">
+              # {sessionId.replace(/^acme-/, "")}
+            </h1>
+            {summary && (
+              <p className="mt-1 text-[13px] text-muted">{summary.content}</p>
+            )}
+            {transcript && (
+              <p className="mt-2 text-[11.5px] text-muted">
+                {transcript.agent_name} ·{" "}
+                {messageTurns.filter((t) => t.kind === "message").length} messages
+                {stash ? <span> · in <span className="text-foreground">{stash.name}</span></span> : null}
+              </p>
+            )}
           </div>
-        )}
 
-        <div className="flex flex-col gap-3">
-          {turns.map((turn, i) => (
-            <TurnRow key={i} turn={turn} />
-          ))}
-          {!error && turns.length === 0 && (
-            <div className="rounded-lg border border-dashed border-border bg-surface/30 px-4 py-6 text-center text-[12.5px] text-muted">
-              Loading transcript…
+          {error && (
+            <div className="mb-4 rounded-lg border border-red-300/40 bg-red-500/10 px-4 py-2 text-[13px] text-red-500">
+              {error}
             </div>
           )}
+
+          <div className="flex flex-col">
+            {messageTurns.map((turn, i) =>
+              turn.kind === "date" ? (
+                <DateDivider key={i} date={turn.date} isNew={turn.isNew} />
+              ) : turn.kind === "message" ? (
+                <MessageRow key={i} turn={turn} />
+              ) : null
+            )}
+            {!error && messageTurns.length === 0 && (
+              <div className="rounded-lg border border-dashed border-border bg-surface/30 px-4 py-6 text-center text-[12.5px] text-muted">
+                Loading transcript…
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </AppShell>
   );
 }
 
-function TurnRow({ turn }: { turn: Turn }) {
-  if (turn.role === "summary") {
-    return (
-      <div className="rounded-lg border-l-4 border-[var(--color-brand-500)] bg-[var(--color-brand-50)] px-4 py-3 text-[13.5px]">
-        <div className="text-[10px] font-semibold uppercase tracking-wide text-[var(--color-brand-700)]">
-          📌 Summary
-        </div>
-        <div className="mt-1 text-foreground">{turn.content}</div>
-      </div>
-    );
-  }
-
-  const isAgent = turn.role === "assistant";
-  const isSystem = turn.role === "system";
-
+function DateDivider({ date, isNew }: { date: string; isNew?: boolean }) {
   return (
-    <div className={"flex gap-3 " + (isAgent ? "flex-row" : "flex-row")}>
-      <div
+    <div className="my-3 flex items-center gap-2">
+      <div className="h-px flex-1 bg-border" />
+      <span
         className={
-          "flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full text-[10px] font-semibold " +
-          (isAgent
-            ? "bg-violet-100 text-violet-700"
-            : isSystem
-            ? "bg-amber-100 text-amber-700"
-            : "bg-rose-100 text-rose-700")
+          "rounded-full px-2 py-0.5 text-[10.5px] font-medium uppercase tracking-wide " +
+          (isNew
+            ? "bg-[var(--color-brand-100)] text-[var(--color-brand-800)]"
+            : "bg-surface text-muted ring-1 ring-border")
         }
       >
-        {isAgent ? "A" : isSystem ? "S" : "U"}
-      </div>
+        {date}
+      </span>
+      <div className="h-px flex-1 bg-border" />
+    </div>
+  );
+}
+
+function MessageRow({ turn }: { turn: MessageTurn }) {
+  const isAgent = turn.who === "assistant" || /agent/i.test(turn.name);
+  const avatar = avatarFor(turn.name);
+  return (
+    <div className="msg-row group flex gap-3 rounded-md px-2 py-2">
+      <span
+        className={
+          "inline-flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full text-[10px] font-semibold " +
+          avatar.bg +
+          " " +
+          avatar.fg
+        }
+      >
+        {initials(turn.name)}
+      </span>
       <div className="min-w-0 flex-1">
-        <div className="text-[10px] font-medium uppercase tracking-wide text-muted">
-          {isAgent ? "agent" : isSystem ? "system" : "user"}
+        <div className="flex items-baseline gap-2 text-[12.5px]">
+          <span className="font-semibold text-foreground">{turn.name}</span>
+          {isAgent && (
+            <span className="rounded bg-[var(--color-brand-50)] px-1 py-0 text-[9.5px] uppercase tracking-wide text-[var(--color-brand-700)] ring-1 ring-[var(--color-brand-200)]">
+              app
+            </span>
+          )}
+          {turn.role === "guest" && (
+            <span className="rounded bg-indigo-50 px-1 py-0 text-[9.5px] uppercase tracking-wide text-indigo-700 ring-1 ring-indigo-200">
+              guest
+            </span>
+          )}
+          {turn.time && <span className="text-[10.5px] text-muted">{turn.time}</span>}
         </div>
-        <div className="mt-1 whitespace-pre-wrap rounded-lg border border-border bg-base px-3 py-2 text-[13.5px] text-foreground">
-          {turn.content}
+        <div className="mt-0.5 whitespace-pre-wrap text-[13.5px] leading-relaxed text-foreground">
+          {highlight(turn.content)}
         </div>
       </div>
     </div>

@@ -933,6 +933,10 @@ export async function listFiles(workspaceId: string): Promise<FileInfo[]> {
   return data.files;
 }
 
+export async function getFile(workspaceId: string, fileId: string): Promise<FileInfo> {
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/files/${fileId}`);
+}
+
 export async function deleteFile(workspaceId: string, fileId: string): Promise<void> {
   await apiFetch(`/api/v1/workspaces/${workspaceId}/files/${fileId}`, { method: "DELETE" });
 }

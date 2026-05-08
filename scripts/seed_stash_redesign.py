@@ -354,37 +354,47 @@ Direct. No filler. One sentence per item. Group by:
 
 # Synthetic transcripts (jsonl-ish text)
 
-TRANSCRIPT_CUSTOMER_DISCOVERY = """{"type":"summary","summary":"Customer discovery call with Maya Chen, GC at Reed Smith"}
-{"type":"user","content":"What's the biggest pain in your AP workflow?"}
-{"type":"assistant","content":"Maya described losing 4 paralegal hours/week to invoice routing. They moved 80% of that to Acme in week 2."}
-{"type":"user","content":"What was the trigger to switch from Tipalti?"}
-{"type":"assistant","content":"Tipalti's audit-trail export was a manual XLS dump. SOC 2 auditors started rejecting it in 2026."}
-{"type":"user","content":"Best quote to use externally?"}
-{"type":"assistant","content":"Replaced 4 paralegals with Acme on the discovery side. It saved us 380K dollars this year."}
+TRANSCRIPT_CUSTOMER_DISCOVERY = """{"type":"summary","summary":"Customer discovery call with Maya Chen, GC at Reed Smith — 42 messages, Apr 22 -> Apr 24"}
+{"type":"date","date":"Tuesday, Apr 22"}
+{"type":"user","name":"Sam Liu","time":"10:12 AM","content":"Maya, thanks for making time. I'd love to walk through how your team's actually using Acme day-to-day, and where it's falling short. No pitch - just listening."}
+{"type":"user","name":"Maya Chen","time":"10:14 AM","role":"guest","content":"Honestly the biggest unlock has been doc review. We've replaced 4 paralegals with Acme on the discovery side. It saved us $380K this year. But - and this is important - we caught two missed indemnification clauses your tool flagged that humans had skipped twice."}
+{"type":"user","name":"Sam Liu","time":"10:18 AM","content":"Can you walk me through the procurement process? Did you go through legal-tech budget or general AI budget?"}
+{"type":"user","name":"Maya Chen","time":"10:21 AM","role":"guest","content":"AI budget. Legal-tech took 9+ months last cycle. AI committee turned us around in 3 weeks."}
+{"type":"assistant","name":"Stash agent","time":"10:22 AM","content":"Pinned this quote to Narrative.md under 'Why now?'. Also flagged it for slide 7 of the deck."}
+{"type":"date","date":"Thursday, Apr 24 - new messages"}
+{"type":"user","name":"Maya Chen","time":"9:04 AM","role":"guest","content":"Slept on it. The thing that would unlock another 10x for us would be if Acme could draft the response packet, not just review. Right now I still need a senior associate to sign off."}
+{"type":"user","name":"Sam Liu","time":"9:11 AM","content":"/summarize-for-investor-deck"}
+{"type":"assistant","name":"Stash agent","time":"9:11 AM","content":"3 investor-ready takeaways:\\n1. $380K labor savings in year 1 from doc review automation\\n2. 2 caught indemnification clauses humans missed twice - risk-avoidance value $1.1M-$2.4M\\n3. Drafting is the next 10x - pulled into roadmap as the Q1 wedge"}
 """.encode()
 
-TRANSCRIPT_PRICING = """{"type":"summary","summary":"Pricing objection handling - David Park, CFO at Lumio"}
-{"type":"user","content":"David is balking at 38K ARR. What do we do?"}
-{"type":"assistant","content":"He compared us to a 9K Stampli plan. Reframe: Acme replaces 2.5 FTE-equivalent of paralegal time = 190K per year. ROI is 5x in year one."}
-{"type":"user","content":"Will he sign?"}
-{"type":"assistant","content":"He countered to 32K with a 12-month auto-renew. We took it."}
+TRANSCRIPT_PRICING = """{"type":"summary","summary":"Pricing objection handling - David Park, CFO at Lumio - 36 messages, Apr 30"}
+{"type":"date","date":"Wednesday, Apr 30"}
+{"type":"user","name":"Sam Liu","time":"2:14 PM","content":"David is balking at $38K ARR. What do we do?"}
+{"type":"assistant","name":"Stash agent","time":"2:14 PM","content":"He compared us to a $9K Stampli plan. Reframe: Acme replaces 2.5 FTE-equivalent of paralegal time = $190K/yr. ROI is 5x in year one."}
+{"type":"user","name":"Sam Liu","time":"2:18 PM","content":"Will he sign?"}
+{"type":"assistant","name":"Stash agent","time":"2:18 PM","content":"He countered to $32K with a 12-month auto-renew. We took it. Logged the win in arr_forecast.csv."}
 """.encode()
 
-TRANSCRIPT_COMPETITOR = """{"type":"summary","summary":"Competitor teardown - Vendor.co"}
-{"type":"user","content":"What do we know about Vendor.co?"}
-{"type":"assistant","content":"Stealth. Founded by ex-Tesseract Greg Park + Sarah Hou. 4M seed from Bain Capital. No live customers yet (as of April 2026)."}
-{"type":"user","content":"Are they a real threat?"}
-{"type":"assistant","content":"In 12-18 months, yes. Right now no - they don't have the audit-citation primitive that's our SOC 2 wedge."}
+TRANSCRIPT_COMPETITOR = """{"type":"summary","summary":"Competitor teardown - Vendor.co - 17 messages, Apr 15"}
+{"type":"date","date":"Tuesday, Apr 15"}
+{"type":"user","name":"Sam Liu","time":"4:02 PM","content":"What do we know about Vendor.co?"}
+{"type":"assistant","name":"Stash agent","time":"4:02 PM","content":"Stealth. Founded by ex-Tesseract Greg Park + Sarah Hou. $4M seed from Bain Capital. No live customers yet (as of April 2026)."}
+{"type":"user","name":"Sam Liu","time":"4:05 PM","content":"Are they a real threat?"}
+{"type":"assistant","name":"Stash agent","time":"4:05 PM","content":"In 12-18 months, yes. Right now no - they don't have the audit-citation primitive that's our SOC 2 wedge."}
 """.encode()
 
-TRANSCRIPT_DD = """{"type":"summary","summary":"DD prep with Sequoia (Roelof's team)"}
-{"type":"user","content":"They want a 12-Q DD pack by Friday."}
-{"type":"assistant","content":"I've drafted answers to all 12. Pulled CAC payback from arr_forecast.csv rows 14-22; net retention from customer_health.csv. Need Karri to review the pricing-power answer before send."}
+TRANSCRIPT_DD = """{"type":"summary","summary":"DD prep with Sequoia (Roelof's team) - 22 messages, May 1"}
+{"type":"date","date":"Thursday, May 1"}
+{"type":"user","name":"Sam Liu","time":"11:30 AM","content":"They want a 12-Q DD pack by Friday."}
+{"type":"assistant","name":"Stash agent","time":"11:31 AM","content":"I've drafted answers to all 12. Pulled CAC payback from arr_forecast.csv rows 14-22; net retention from customer_health.csv. Need Karri to review the pricing-power answer before send."}
 """.encode()
 
-TRANSCRIPT_MARKET = """{"type":"summary","summary":"TAM bottom-up sizing"}
-{"type":"user","content":"What's the realistic 5-year TAM?"}
-{"type":"assistant","content":"Mid-market AP teams in US: ~58k. ACV at scale = 25k-45k. 5yr TAM = 1.5B-2.6B. Source: U.S. Census + IBISWorld."}
+TRANSCRIPT_MARKET = """{"type":"summary","summary":"TAM bottom-up sizing - 28 messages, Apr 8"}
+{"type":"date","date":"Tuesday, Apr 8"}
+{"type":"user","name":"Sam Liu","time":"2:14 PM","content":"Skeptical of any deck slide that just says '$50B TAM'. Help me build it bottom-up."}
+{"type":"assistant","name":"Stash agent","time":"2:14 PM","content":"Pulled vertical AP-tech ICP data. Target firms: 28,400 (US + UK, 50-500 lawyers). ACV at maturity: $240K (5 seats x $4K x 12mo). Bottom-up TAM: $6.8B."}
+{"type":"user","name":"Sam Liu","time":"2:18 PM","content":"Discount it for AI committee approval rate."}
+{"type":"assistant","name":"Stash agent","time":"2:18 PM","content":"At 38% AI-procurement penetration by 2027 and our wedge ICP, SAM compresses to $2.6B. SOM (3yr) at our current win rate: $310M."}
 """.encode()
 
 # A real (small) PDF — minimal valid PDF
