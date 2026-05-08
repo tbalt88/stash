@@ -16,6 +16,7 @@ import type { Workspace, WorkspaceMember } from "../../../lib/types";
 
 interface CardItem {
   href: string;
+  external?: boolean;
   icon: string;
   iconColor?: string;
   title: string;
@@ -29,22 +30,35 @@ function CardGrid({ items, hover }: { items: CardItem[]; hover: "brand" | "indig
       : "hover:border-[var(--color-brand-200)] hover:bg-[var(--color-brand-50)]";
   return (
     <div className="mt-2 grid grid-cols-1 gap-2 md:grid-cols-2">
-      {items.map((c) => (
-        <Link
-          key={c.href + c.title}
-          href={c.href}
-          className={
-            "flex items-center gap-3 rounded-lg border border-border bg-base p-3 text-left transition-colors " +
-            hoverCls
-          }
-        >
-          <span className={"text-2xl " + (c.iconColor || "")}>{c.icon}</span>
-          <div className="min-w-0">
-            <div className="truncate text-[13.5px] font-semibold text-foreground">{c.title}</div>
-            <div className="truncate text-[11.5px] text-muted">{c.subtitle}</div>
-          </div>
-        </Link>
-      ))}
+      {items.map((c) => {
+        const cls =
+          "flex items-center gap-3 rounded-lg border border-border bg-base p-3 text-left transition-colors " +
+          hoverCls;
+        const inner = (
+          <>
+            <span className={"text-2xl " + (c.iconColor || "")}>{c.icon}</span>
+            <div className="min-w-0">
+              <div className="truncate text-[13.5px] font-semibold text-foreground">{c.title}</div>
+              <div className="truncate text-[11.5px] text-muted">{c.subtitle}</div>
+            </div>
+          </>
+        );
+        return c.external ? (
+          <a
+            key={c.href + c.title}
+            href={c.href}
+            target="_blank"
+            rel="noopener noreferrer"
+            className={cls}
+          >
+            {inner}
+          </a>
+        ) : (
+          <Link key={c.href + c.title} href={c.href} className={cls}>
+            {inner}
+          </Link>
+        );
+      })}
     </div>
   );
 }
@@ -104,7 +118,7 @@ export default function StashHomePage() {
   if (!user) return null;
 
   const sessions: CardItem[] = (spine?.sessions ?? []).slice(0, 6).map((s) => ({
-    href: `/memory?ws=${stashId}&session=${encodeURIComponent(s.session_id)}`,
+    href: `/stashes/${stashId}/sessions/${encodeURIComponent(s.session_id)}`,
     icon: "#",
     title: `#${s.session_id.length > 28 ? s.session_id.slice(0, 28) + "…" : s.session_id}`,
     subtitle: `${s.agent_name} · ${formatBytes(s.size_bytes)}`,
@@ -123,7 +137,8 @@ export default function StashHomePage() {
     subtitle: "Folder",
   }));
   const driveFiles: CardItem[] = (spine?.drive.files ?? []).slice(0, 8).map((f) => ({
-    href: `/files?ws=${stashId}&file=${f.id}`,
+    href: f.url || `/files?ws=${stashId}`,
+    external: !!f.url,
     icon: f.content_type?.includes("csv") ? "▦" : f.content_type?.includes("pdf") ? "📄" : "📄",
     iconColor: f.content_type?.includes("csv")
       ? "text-emerald-600"

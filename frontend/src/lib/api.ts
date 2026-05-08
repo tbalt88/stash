@@ -1159,6 +1159,29 @@ export async function listAgentNames(workspaceId: string): Promise<string[]> {
   return data.agent_names;
 }
 
+// --- Session transcripts ---
+
+export interface SessionTranscript {
+  id: string;
+  workspace_id: string;
+  session_id: string;
+  agent_name: string;
+  size_bytes: number;
+  cwd: string | null;
+  uploaded_by: string;
+  uploaded_at: string;
+  download_url: string | null;
+}
+
+export async function getStashTranscript(
+  stashId: string,
+  sessionId: string
+): Promise<SessionTranscript> {
+  return apiFetch(
+    `/api/v1/workspaces/${stashId}/transcripts/${encodeURIComponent(sessionId)}`
+  );
+}
+
 // --- Stashes (canonical naming, aliases /api/v1/workspaces/* on the server) ---
 
 export interface StashSpineSession {
@@ -1179,6 +1202,7 @@ export interface StashSpineDriveFile {
   name: string;
   size_bytes: number;
   content_type: string;
+  url: string | null;
   created_at: string;
 }
 export interface StashSpineDriveFolder {

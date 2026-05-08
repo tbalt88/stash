@@ -229,6 +229,8 @@ async def _spine_skills(stash_id: UUID) -> list[dict]:
 
 
 async def _spine_drive(stash_id: UUID) -> dict:
+    from ..services import storage_service
+
     pool = get_pool()
     skill_folder_ids = await pool.fetch(
         "SELECT f.id FROM folders f "
@@ -238,7 +240,7 @@ async def _spine_drive(stash_id: UUID) -> dict:
     )
     skill_ids = [r["id"] for r in skill_folder_ids]
     files = await pool.fetch(
-        "SELECT id, name, size_bytes, content_type, created_at "
+        "SELECT id, name, size_bytes, content_type, storage_key, created_at "
         "FROM files WHERE workspace_id = $1 ORDER BY created_at DESC",
         stash_id,
     )
@@ -249,17 +251,26 @@ async def _spine_drive(stash_id: UUID) -> dict:
         + " ORDER BY name",
         *([stash_id, skill_ids] if skill_ids else [stash_id]),
     )
-    return {
-        "files": [
+
+    file_payload = []
+    for f in files:
+        try:
+            url = await storage_service.get_file_url(f["storage_key"])
+        except Exception:
+            url = None
+        file_payload.append(
             {
                 "id": str(f["id"]),
                 "name": f["name"],
                 "size_bytes": f["size_bytes"],
                 "content_type": f["content_type"],
+                "url": url,
                 "created_at": f["created_at"],
             }
-            for f in files
-        ],
+        )
+
+    return {
+        "files": file_payload,
         "folders": [
             {
                 "id": str(f["id"]),
