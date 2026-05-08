@@ -29,6 +29,11 @@ type StashData = {
   artifacts: StashArtifact[];
 };
 
+type TranscriptMessage = {
+  role: "user" | "assistant";
+  text: string;
+};
+
 async function loadStash(slug: string): Promise<StashData | null> {
   const res = await fetch(`${BACKEND_ORIGIN}/api/v1/stashes/${slug}`, {
     cache: "no-store",
@@ -36,6 +41,20 @@ async function loadStash(slug: string): Promise<StashData | null> {
   if (res.status === 404) return null;
   if (!res.ok) throw new Error(`stash fetch failed: ${res.status}`);
   return res.json();
+}
+
+async function loadTranscript(slug: string): Promise<TranscriptMessage[]> {
+  try {
+    const res = await fetch(
+      `${BACKEND_ORIGIN}/api/v1/stashes/${slug}/transcript/messages`,
+      { cache: "no-store" },
+    );
+    if (!res.ok) return [];
+    const data = await res.json();
+    return data.messages || [];
+  } catch {
+    return [];
+  }
 }
 
 export async function generateMetadata({
@@ -64,7 +83,10 @@ export default async function StashPage({
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
-  const data = await loadStash(slug);
+  const [data, messages] = await Promise.all([
+    loadStash(slug),
+    loadTranscript(slug),
+  ]);
   if (!data) notFound();
 
   const statusLabel: Record<string, { text: string; color: string }> = {
@@ -112,7 +134,47 @@ export default async function StashPage({
         </section>
       ) : null}
 
-      {/* Artifacts sidebar / file tree */}
+      {/* Transcript */}
+      {messages.length > 0 ? (
+        <section className="mt-8">
+          <h2 className="font-display text-[18px] font-bold text-ink">Transcript</h2>
+          <div className="mt-4 space-y-4">
+            {messages.map((m, i) => (
+              <div
+                key={i}
+                className={`rounded-lg border px-5 py-4 ${
+                  m.role === "user"
+                    ? "border-border-subtle bg-raised/30"
+                    : "border-border-subtle/50 bg-transparent"
+                }`}
+              >
+                <p className="mb-2 font-mono text-[11px] font-semibold uppercase tracking-wider text-muted">
+                  {m.role === "user" ? "You" : "Assistant"}
+                </p>
+                <div className="whitespace-pre-wrap text-[14px] leading-[1.7] text-foreground">
+                  {m.text}
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      ) : data.has_transcript ? (
+        <section className="mt-8">
+          <h2 className="font-display text-[18px] font-bold text-ink">Transcript</h2>
+          <p className="mt-3 text-[14px] text-foreground">
+            <a
+              href={`${BACKEND_ORIGIN}/api/v1/stashes/${slug}/transcript`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-brand hover:underline"
+            >
+              Download full session transcript →
+            </a>
+          </p>
+        </section>
+      ) : null}
+
+      {/* Artifacts */}
       {data.artifacts.length > 0 ? (
         <section className="mt-8">
           <h2 className="font-display text-[18px] font-bold text-ink">Artifacts</h2>
@@ -130,23 +192,6 @@ export default async function StashPage({
               </a>
             ))}
           </div>
-        </section>
-      ) : null}
-
-      {/* Transcript link */}
-      {data.has_transcript ? (
-        <section className="mt-8">
-          <h2 className="font-display text-[18px] font-bold text-ink">Transcript</h2>
-          <p className="mt-3 text-[14px] text-foreground">
-            <a
-              href={`${BACKEND_ORIGIN}/api/v1/stashes/${slug}/transcript`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-brand hover:underline"
-            >
-              Download full session transcript →
-            </a>
-          </p>
         </section>
       ) : null}
 

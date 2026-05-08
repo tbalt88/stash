@@ -196,6 +196,51 @@ async def get_stash_transcript(slug: str):
     return PlainTextResponse(text, media_type="application/jsonl")
 
 
+@public_router.get("/{slug}/transcript/messages")
+async def get_stash_transcript_messages(slug: str):
+    stash = await stash_service.get_stash_by_slug(slug)
+    if not stash:
+        raise HTTPException(status_code=404, detail="Stash not found")
+
+    transcript_key = await stash_service.get_transcript_key(stash["id"])
+    if not transcript_key:
+        raise HTTPException(status_code=404, detail="Transcript not available")
+
+    import gzip
+    import json as json_mod
+
+    raw = await storage_service.download_file(transcript_key)
+    try:
+        text = gzip.decompress(raw).decode("utf-8", errors="replace")
+    except Exception:
+        text = raw.decode("utf-8", errors="replace")
+
+    messages = []
+    for line in text.splitlines():
+        if not line.strip():
+            continue
+        try:
+            obj = json_mod.loads(line)
+        except Exception:
+            continue
+        entry_type = obj.get("type")
+        if entry_type not in ("user", "assistant"):
+            continue
+        content = obj.get("message", {}).get("content", "")
+        text_parts = []
+        if isinstance(content, str):
+            if content.strip():
+                text_parts.append(content)
+        elif isinstance(content, list):
+            for block in content:
+                if isinstance(block, dict) and block.get("type") == "text" and block.get("text", "").strip():
+                    text_parts.append(block["text"])
+        if text_parts:
+            messages.append({"role": entry_type, "text": "\n\n".join(text_parts)})
+
+    return {"messages": messages}
+
+
 def _stash_to_text(stash: dict, artifacts: list[dict]) -> str:
     base = settings.PUBLIC_URL.rstrip("/")
     lines = [f"# Stash: {stash['slug']}", ""]
