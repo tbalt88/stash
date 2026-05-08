@@ -254,7 +254,7 @@ def _stash_to_text(stash: dict, artifacts: list[dict]) -> str:
         lines.append("")
         lines.append(stash["summary"])
         lines.append("")
-    elif stash["status"] in ("uploading", "summarizing"):
+    elif stash["status"] in ("live", "summarizing"):
         lines.append("## Summary")
         lines.append("")
         lines.append("_Summary is being generated..._")

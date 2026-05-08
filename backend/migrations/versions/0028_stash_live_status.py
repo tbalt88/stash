@@ -1,0 +1,32 @@
+"""Add 'live' status to stashes, replace 'uploading' default.
+
+Revision ID: 0028
+Revises: 0027
+"""
+
+from alembic import op
+
+revision = "0028"
+down_revision = "0027"
+branch_labels = None
+depends_on = None
+
+
+def upgrade() -> None:
+    op.execute("""
+        ALTER TABLE stashes DROP CONSTRAINT IF EXISTS stashes_status_check;
+        ALTER TABLE stashes ADD CONSTRAINT stashes_status_check
+            CHECK (status IN ('live', 'summarizing', 'ready', 'failed'));
+        ALTER TABLE stashes ALTER COLUMN status SET DEFAULT 'live';
+        UPDATE stashes SET status = 'live' WHERE status = 'uploading';
+    """)
+
+
+def downgrade() -> None:
+    op.execute("""
+        UPDATE stashes SET status = 'uploading' WHERE status = 'live';
+        ALTER TABLE stashes DROP CONSTRAINT IF EXISTS stashes_status_check;
+        ALTER TABLE stashes ADD CONSTRAINT stashes_status_check
+            CHECK (status IN ('uploading', 'summarizing', 'ready', 'failed'));
+        ALTER TABLE stashes ALTER COLUMN status SET DEFAULT 'uploading';
+    """)

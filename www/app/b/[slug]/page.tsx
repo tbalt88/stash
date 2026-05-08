@@ -18,7 +18,7 @@ type StashData = {
   slug: string;
   agent_name: string;
   cwd: string | null;
-  status: "uploading" | "summarizing" | "ready" | "failed";
+  status: "live" | "summarizing" | "ready" | "failed";
   summary: string | null;
   files_touched: string[];
   artifact_count: number;
@@ -90,12 +90,12 @@ export default async function StashPage({
   if (!data) notFound();
 
   const statusLabel: Record<string, { text: string; color: string }> = {
-    uploading: { text: "Uploading artifacts...", color: "text-amber-400" },
+    live: { text: "Live", color: "text-amber-400" },
     summarizing: { text: "Generating summary...", color: "text-blue-400" },
     ready: { text: "Ready", color: "text-emerald-400" },
     failed: { text: "Summary unavailable", color: "text-red-400" },
   };
-  const st = statusLabel[data.status] || statusLabel.uploading;
+  const st = statusLabel[data.status] || statusLabel.live;
 
   return (
     <main className="mx-auto max-w-[900px] px-7 py-12">
@@ -125,7 +125,7 @@ export default async function StashPage({
             {data.summary}
           </div>
         </section>
-      ) : data.status === "summarizing" || data.status === "uploading" ? (
+      ) : data.status === "summarizing" || data.status === "live" ? (
         <section className="mt-8">
           <h2 className="font-display text-[18px] font-bold text-ink">Summary</h2>
           <p className="mt-3 text-[14px] italic text-muted">

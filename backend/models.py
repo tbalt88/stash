@@ -728,7 +728,7 @@ class StashCreateRequest(BaseModel):
 
 class StashUpdateRequest(BaseModel):
     summary: str | None = None
-    status: str | None = Field(None, pattern=r"^(uploading|summarizing|ready|failed)$")
+    status: str | None = Field(None, pattern=r"^(live|summarizing|ready|failed)$")
 
 
 class StashArtifactResponse(BaseModel):
