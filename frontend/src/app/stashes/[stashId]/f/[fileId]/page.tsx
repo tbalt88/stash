@@ -7,9 +7,12 @@ import remarkGfm from "remark-gfm";
 import AppShell from "../../../../../components/AppShell";
 import { useBreadcrumbs } from "../../../../../components/BreadcrumbContext";
 import { useAuth } from "../../../../../hooks/useAuth";
-import { getFile } from "../../../../../lib/api";
+import { getFile, ingestCsvFile } from "../../../../../lib/api";
 import type { FileInfo } from "../../../../../lib/types";
 
+function isCsv(ct: string) {
+  return ct?.includes("csv") || ct === "text/csv";
+}
 function isHtml(ct: string) {
   return ct?.includes("html");
 }
@@ -46,6 +49,23 @@ export default function FileViewerPage() {
     try {
       const f = await getFile(stashId, fileId);
       setFile(f);
+
+      // CSVs always live in /tables/[id]. If already linked, redirect.
+      // Otherwise ingest and then redirect — user never sees this route for CSVs.
+      if (isCsv(f.content_type)) {
+        if (f.linked_table_id) {
+          router.replace(`/tables/${f.linked_table_id}?workspaceId=${stashId}`);
+        } else {
+          try {
+            const table = await ingestCsvFile(stashId, fileId);
+            router.replace(`/tables/${table.id}?workspaceId=${stashId}`);
+          } catch (e) {
+            setError(e instanceof Error ? e.message : "CSV ingest failed");
+          }
+        }
+        return;
+      }
+
       if (f.url && (isText(f.content_type) || isMarkdown(f.content_type, f.name))) {
         const res = await fetch(f.url);
         if (res.ok) setTextBody(await res.text());
@@ -53,7 +73,7 @@ export default function FileViewerPage() {
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load file");
     }
-  }, [stashId, fileId]);
+  }, [stashId, fileId, router]);
 
   useEffect(() => {
     if (user) load();

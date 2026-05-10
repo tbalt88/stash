@@ -673,6 +673,7 @@ class FileResponse(BaseModel):
     url: str
     uploaded_by: UUID
     created_at: datetime
+    linked_table_id: UUID | None = None
 
 
 class FileListResponse(BaseModel):

@@ -203,6 +203,7 @@ export interface FileInfo {
   url: string;
   uploaded_by: string;
   created_at: string;
+  linked_table_id?: string | null;
 }
 
 export interface Attachment {

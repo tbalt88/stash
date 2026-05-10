@@ -136,19 +136,26 @@ export default function StashHomePage() {
     title: f.name,
     subtitle: "Folder",
   }));
-  const driveFiles: CardItem[] = (spine?.drive.files ?? []).slice(0, 8).map((f) => ({
-    href: `/stashes/${stashId}/f/${f.id}`,
-    icon: f.content_type?.includes("csv") ? "▦" : "📄",
-    iconColor: f.content_type?.includes("csv")
-      ? "text-emerald-600"
-      : f.content_type?.includes("pdf")
-      ? "text-rose-500"
-      : f.content_type?.includes("html")
-      ? "text-amber-600"
-      : undefined,
-    title: f.name,
-    subtitle: `${f.content_type || "file"} · ${formatBytes(f.size_bytes)}`,
-  }));
+  const driveFiles: CardItem[] = (spine?.drive.files ?? []).slice(0, 8).map((f) => {
+    const isCsvLinked = f.content_type?.includes("csv") && f.linked_table_id;
+    return {
+      href: isCsvLinked
+        ? `/tables/${f.linked_table_id}?workspaceId=${stashId}`
+        : `/stashes/${stashId}/f/${f.id}`,
+      icon: f.content_type?.includes("csv") ? "▦" : "📄",
+      iconColor: f.content_type?.includes("csv")
+        ? "text-emerald-600"
+        : f.content_type?.includes("pdf")
+        ? "text-rose-500"
+        : f.content_type?.includes("html")
+        ? "text-amber-600"
+        : undefined,
+      title: f.name,
+      subtitle: isCsvLinked
+        ? `table · ${formatBytes(f.size_bytes)}`
+        : `${f.content_type || "file"} · ${formatBytes(f.size_bytes)}`,
+    };
+  });
 
   return (
     <AppShell user={user} onLogout={logout}>

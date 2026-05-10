@@ -937,6 +937,12 @@ export async function getFile(workspaceId: string, fileId: string): Promise<File
   return apiFetch(`/api/v1/workspaces/${workspaceId}/files/${fileId}`);
 }
 
+export async function ingestCsvFile(workspaceId: string, fileId: string): Promise<Table> {
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/files/${fileId}/ingest-csv`, {
+    method: "POST",
+  });
+}
+
 export async function deleteFile(workspaceId: string, fileId: string): Promise<void> {
   await apiFetch(`/api/v1/workspaces/${workspaceId}/files/${fileId}`, { method: "DELETE" });
 }
@@ -1209,6 +1215,7 @@ export interface StashSpineDriveFile {
   content_type: string;
   url: string | null;
   created_at: string;
+  linked_table_id?: string | null;
 }
 export interface StashSpineDriveFolder {
   id: string;

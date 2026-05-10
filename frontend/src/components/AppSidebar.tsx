@@ -203,28 +203,35 @@ function StashTree({
                 label={f.name}
               />
             ))}
-            {spine?.drive.files.slice(0, 8).map((f) => (
-              <NavRow
-                key={f.id}
-                href={`/stashes/${stash.id}/f/${f.id}`}
-                icon={
-                  <span
-                    className={
-                      f.content_type?.includes("pdf")
-                        ? "text-rose-500"
-                        : f.content_type?.includes("csv")
-                        ? "text-emerald-600"
-                        : f.content_type?.includes("html")
-                        ? "text-amber-600"
-                        : "text-muted"
-                    }
-                  >
-                    {f.content_type?.includes("csv") ? "▦" : "📄"}
-                  </span>
-                }
-                label={f.name}
-              />
-            ))}
+            {spine?.drive.files.slice(0, 8).map((f) => {
+              const isCsvLinked =
+                f.content_type?.includes("csv") && f.linked_table_id;
+              const href = isCsvLinked
+                ? `/tables/${f.linked_table_id}?workspaceId=${stash.id}`
+                : `/stashes/${stash.id}/f/${f.id}`;
+              return (
+                <NavRow
+                  key={f.id}
+                  href={href}
+                  icon={
+                    <span
+                      className={
+                        f.content_type?.includes("pdf")
+                          ? "text-rose-500"
+                          : f.content_type?.includes("csv")
+                          ? "text-emerald-600"
+                          : f.content_type?.includes("html")
+                          ? "text-amber-600"
+                          : "text-muted"
+                      }
+                    >
+                      {f.content_type?.includes("csv") ? "▦" : "📄"}
+                    </span>
+                  }
+                  label={f.name}
+                />
+              );
+            })}
             {(!spine || (spine.drive.files.length === 0 && spine.drive.folders.length === 0)) && (
               <div className="px-2 py-1 text-[11px] italic text-muted">empty</div>
             )}

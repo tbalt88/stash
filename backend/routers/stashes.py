@@ -248,7 +248,7 @@ async def _spine_drive(stash_id: UUID) -> dict:
     )
     skill_ids = [r["id"] for r in skill_folder_ids]
     files = await pool.fetch(
-        "SELECT id, name, size_bytes, content_type, storage_key, created_at "
+        "SELECT id, name, size_bytes, content_type, storage_key, created_at, linked_table_id "
         "FROM files WHERE workspace_id = $1 ORDER BY created_at DESC",
         stash_id,
     )
@@ -274,6 +274,9 @@ async def _spine_drive(stash_id: UUID) -> dict:
                 "content_type": f["content_type"],
                 "url": url,
                 "created_at": f["created_at"],
+                "linked_table_id": (
+                    str(f["linked_table_id"]) if f["linked_table_id"] else None
+                ),
             }
         )
 
