@@ -57,8 +57,8 @@ function TablesPageInner() {
       <div className="max-w-3xl mx-auto w-full px-4 py-8">
         <div className="flex items-center justify-between mb-6">
           <h1 className="text-2xl font-bold text-foreground font-display">Tables</h1>
-          <button onClick={handleCreate} className="text-sm bg-brand hover:bg-brand-hover text-foreground px-3 py-1.5 rounded">
-            New Table
+          <button onClick={handleCreate} className="rounded-md bg-[var(--color-brand-600)] px-3 py-1.5 text-[12.5px] font-medium text-white hover:bg-[var(--color-brand-700)]">
+            New table
           </button>
         </div>
         {error && <p className="text-red-400 text-sm mb-4">{error}</p>}

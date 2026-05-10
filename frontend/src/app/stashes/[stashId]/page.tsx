@@ -171,23 +171,8 @@ export default function StashHomePage() {
           )}
 
           <div className="mt-3 flex flex-wrap items-center gap-2 text-[12px] text-muted">
-            <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-rose-200 text-[10px] font-semibold text-rose-800">
-              {(members.find((m) => m.role === "owner")?.display_name ||
-                members.find((m) => m.role === "owner")?.name ||
-                "?")
-                .slice(0, 2)
-                .toUpperCase()}
-            </span>
-            <span className="font-medium text-foreground">
-              {members.find((m) => m.role === "owner")?.display_name ||
-                members.find((m) => m.role === "owner")?.name ||
-                "—"}
-            </span>
+            <MemberStack members={members} />
             <span>· updated {stash?.updated_at ? formatRelative(stash.updated_at) : ""}</span>
-            <span className="text-muted">·</span>
-            <span>
-              {members.length} member{members.length !== 1 ? "s" : ""}
-            </span>
             <span className="text-muted">·</span>
             <span>{stash?.is_public ? "Public" : "Private"}</span>
           </div>
@@ -338,6 +323,55 @@ function EmptyState({
           <span className="font-mono text-[12px]">{action.label}</span>
         </div>
       )}
+    </div>
+  );
+}
+
+const AVATAR_PALETTE: { bg: string; fg: string }[] = [
+  { bg: "bg-rose-200", fg: "text-rose-800" },
+  { bg: "bg-indigo-200", fg: "text-indigo-800" },
+  { bg: "bg-emerald-200", fg: "text-emerald-800" },
+  { bg: "bg-amber-200", fg: "text-amber-900" },
+  { bg: "bg-sky-200", fg: "text-sky-800" },
+  { bg: "bg-fuchsia-200", fg: "text-fuchsia-800" },
+];
+
+function avatarFor(name: string) {
+  let h = 5381;
+  for (let i = 0; i < name.length; i++) h = (h * 33 + name.charCodeAt(i)) >>> 0;
+  return AVATAR_PALETTE[h % AVATAR_PALETTE.length];
+}
+
+function MemberStack({ members }: { members: WorkspaceMember[] }) {
+  if (!members.length) return null;
+  const display = members.slice(0, 5);
+  const overflow = members.length - display.length;
+  return (
+    <div className="flex items-center gap-1.5">
+      <div className="flex -space-x-1.5">
+        {display.map((m) => {
+          const label = (m.display_name || m.name || "?").trim();
+          const palette = avatarFor(label);
+          return (
+            <span
+              key={m.user_id}
+              className={
+                "inline-flex h-5 w-5 items-center justify-center rounded-full border-2 border-base text-[9.5px] font-semibold " +
+                palette.bg +
+                " " +
+                palette.fg
+              }
+              title={`${label}${m.role && m.role !== "member" ? ` · ${m.role}` : ""}`}
+            >
+              {label.slice(0, 2).toUpperCase()}
+            </span>
+          );
+        })}
+      </div>
+      {overflow > 0 && <span className="text-[11px] text-muted">+{overflow}</span>}
+      <span className="text-[12px] text-muted">
+        {members.length} member{members.length !== 1 ? "s" : ""}
+      </span>
     </div>
   );
 }

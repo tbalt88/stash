@@ -26,6 +26,9 @@ export default function SharePage() {
 
   useEffect(() => {
     load();
+    // Poll every 30s so view_count + content refreshes match real-world activity.
+    const t = setInterval(load, 30_000);
+    return () => clearInterval(t);
   }, [load]);
 
   if (error) {

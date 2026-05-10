@@ -1200,6 +1200,7 @@ export interface StashSpineSession {
   agent_name: string;
   size_bytes: number;
   last_at: string;
+  updated_at: string;
 }
 export interface StashSpineSkill {
   folder_id: string;

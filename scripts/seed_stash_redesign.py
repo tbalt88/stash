@@ -43,6 +43,10 @@ STASH2_ID = UUID("d0000000-0000-0000-0000-000000000002")
 
 NOW = datetime.now(timezone.utc)
 
+# CSVs queued for ingestion AFTER the seed's main transaction commits, so the
+# pool-backed table_service doesn't deadlock with the seed conn.
+_CSV_INGEST_QUEUE: list[tuple[UUID, UUID, str, bytes]] = []
+
 
 # ---------------------------------------------------------------------------
 # Content
@@ -477,12 +481,37 @@ async def main() -> None:
             "  Files will get placeholder storage keys; download URLs will fail.\n"
         )
 
+    # Initialize the backend's connection pool so table_service helpers work
+    # when the seeder calls them inline (CSV ingest reuses the live code path).
+    from backend.database import close_db, init_db
+
+    await init_db()
+
     conn = await asyncpg.connect(DATABASE_URL)
     try:
         async with conn.transaction():
             await _seed(conn)
+        # After the seed commit: ingest queued CSVs into the live tables system.
+        # Each ingest uses the backend's connection pool — outside the seed txn
+        # to avoid FK lock contention on workspaces.
+        if _CSV_INGEST_QUEUE:
+            print(f"→ ingesting {len(_CSV_INGEST_QUEUE)} CSV(s) as tables")
+            for stash_id, file_id, name, content in _CSV_INGEST_QUEUE:
+                try:
+                    table_id = await _ingest_csv_inline(
+                        stash_id=stash_id, file_id=file_id, name=name, content=content
+                    )
+                    await conn.execute(
+                        "UPDATE files SET linked_table_id = $1 WHERE id = $2",
+                        table_id,
+                        file_id,
+                    )
+                    print(f"   ✓ {name} → /tables/{table_id}")
+                except Exception as e:
+                    print(f"   ⚠ failed to ingest {name}: {e}")
     finally:
         await conn.close()
+        await close_db()
 
 
 async def _seed(conn: asyncpg.Connection) -> None:
@@ -806,11 +835,12 @@ async def _create_file(
         except UnicodeDecodeError:
             pass
 
-    await conn.execute(
+    file_id = await conn.fetchval(
         "INSERT INTO files "
         "(id, workspace_id, name, content_type, size_bytes, storage_key, uploaded_by, "
         " extracted_text, public_in_share) "
-        "VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8)",
+        "VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8) "
+        "RETURNING id",
         stash_id,
         name,
         content_type,
@@ -820,6 +850,67 @@ async def _create_file(
         extracted_text,
         public_in_share,
     )
+
+    # CSVs become real tables — but the ingest uses table_service's pool
+    # (separate connection), which can deadlock against this transaction's
+    # workspace row lock. Queue it for the post-commit pass.
+    if "csv" in content_type:
+        _CSV_INGEST_QUEUE.append((stash_id, file_id, name, content))
+
+
+async def _ingest_csv_inline(
+    *, stash_id: UUID, file_id: UUID, name: str, content: bytes
+) -> UUID:
+    """Parse + ingest CSV using the same code paths as the live endpoint."""
+    import csv
+    import io
+
+    from backend.routers.files import _coerce_value, _infer_column_type, _slugify
+    from backend.services import table_service
+
+    text = content.decode("utf-8", errors="replace")
+    csv_rows = list(csv.reader(io.StringIO(text)))
+    if not csv_rows:
+        raise RuntimeError("empty csv")
+
+    header = csv_rows[0]
+    data_rows = csv_rows[1:]
+    sample = data_rows[:50]
+
+    columns = []
+    for ci, col_name in enumerate(header):
+        samples = [(r[ci] if ci < len(r) else "") for r in sample]
+        columns.append(
+            {
+                "id": _slugify(col_name) or f"col_{ci}",
+                "name": col_name or f"col_{ci}",
+                "type": _infer_column_type(samples),
+                "order": ci,
+                "required": False,
+                "default": None,
+                "options": None,
+            }
+        )
+
+    table = await table_service.create_table(
+        workspace_id=stash_id,
+        name=name.rsplit(".", 1)[0] or name,
+        description=f"Imported from {name}",
+        columns=columns,
+        created_by=SAM_ID,
+    )
+    rows_data = []
+    for r in data_rows:
+        rec = {}
+        for ci, col in enumerate(columns):
+            raw = r[ci] if ci < len(r) else ""
+            rec[col["id"]] = _coerce_value(raw, col["type"])
+        rows_data.append(rec)
+    if rows_data:
+        await table_service.create_rows_batch(
+            table_id=table["id"], rows_data=rows_data, created_by=SAM_ID
+        )
+    return table["id"]
 
 
 async def _create_share(

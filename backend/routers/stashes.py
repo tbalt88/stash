@@ -209,6 +209,7 @@ async def _spine_sessions(stash_id: UUID) -> list[dict]:
             "agent_name": r["agent_name"],
             "size_bytes": r["size_bytes"],
             "last_at": r["uploaded_at"],
+            "updated_at": r["uploaded_at"],
         }
         for r in rows
     ]
