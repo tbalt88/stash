@@ -59,49 +59,20 @@ function parseJsonl(text: string): Turn[] {
   return out;
 }
 
-const HIGHLIGHT_PHRASES = [
-  "replaced 4 paralegals with Acme on the discovery side",
-  "$380K",
-  "$1.1M-$2.4M",
-  "$190K",
-  "audit-grade citations",
-  "audit-citation primitive",
+const AVATAR_PALETTE: { bg: string; fg: string }[] = [
+  { bg: "bg-rose-200", fg: "text-rose-800" },
+  { bg: "bg-indigo-200", fg: "text-indigo-800" },
+  { bg: "bg-emerald-200", fg: "text-emerald-800" },
+  { bg: "bg-amber-200", fg: "text-amber-900" },
+  { bg: "bg-sky-200", fg: "text-sky-800" },
+  { bg: "bg-fuchsia-200", fg: "text-fuchsia-800" },
 ];
 
-function highlight(text: string): React.ReactNode {
-  let result: React.ReactNode[] = [text];
-  HIGHLIGHT_PHRASES.forEach((phrase) => {
-    const next: React.ReactNode[] = [];
-    result.forEach((node) => {
-      if (typeof node !== "string") return next.push(node);
-      const idx = node.indexOf(phrase);
-      if (idx === -1) return next.push(node);
-      next.push(node.slice(0, idx));
-      next.push(
-        <span key={phrase + idx + Math.random()} className="hl-yellow rounded px-0.5">
-          {phrase}
-        </span>
-      );
-      next.push(node.slice(idx + phrase.length));
-    });
-    result = next;
-  });
-  return <>{result.map((n, i) => <span key={i}>{n}</span>)}</>;
-}
-
-const AVATARS: Record<string, { bg: string; fg: string }> = {
-  "Sam Liu": { bg: "bg-rose-200", fg: "text-rose-800" },
-  "Maya Chen": { bg: "bg-indigo-200", fg: "text-indigo-800" },
-  "Stash agent": { bg: "bg-[var(--color-brand-100)]", fg: "text-[var(--color-brand-800)]" },
-};
-
 function avatarFor(name: string) {
-  return (
-    AVATARS[name] || {
-      bg: "bg-gray-200",
-      fg: "text-gray-700",
-    }
-  );
+  // Deterministic color per author (no hardcoded names). djb2-ish hash.
+  let h = 5381;
+  for (let i = 0; i < name.length; i++) h = (h * 33 + name.charCodeAt(i)) >>> 0;
+  return AVATAR_PALETTE[h % AVATAR_PALETTE.length];
 }
 
 function initials(name: string): string {
@@ -269,7 +240,7 @@ function MessageRow({ turn }: { turn: MessageTurn }) {
           {turn.time && <span className="text-[10.5px] text-muted">{turn.time}</span>}
         </div>
         <div className="mt-0.5 whitespace-pre-wrap text-[13.5px] leading-relaxed text-foreground">
-          {highlight(turn.content)}
+          {turn.content}
         </div>
       </div>
     </div>

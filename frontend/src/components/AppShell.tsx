@@ -229,13 +229,6 @@ function Breadcrumb({
           </span>
         );
       })}
-      <span className="ml-2 inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] text-muted">
-        <svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-          <circle cx="12" cy="12" r="3" />
-          <path d="M2 12h3M19 12h3M12 2v3M12 19v3" />
-        </svg>
-        Edited just now
-      </span>
     </span>
   );
 }
