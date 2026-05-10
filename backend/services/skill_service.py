@@ -120,7 +120,12 @@ async def read_skill(stash_id: UUID, name: str) -> dict | None:
         "when_to_use": match["when_to_use"],
         "body": body,
         "files": [
-            {"id": str(p["id"]), "name": p["name"], "updated_at": p["updated_at"]}
+            {
+                "id": str(p["id"]),
+                "name": p["name"],
+                "updated_at": p["updated_at"],
+                "content": p["content_markdown"] or "",
+            }
             for p in pages
         ],
         "combined": "".join(combined_parts),

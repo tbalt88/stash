@@ -1200,6 +1200,7 @@ export interface StashSpineSkill {
   name: string;
   description: string;
   file_count: number;
+  files: string[];
 }
 export interface StashSpineDriveFile {
   id: string;
@@ -1241,7 +1242,7 @@ export interface StashSkillDetail {
   description: string;
   when_to_use: string;
   body: string;
-  files: { id: string; name: string; updated_at: string }[];
+  files: { id: string; name: string; updated_at: string; content: string }[];
   combined: string;
 }
 

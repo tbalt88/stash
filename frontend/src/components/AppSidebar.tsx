@@ -152,12 +152,32 @@ function StashTree({
           </summary>
           <div className="ml-3 space-y-0.5 border-l border-border pl-2">
             {spine?.skills.map((s) => (
-              <NavRow
-                key={s.folder_id}
-                href={`/stashes/${stash.id}/skills/${encodeURIComponent(s.name)}`}
-                icon={<span className="text-indigo-600">⚙︎</span>}
-                label={`/${s.name}`}
-              />
+              <details key={s.folder_id} className="text-[12.5px]">
+                <summary className="page-row flex items-center gap-1 rounded-md px-2 py-0.5 hover:bg-raised">
+                  <Chevron />
+                  <span className="text-indigo-600">⚙︎</span>
+                  <Link
+                    href={`/stashes/${stash.id}/skills/${encodeURIComponent(s.name)}`}
+                    className="flex-1 truncate text-left text-foreground hover:text-[var(--color-brand-700)]"
+                  >
+                    /{s.name}
+                  </Link>
+                </summary>
+                <div className="ml-2.5 space-y-0.5 border-l border-border pl-2">
+                  {s.files.map((f) => (
+                    <NavRow
+                      key={f}
+                      href={`/stashes/${stash.id}/skills/${encodeURIComponent(s.name)}?file=${encodeURIComponent(f)}`}
+                      icon={
+                        <span className="text-muted">
+                          {f === "SKILL.md" ? "📄" : f.endsWith(".md") ? "📋" : "📄"}
+                        </span>
+                      }
+                      label={f}
+                    />
+                  ))}
+                </div>
+              </details>
             ))}
             {(!spine || spine.skills.length === 0) && (
               <div className="px-2 py-1 text-[11px] italic text-muted">no skills yet</div>

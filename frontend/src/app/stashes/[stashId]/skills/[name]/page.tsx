@@ -1,7 +1,7 @@
 "use client";
 
-import { useParams, useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
+import { useCallback, useEffect, useState } from "react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import AppShell from "../../../../../components/AppShell";
@@ -10,33 +10,20 @@ import { useAuth } from "../../../../../hooks/useAuth";
 import { getStashSkill, getWorkspace, type StashSkillDetail } from "../../../../../lib/api";
 import type { Workspace } from "../../../../../lib/types";
 
-interface Frontmatter {
-  raw: string;
-  fields: Record<string, string>;
-}
-
-function splitFrontmatter(md: string): { fm: Frontmatter | null; body: string } {
-  if (!md.startsWith("---")) return { fm: null, body: md };
+function splitFrontmatter(md: string): { yaml: string; body: string } {
+  if (!md.startsWith("---")) return { yaml: "", body: md };
   const end = md.indexOf("\n---", 3);
-  if (end < 0) return { fm: null, body: md };
-  const raw = md.slice(0, end + 4);
-  const fields: Record<string, string> = {};
-  raw
-    .replace(/^---\n?|\n?---$/g, "")
-    .split("\n")
-    .forEach((line) => {
-      const i = line.indexOf(":");
-      if (i > 0) fields[line.slice(0, i).trim()] = line.slice(i + 1).trim();
-    });
-  const body = md.slice(end + 4).replace(/^\n+/, "");
-  return { fm: { raw, fields }, body };
+  if (end < 0) return { yaml: "", body: md };
+  return { yaml: md.slice(0, end + 4), body: md.slice(end + 4).replace(/^\n+/, "") };
 }
 
 export default function SkillPage() {
   const params = useParams();
+  const searchParams = useSearchParams();
   const router = useRouter();
   const stashId = params.stashId as string;
   const name = decodeURIComponent(params.name as string);
+  const fileParam = searchParams.get("file");
   const { user, loading, logout } = useAuth();
 
   const [stash, setStash] = useState<Workspace | null>(null);
@@ -44,9 +31,15 @@ export default function SkillPage() {
   const [error, setError] = useState("");
   const [copied, setCopied] = useState(false);
 
+  const activeFileName = fileParam || "SKILL.md";
+  const activeFile = skill?.files.find((f) => f.name === activeFileName);
+  const isSkillMd = activeFileName === "SKILL.md";
+
   useBreadcrumbs(
-    [{ label: "Skills" }, { label: `/${name}` }],
-    `${stashId}/skill/${name}`
+    isSkillMd
+      ? [{ label: "Skills" }, { label: `/${name}` }]
+      : [{ label: "Skills" }, { label: `/${name}` }, { label: activeFileName }],
+    `${stashId}/skill/${name}/${activeFileName}`
   );
 
   const load = useCallback(async () => {
@@ -66,58 +59,54 @@ export default function SkillPage() {
     if (!loading && !user) router.push("/login");
   }, [user, loading, router]);
 
-  const { fm, body } = useMemo(() => {
-    const md = skill?.files.find((f) => f.name === "SKILL.md")
-      ? skill?.combined?.split("\n\n## ")[0] ?? ""
-      : "";
-    // Reconstruct: combined starts with "# {name} (SKILL.md)\n\n{body}".
-    // We want the original SKILL.md frontmatter + body. The skill_service
-    // strips frontmatter into `body`, so combined doesn't include the YAML.
-    // Render the description + when_to_use as a synthesized frontmatter card.
-    return splitFrontmatter(md);
-  }, [skill]);
-
   if (loading)
     return <div className="flex h-screen items-center justify-center text-muted">Loading…</div>;
   if (!user) return null;
 
-  // Synthesize a frontmatter view from the skill metadata fields.
-  const frontmatter = skill
-    ? [
-        ["name", skill.name],
-        ["description", skill.description],
-        ["when_to_use", skill.when_to_use],
-      ]
-        .filter(([, v]) => v)
-        .map(([k, v]) => `${k}: ${v}`)
-        .join("\n")
-    : "";
-
-  // The skill body ALREADY had its frontmatter stripped server-side. We
-  // render that body directly with a real markdown renderer; the YAML is
-  // shown as its own code block above so readers see what an agent sees.
-  const renderedBody = skill?.body || body || "";
-  const supportingFiles = skill?.files.filter((f) => f.name !== "SKILL.md") ?? [];
-  void fm; // (the in-body frontmatter parser is here for future use)
+  // The SKILL.md body has frontmatter already stripped server-side (skill.body).
+  // Supporting files keep their raw content — strip any frontmatter for display.
+  let displayBody = "";
+  let displayYaml = "";
+  if (isSkillMd && skill) {
+    displayBody = skill.body;
+    // Synthesize a frontmatter view from the parsed fields.
+    const fm = [
+      ["name", skill.name],
+      ["description", skill.description],
+      ["when_to_use", skill.when_to_use],
+    ]
+      .filter(([, v]) => v)
+      .map(([k, v]) => `${k}: ${v}`)
+      .join("\n");
+    displayYaml = fm ? `---\n${fm}\n---` : "";
+  } else if (activeFile) {
+    const split = splitFrontmatter(activeFile.content);
+    displayYaml = split.yaml;
+    displayBody = split.body;
+  }
 
   return (
     <AppShell user={user} onLogout={logout}>
       <div className="scroll-thin flex-1 overflow-y-auto">
-        <div className="mx-auto grid max-w-5xl gap-10 px-12 py-10 lg:grid-cols-[1fr_220px]">
-          <div className="min-w-0">
+        <div className="mx-auto max-w-3xl px-12 py-10">
           <div className="flex items-center gap-3">
             <span className="text-5xl leading-none">⚡</span>
             <div>
               <div className="text-[10.5px] uppercase tracking-wider text-muted">
-                Skill · folder · SKILL.md
+                Skill · folder · {activeFileName}
               </div>
               <h1 className="mt-0.5 font-display text-[30px] font-bold tracking-tight text-foreground">
                 /{skill?.name || name}
               </h1>
             </div>
           </div>
-          {skill?.description && (
+          {isSkillMd && skill?.description && (
             <p className="mt-3 text-[14.5px] leading-relaxed text-muted">{skill.description}</p>
+          )}
+          {!isSkillMd && (
+            <p className="mt-3 text-[12.5px] text-muted">
+              Supporting file in <span className="font-medium text-foreground">/{skill?.name || name}</span>{stash ? <> · in <span className="font-medium text-foreground">{stash.name}</span></> : null}
+            </p>
           )}
 
           {error && (
@@ -126,99 +115,41 @@ export default function SkillPage() {
             </div>
           )}
 
-          {frontmatter && (
+          {displayYaml && (
             <div className="mt-5 overflow-hidden rounded-md border border-border bg-surface text-[12.5px]">
               <div className="border-b border-border bg-base/60 px-3 py-1 font-mono text-[10.5px] text-muted">
-                SKILL.md · frontmatter
+                {activeFileName} · frontmatter
               </div>
               <pre className="whitespace-pre-wrap px-3 py-2 font-mono leading-relaxed text-foreground">
-                <span className="text-muted">---</span>
-                {"\n"}
-                {frontmatter}
-                {"\n"}
-                <span className="text-muted">---</span>
+                {displayYaml}
               </pre>
             </div>
           )}
 
           <article className="markdown-content mt-6 text-[14.5px] leading-relaxed text-foreground">
-            {renderedBody ? (
-              <Markdown remarkPlugins={[remarkGfm]}>{renderedBody}</Markdown>
+            {displayBody ? (
+              <Markdown remarkPlugins={[remarkGfm]}>{displayBody}</Markdown>
             ) : (
-              <p className="text-muted">{skill ? "Empty skill body." : "Loading…"}</p>
+              <p className="text-muted">{skill ? "Empty file." : "Loading…"}</p>
             )}
           </article>
 
-          <div className="mt-6 flex flex-wrap items-center gap-2">
-            <button
-              onClick={async () => {
-                if (!skill) return;
-                await navigator.clipboard.writeText(skill.combined);
-                setCopied(true);
-                setTimeout(() => setCopied(false), 1500);
-              }}
-              className="rounded-md border border-border bg-base px-3 py-1.5 text-[12.5px] font-medium text-foreground hover:bg-raised"
-            >
-              {copied ? "Copied" : "Copy as markdown"}
-            </button>
-            <span className="text-[11px] text-muted">
-              Drop this file into any agent&apos;s skills directory.
-            </span>
-          </div>
-
-          </div>
-
-          {/* Right rail: files in this skill */}
-          <aside className="hidden lg:block">
-            <div className="sticky top-4 rounded-xl border border-border bg-surface p-4">
-              <div className="mb-2 text-[10.5px] font-semibold uppercase tracking-wider text-muted">
-                Files in this skill
-              </div>
-              <ul className="flex flex-col gap-1 text-[12.5px]">
-                {(skill?.files ?? []).map((f) => {
-                  const isSkillMd = f.name === "SKILL.md";
-                  const icon = isSkillMd ? "📄" : f.name.endsWith(".md") ? "📋" : "📄";
-                  return (
-                    <li
-                      key={f.id}
-                      className={
-                        "flex items-center gap-1.5 rounded-md px-2 py-1 " +
-                        (isSkillMd
-                          ? "bg-base text-foreground ring-1 ring-border"
-                          : "text-dim hover:bg-base hover:text-foreground")
-                      }
-                    >
-                      <span>{icon}</span>
-                      <span className="truncate">{f.name}</span>
-                    </li>
-                  );
-                })}
-                {!skill && <li className="px-2 py-1 italic text-muted">Loading…</li>}
-              </ul>
-              <div className="mt-3 border-t border-border pt-3 text-[10.5px] uppercase tracking-wide text-muted">
-                MCP exposed
-              </div>
-              <div className="mt-1 font-mono text-[11px] text-foreground">
-                stash_read_skill(&quot;{skill?.name || name}&quot;)
-              </div>
-            </div>
-          </aside>
-          {/* Mobile: render the same list inline below the body */}
-          {supportingFiles.length > 0 && (
-            <div className="border-t border-border pt-6 lg:hidden">
-              <div className="mb-3 text-[10.5px] font-semibold uppercase tracking-wider text-muted">
-                Supporting files
-              </div>
-              <div className="flex flex-col gap-2">
-                {supportingFiles.map((f) => (
-                  <div
-                    key={f.id}
-                    className="rounded-lg border border-border bg-base px-3 py-2 text-[13px]"
-                  >
-                    📄 {f.name}
-                  </div>
-                ))}
-              </div>
+          {isSkillMd && (
+            <div className="mt-6 flex flex-wrap items-center gap-2">
+              <button
+                onClick={async () => {
+                  if (!skill) return;
+                  await navigator.clipboard.writeText(skill.combined);
+                  setCopied(true);
+                  setTimeout(() => setCopied(false), 1500);
+                }}
+                className="rounded-md border border-border bg-base px-3 py-1.5 text-[12.5px] font-medium text-foreground hover:bg-raised"
+              >
+                {copied ? "Copied" : "Copy as markdown"}
+              </button>
+              <span className="text-[11px] text-muted">
+                Drop this file into any agent&apos;s skills directory.
+              </span>
             </div>
           )}
         </div>

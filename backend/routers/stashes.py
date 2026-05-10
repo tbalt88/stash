@@ -217,15 +217,23 @@ async def _spine_sessions(stash_id: UUID) -> list[dict]:
 async def _spine_skills(stash_id: UUID) -> list[dict]:
     """A skill is any folder whose immediate children include a SKILL.md page."""
     skills = await skill_service.list_skills(stash_id)
-    return [
-        {
-            "folder_id": s["folder_id"],
-            "name": s["name"],
-            "description": s["description"],
-            "file_count": s["file_count"],
-        }
-        for s in skills
-    ]
+    pool = get_pool()
+    out = []
+    for s in skills:
+        files = await pool.fetch(
+            "SELECT name FROM pages WHERE folder_id = $1 ORDER BY (name = 'SKILL.md') DESC, name",
+            UUID(s["folder_id"]),
+        )
+        out.append(
+            {
+                "folder_id": s["folder_id"],
+                "name": s["name"],
+                "description": s["description"],
+                "file_count": s["file_count"],
+                "files": [r["name"] for r in files],
+            }
+        )
+    return out
 
 
 async def _spine_drive(stash_id: UUID) -> dict:
