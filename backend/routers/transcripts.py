@@ -108,6 +108,11 @@ async def download_transcript(
     if not row:
         raise HTTPException(status_code=404, detail="Transcript not found")
     body = await storage_service.download_file(row["storage_key"])
+    # Transcripts are uploaded as .jsonl.gz. Gunzip server-side so the
+    # browser sees plain JSONL — simpler than juggling Content-Encoding.
+    if body[:2] == b"\x1f\x8b":
+        import gzip
+        body = gzip.decompress(body)
     return Response(
         content=body,
         media_type="application/jsonl",
