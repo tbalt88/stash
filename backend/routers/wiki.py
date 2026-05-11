@@ -26,7 +26,8 @@ from ..models import (
     WorkspacePageListResponse,
     WorkspaceTreeResponse,
 )
-from ..services import permission_service, wiki_service, workspace_service
+from ..database import get_pool
+from ..services import permission_service, storage_service, wiki_service, workspace_service
 from ..services.wiki_service import (
     DuplicateFolderName,
     DuplicatePageName,
@@ -117,6 +118,93 @@ async def get_folder(
     await _check_ws_access(workspace_id, current_user["id"])
     folder = await _check_ws_owns_folder(workspace_id, folder_id)
     return FolderResponse(**folder)
+
+
+@router.get("/folders/{folder_id}/contents")
+async def get_folder_contents(
+    workspace_id: UUID,
+    folder_id: UUID,
+    current_user: dict = Depends(get_current_user),
+):
+    """Immediate children of a folder — subfolders, pages, files — plus
+    the breadcrumb chain from workspace root down to this folder. Powers
+    the unified Wiki tree (sidebar lazy-expand + folder detail page)."""
+    await _check_ws_access(workspace_id, current_user["id"])
+    folder = await _check_ws_owns_folder(workspace_id, folder_id)
+    pool = get_pool()
+
+    # Breadcrumb ancestry via recursive CTE
+    ancestry_rows = await pool.fetch(
+        """
+        WITH RECURSIVE chain AS (
+          SELECT id, name, parent_folder_id, 0 AS depth
+          FROM folders WHERE id = $1
+          UNION ALL
+          SELECT f.id, f.name, f.parent_folder_id, c.depth + 1
+          FROM folders f JOIN chain c ON c.parent_folder_id = f.id
+        )
+        SELECT id, name FROM chain ORDER BY depth DESC
+        """,
+        folder_id,
+    )
+    breadcrumbs = [{"id": str(r["id"]), "name": r["name"]} for r in ancestry_rows]
+
+    subfolders = await pool.fetch(
+        "SELECT id, name, "
+        "       (SELECT COUNT(*) FROM pages p WHERE p.folder_id = f.id) AS page_count, "
+        "       (SELECT COUNT(*) FROM files fi WHERE fi.folder_id = f.id) AS file_count "
+        "FROM folders f WHERE f.parent_folder_id = $1 ORDER BY name",
+        folder_id,
+    )
+    pages = await pool.fetch(
+        "SELECT id, name, public_in_share FROM pages "
+        "WHERE folder_id = $1 ORDER BY name",
+        folder_id,
+    )
+    files = await pool.fetch(
+        "SELECT id, name, size_bytes, content_type, storage_key, created_at, linked_table_id "
+        "FROM files WHERE folder_id = $1 ORDER BY created_at DESC",
+        folder_id,
+    )
+
+    file_payload = []
+    for f in files:
+        try:
+            url = await storage_service.get_file_url(f["storage_key"])
+        except Exception:
+            url = None
+        file_payload.append({
+            "id": str(f["id"]),
+            "name": f["name"],
+            "size_bytes": f["size_bytes"],
+            "content_type": f["content_type"],
+            "url": url,
+            "created_at": f["created_at"],
+            "linked_table_id": str(f["linked_table_id"]) if f["linked_table_id"] else None,
+        })
+
+    return {
+        "folder": {
+            "id": str(folder["id"]),
+            "name": folder["name"],
+            "parent_folder_id": str(folder["parent_folder_id"]) if folder["parent_folder_id"] else None,
+        },
+        "breadcrumbs": breadcrumbs,
+        "subfolders": [
+            {
+                "id": str(r["id"]),
+                "name": r["name"],
+                "page_count": int(r["page_count"] or 0),
+                "file_count": int(r["file_count"] or 0),
+            }
+            for r in subfolders
+        ],
+        "pages": [
+            {"id": str(r["id"]), "name": r["name"], "public_in_share": r["public_in_share"]}
+            for r in pages
+        ],
+        "files": file_payload,
+    }
 
 
 @router.patch("/folders/{folder_id}", response_model=FolderResponse)

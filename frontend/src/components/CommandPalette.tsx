@@ -15,7 +15,7 @@ interface CommandPaletteProps {
 }
 
 interface Result {
-  kind: "page" | "session" | "skill" | "file" | "history";
+  kind: "page" | "session" | "folder" | "file" | "history";
   label: string;
   href: string;
   detail?: string;
@@ -51,7 +51,7 @@ export default function CommandPalette({ open, onClose, stashId }: CommandPalett
     // Local spine fuzzy match (instant)
     const local: Result[] = [];
     if (spine && stashId) {
-      spine.root_pages?.forEach((p) => {
+      spine.wiki.pages.forEach((p) => {
         if (p.name.toLowerCase().includes(q))
           local.push({
             kind: "page",
@@ -69,16 +69,16 @@ export default function CommandPalette({ open, onClose, stashId }: CommandPalett
             detail: s.agent_name,
           });
       });
-      spine.skills.forEach((s) => {
-        if (s.name.toLowerCase().includes(q))
+      spine.wiki.folders.forEach((f) => {
+        if (f.name.toLowerCase().includes(q))
           local.push({
-            kind: "skill",
-            label: `/${s.name}`,
-            href: `/stashes/${stashId}/skills/${encodeURIComponent(s.name)}`,
-            detail: s.description,
+            kind: "folder",
+            label: f.name,
+            href: `/stashes/${stashId}/folders/${f.id}`,
+            detail: `${f.page_count} pages · ${f.file_count} files`,
           });
       });
-      spine.drive.files.forEach((f) => {
+      spine.wiki.files.forEach((f) => {
         if (f.name.toLowerCase().includes(q))
           local.push({
             kind: "file",

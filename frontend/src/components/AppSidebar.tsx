@@ -4,10 +4,13 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import {
+  getFolderContents,
   getStashSpine,
   listMyWorkspaces,
   listPublicWorkspaces,
+  type FolderContents,
   type StashSpine,
+  type WikiFile,
 } from "../lib/api";
 import type { User, Workspace } from "../lib/types";
 
@@ -128,97 +131,156 @@ function StashTree({
           </div>
         </details>
 
-        <details open className="text-[13px]">
-          <summary className="page-row flex items-center gap-1 rounded-md px-2 py-1 hover:bg-raised">
-            <Chevron />
-            <span className="text-[14px]">📖</span>
-            <span className="flex-1 truncate font-medium text-foreground">Wiki</span>
-            <span className="text-[10.5px] text-muted">
-              {(spine?.root_pages?.length ?? 0) +
-                (spine?.skills.length ?? 0) +
-                (spine?.drive.folders.length ?? 0) +
-                (spine?.drive.files.length ?? 0)}
-            </span>
-          </summary>
-          <div className="ml-3 space-y-0.5 border-l border-border pl-2">
-            {spine?.skills.map((s) => (
-              <details key={s.folder_id} className="text-[12.5px]">
-                <summary className="page-row flex items-center gap-1 rounded-md px-2 py-0.5 hover:bg-raised">
-                  <Chevron />
-                  <span className="text-muted">📁</span>
-                  <Link
-                    href={`/stashes/${stash.id}/skills/${encodeURIComponent(s.name)}`}
-                    className="flex-1 truncate text-left text-foreground hover:text-[var(--color-brand-700)]"
-                  >
-                    {s.name}
-                  </Link>
-                </summary>
-                <div className="ml-2.5 space-y-0.5 border-l border-border pl-2">
-                  {s.files.map((f) => (
-                    <NavRow
-                      key={f}
-                      href={`/stashes/${stash.id}/skills/${encodeURIComponent(s.name)}?file=${encodeURIComponent(f)}`}
-                      icon={<span className="text-muted">📄</span>}
-                      label={f}
-                    />
-                  ))}
-                </div>
-              </details>
-            ))}
-            {spine?.drive.folders.slice(0, 4).map((f) => (
-              <NavRow
-                key={f.id}
-                href={`/files?ws=${stash.id}`}
-                icon={<span className="text-muted">📁</span>}
-                label={f.name}
-              />
-            ))}
-            {spine?.root_pages?.slice(0, 10).map((p) => (
-              <NavRow
-                key={p.id}
-                href={`/stashes/${stash.id}/p/${p.id}`}
-                icon={<span className="text-muted">📄</span>}
-                label={p.name}
-              />
-            ))}
-            {spine?.drive.files.slice(0, 12).map((f) => {
-              const isCsvLinked =
-                f.content_type?.includes("csv") && f.linked_table_id;
-              const href = isCsvLinked
-                ? `/tables/${f.linked_table_id}?workspaceId=${stash.id}`
-                : `/stashes/${stash.id}/f/${f.id}`;
-              return (
-                <NavRow
-                  key={f.id}
-                  href={href}
-                  icon={
-                    <span
-                      className={
-                        f.content_type?.includes("pdf")
-                          ? "text-rose-500"
-                          : f.content_type?.includes("csv")
-                          ? "text-emerald-600"
-                          : f.content_type?.includes("html")
-                          ? "text-amber-600"
-                          : "text-muted"
-                      }
-                    >
-                      {f.content_type?.includes("csv") ? "▦" : "📄"}
-                    </span>
-                  }
-                  label={f.name}
-                />
-              );
-            })}
-            {(!spine ||
-              ((spine.root_pages?.length ?? 0) === 0 &&
-                spine.skills.length === 0 &&
-                spine.drive.files.length === 0 &&
-                spine.drive.folders.length === 0)) && (
-              <div className="px-2 py-1 text-[11px] italic text-muted">empty</div>
-            )}
-          </div>
-        </details>
+        <WikiBlock stash={stash} spine={spine} />
+      </div>
+    </details>
+  );
+}
+
+function fileIconClass(contentType: string | undefined): string {
+  if (contentType?.includes("pdf")) return "text-rose-500";
+  if (contentType?.includes("csv")) return "text-emerald-600";
+  if (contentType?.includes("html")) return "text-amber-600";
+  return "text-muted";
+}
+
+function FileNavRow({
+  stashId,
+  file,
+}: {
+  stashId: string;
+  file: Pick<WikiFile, "id" | "name" | "content_type" | "linked_table_id">;
+}) {
+  const isCsvLinked =
+    file.content_type?.includes("csv") && file.linked_table_id;
+  const href = isCsvLinked
+    ? `/tables/${file.linked_table_id}?workspaceId=${stashId}`
+    : `/stashes/${stashId}/f/${file.id}`;
+  return (
+    <NavRow
+      href={href}
+      icon={
+        <span className={fileIconClass(file.content_type)}>
+          {file.content_type?.includes("csv") ? "▦" : "📄"}
+        </span>
+      }
+      label={file.name}
+    />
+  );
+}
+
+function FolderTreeNode({
+  stashId,
+  folderId,
+  name,
+}: {
+  stashId: string;
+  folderId: string;
+  name: string;
+}) {
+  const [contents, setContents] = useState<FolderContents | null>(null);
+  const [loaded, setLoaded] = useState(false);
+  return (
+    <details
+      className="text-[12.5px]"
+      onToggle={(e) => {
+        if ((e.target as HTMLDetailsElement).open && !loaded) {
+          setLoaded(true);
+          getFolderContents(stashId, folderId)
+            .then(setContents)
+            .catch(() => setContents({
+              folder: { id: folderId, name, parent_folder_id: null },
+              breadcrumbs: [],
+              subfolders: [],
+              pages: [],
+              files: [],
+            }));
+        }
+      }}
+    >
+      <summary className="page-row flex items-center gap-1 rounded-md px-2 py-0.5 hover:bg-raised">
+        <Chevron />
+        <span className="text-muted">📁</span>
+        <Link
+          href={`/stashes/${stashId}/folders/${folderId}`}
+          className="flex-1 truncate text-left text-foreground hover:text-[var(--color-brand-700)]"
+        >
+          {name}
+        </Link>
+      </summary>
+      <div className="ml-2.5 space-y-0.5 border-l border-border pl-2">
+        {contents === null && loaded && (
+          <div className="px-2 py-1 text-[11px] italic text-muted">loading…</div>
+        )}
+        {contents?.subfolders.map((sub) => (
+          <FolderTreeNode
+            key={sub.id}
+            stashId={stashId}
+            folderId={sub.id}
+            name={sub.name}
+          />
+        ))}
+        {contents?.pages.map((p) => (
+          <NavRow
+            key={p.id}
+            href={`/stashes/${stashId}/p/${p.id}`}
+            icon={<span className="text-muted">📄</span>}
+            label={p.name}
+          />
+        ))}
+        {contents?.files.map((f) => (
+          <FileNavRow key={f.id} stashId={stashId} file={f} />
+        ))}
+        {contents &&
+          contents.subfolders.length === 0 &&
+          contents.pages.length === 0 &&
+          contents.files.length === 0 && (
+            <div className="px-2 py-1 text-[11px] italic text-muted">empty</div>
+          )}
+      </div>
+    </details>
+  );
+}
+
+function WikiBlock({ stash, spine }: { stash: StashNode; spine: StashSpine | null }) {
+  const folders = spine?.wiki.folders ?? [];
+  const pages = spine?.wiki.pages ?? [];
+  const files = spine?.wiki.files ?? [];
+  const rootFolders = folders.filter((f) => !f.parent_folder_id);
+  const rootPages = pages.filter((p) => !p.folder_id);
+  const rootFiles = files.filter((f) => !f.folder_id);
+  const total = folders.length + pages.length + files.length;
+  return (
+    <details open className="text-[13px]">
+      <summary className="page-row flex items-center gap-1 rounded-md px-2 py-1 hover:bg-raised">
+        <Chevron />
+        <span className="text-[14px]">📖</span>
+        <span className="flex-1 truncate font-medium text-foreground">Wiki</span>
+        <span className="text-[10.5px] text-muted">{total}</span>
+      </summary>
+      <div className="ml-3 space-y-0.5 border-l border-border pl-2">
+        {rootFolders.map((f) => (
+          <FolderTreeNode
+            key={f.id}
+            stashId={stash.id}
+            folderId={f.id}
+            name={f.name}
+          />
+        ))}
+        {rootPages.slice(0, 10).map((p) => (
+          <NavRow
+            key={p.id}
+            href={`/stashes/${stash.id}/p/${p.id}`}
+            icon={<span className="text-muted">📄</span>}
+            label={p.name}
+          />
+        ))}
+        {rootFiles.slice(0, 12).map((f) => (
+          <FileNavRow key={f.id} stashId={stash.id} file={f} />
+        ))}
+        {!spine || total === 0 ? (
+          <div className="px-2 py-1 text-[11px] italic text-muted">empty</div>
+        ) : null}
       </div>
     </details>
   );

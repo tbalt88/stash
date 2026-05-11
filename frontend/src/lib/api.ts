@@ -941,11 +941,13 @@ export async function createShareLink(
 
 export async function uploadFile(
   workspaceId: string,
-  file: File
+  file: File,
+  folderId?: string | null
 ): Promise<FileInfo> {
   const token = getToken();
   const formData = new FormData();
   formData.append("file", file);
+  if (folderId) formData.append("folder_id", folderId);
   const resp = await fetch(
     `${API_BASE}/api/v1/workspaces/${workspaceId}/files`,
     {
@@ -1291,43 +1293,76 @@ export interface StashSpineSession {
   last_at: string;
   updated_at: string;
 }
-export interface StashSpineSkill {
-  folder_id: string;
-  name: string;
-  description: string;
-  file_count: number;
-  files: string[];
-}
-export interface StashSpineDriveFile {
+
+// Unified Wiki — one tree, no Drive/Skill split. Folders, pages, and files
+// each carry their parent so the frontend can build the hierarchy.
+export interface WikiFolder {
   id: string;
   name: string;
+  parent_folder_id: string | null;
+  page_count: number;
+  file_count: number;
+  has_skill: boolean;
+}
+export interface WikiPage {
+  id: string;
+  name: string;
+  folder_id: string | null;
+  public_in_share: boolean;
+}
+export interface WikiFile {
+  id: string;
+  name: string;
+  folder_id: string | null;
   size_bytes: number;
   content_type: string;
   url: string | null;
   created_at: string;
   linked_table_id?: string | null;
 }
-export interface StashSpineDriveFolder {
-  id: string;
-  name: string;
-  parent_folder_id: string | null;
-}
-export interface StashSpineRootPage {
-  id: string;
-  name: string;
-  public_in_share: boolean;
+export interface StashWiki {
+  folders: WikiFolder[];
+  pages: WikiPage[];
+  files: WikiFile[];
 }
 export interface StashSpine {
   sessions: StashSpineSession[];
-  skills: StashSpineSkill[];
-  drive: { files: StashSpineDriveFile[]; folders: StashSpineDriveFolder[] };
-  root_pages: StashSpineRootPage[];
+  wiki: StashWiki;
 }
 
 export async function getStashSpine(stashId: string): Promise<StashSpine> {
   return apiFetch(`/api/v1/stashes/${stashId}/spine`);
 }
 
+export interface FolderBreadcrumb {
+  id: string;
+  name: string;
+}
+export interface FolderSubfolder {
+  id: string;
+  name: string;
+  page_count: number;
+  file_count: number;
+}
+export interface FolderContents {
+  folder: { id: string; name: string; parent_folder_id: string | null };
+  breadcrumbs: FolderBreadcrumb[];
+  subfolders: FolderSubfolder[];
+  pages: { id: string; name: string; public_in_share: boolean }[];
+  files: Omit<WikiFile, "folder_id">[];
+}
+
+export async function getFolderContents(
+  workspaceId: string,
+  folderId: string
+): Promise<FolderContents> {
+  return apiFetch(
+    `/api/v1/workspaces/${workspaceId}/folders/${folderId}/contents`
+  );
+}
+
+// Legacy skill detail endpoint — kept for backward compat with anything
+// still calling it (e.g. the soon-to-be-redirected /skills/[name] route).
 export interface StashSkillDetail {
   folder_id: string;
   name: string;
@@ -1336,10 +1371,6 @@ export interface StashSkillDetail {
   body: string;
   files: { id: string; name: string; updated_at: string; content: string }[];
   combined: string;
-}
-
-export async function listStashSkills(stashId: string): Promise<StashSpineSkill[]> {
-  return apiFetch(`/api/v1/stashes/${stashId}/skills`);
 }
 
 export async function getStashSkill(stashId: string, name: string): Promise<StashSkillDetail> {

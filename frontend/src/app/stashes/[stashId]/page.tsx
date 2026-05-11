@@ -7,6 +7,7 @@ import AppShell from "../../../components/AppShell";
 import MembersModal from "../../../components/MembersModal";
 import { useAuth } from "../../../hooks/useAuth";
 import {
+  createFolder,
   createPage,
   getStashSpine,
   getWorkspace,
@@ -128,27 +129,32 @@ export default function StashHomePage() {
     title: `#${s.session_id.length > 28 ? s.session_id.slice(0, 28) + "…" : s.session_id}`,
     subtitle: `${s.agent_name} · ${formatBytes(s.size_bytes)}`,
   }));
-  const wikiPages: CardItem[] = (spine?.root_pages ?? []).map((p) => ({
+
+  // Root-level wiki contents only. Nested folders/pages/files surface
+  // through their parent folder's detail page, not here.
+  const rootFolders = (spine?.wiki.folders ?? []).filter((f) => !f.parent_folder_id);
+  const rootPages = (spine?.wiki.pages ?? []).filter((p) => !p.folder_id);
+  const rootFiles = (spine?.wiki.files ?? []).filter((f) => !f.folder_id);
+
+  const wikiFolderItems: CardItem[] = rootFolders.map((f) => ({
+    href: `/stashes/${stashId}/folders/${f.id}`,
+    icon: "📁",
+    title: f.name,
+    subtitle: [
+      f.page_count ? `${f.page_count} page${f.page_count === 1 ? "" : "s"}` : null,
+      f.file_count ? `${f.file_count} file${f.file_count === 1 ? "" : "s"}` : null,
+      f.has_skill ? "SKILL.md" : null,
+    ]
+      .filter(Boolean)
+      .join(" · ") || "Empty folder",
+  }));
+  const wikiPageItems: CardItem[] = rootPages.map((p) => ({
     href: `/stashes/${stashId}/p/${p.id}`,
     icon: "📄",
-    title: p.name,
+    title: p.name.replace(/\.md$/, ""),
     subtitle: "Page",
   }));
-  const wikiFolders: CardItem[] = [
-    ...(spine?.skills ?? []).map((s) => ({
-      href: `/stashes/${stashId}/skills/${encodeURIComponent(s.name)}`,
-      icon: "📁",
-      title: s.name,
-      subtitle: s.description || `${s.file_count} file${s.file_count === 1 ? "" : "s"}`,
-    })),
-    ...(spine?.drive.folders ?? []).map((f) => ({
-      href: `/files?ws=${stashId}`,
-      icon: "📁",
-      title: f.name,
-      subtitle: "Folder",
-    })),
-  ];
-  const wikiFiles: CardItem[] = (spine?.drive.files ?? []).slice(0, 12).map((f) => {
+  const wikiFileItems: CardItem[] = rootFiles.slice(0, 12).map((f) => {
     const isCsvLinked = f.content_type?.includes("csv") && f.linked_table_id;
     return {
       href: isCsvLinked
@@ -168,7 +174,10 @@ export default function StashHomePage() {
         : `${f.content_type || "file"} · ${formatBytes(f.size_bytes)}`,
     };
   });
-  const wikiItems = [...wikiFolders, ...wikiPages, ...wikiFiles];
+  const wikiItems = [...wikiFolderItems, ...wikiPageItems, ...wikiFileItems];
+  const totalFolders = spine?.wiki.folders.length ?? 0;
+  const totalPages = spine?.wiki.pages.length ?? 0;
+  const totalFiles = spine?.wiki.files.length ?? 0;
 
   return (
     <AppShell user={user} onLogout={logout}>
@@ -244,10 +253,10 @@ export default function StashHomePage() {
             icon="📖"
             title="Wiki"
             subtitle="structured"
-            trailing={`${wikiPages.length} page${wikiPages.length === 1 ? "" : "s"} · ${
-              wikiFiles.length
-            } file${wikiFiles.length === 1 ? "" : "s"} · ${wikiFolders.length} folder${
-              wikiFolders.length === 1 ? "" : "s"
+            trailing={`${totalFolders} folder${totalFolders === 1 ? "" : "s"} · ${
+              totalPages
+            } page${totalPages === 1 ? "" : "s"} · ${totalFiles} file${
+              totalFiles === 1 ? "" : "s"
             }`}
           />
           {isMember && (
@@ -277,6 +286,19 @@ export default function StashHomePage() {
                 className="rounded-md border border-border bg-base px-2.5 py-1 text-[12px] text-foreground hover:bg-raised"
               >
                 + New page
+              </button>
+              <button
+                onClick={async () => {
+                  const name = window.prompt("Folder name?");
+                  if (!name?.trim()) return;
+                  try {
+                    await createFolder(stashId, name.trim());
+                    await load();
+                  } catch { /* */ }
+                }}
+                className="rounded-md border border-border bg-base px-2.5 py-1 text-[12px] text-foreground hover:bg-raised"
+              >
+                + New folder
               </button>
             </div>
           )}

@@ -6,6 +6,7 @@
    and transcripts, scoped under workspaces or public by slug.
 """
 
+import asyncio
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Query, UploadFile
@@ -217,52 +218,38 @@ async def _spine_sessions(stash_id: UUID) -> list[dict]:
     ]
 
 
-async def _spine_skills(stash_id: UUID) -> list[dict]:
-    """A skill is any folder whose immediate children include a SKILL.md page."""
-    skills = await skill_service.list_skills(stash_id)
-    pool = get_pool()
-    out = []
-    for s in skills:
-        files = await pool.fetch(
-            "SELECT name FROM pages WHERE folder_id = $1 ORDER BY (name = 'SKILL.md') DESC, name",
-            UUID(s["folder_id"]),
-        )
-        out.append(
-            {
-                "folder_id": s["folder_id"],
-                "name": s["name"],
-                "description": s["description"],
-                "file_count": s["file_count"],
-                "files": [r["name"] for r in files],
-            }
-        )
-    return out
+async def _spine_wiki(stash_id: UUID) -> dict:
+    """One unified Wiki tree — folders, pages, and files for the workspace.
 
-
-async def _spine_drive(stash_id: UUID) -> dict:
+    No Drive/Skill split. A folder is a folder regardless of whether it
+    contains a SKILL.md. The frontend builds the tree from parent_folder_id
+    and folder_id; the spine is just the flat row set.
+    """
     pool = get_pool()
-    skill_folder_ids = await pool.fetch(
-        "SELECT f.id FROM folders f "
-        "WHERE f.workspace_id = $1 "
-        "  AND EXISTS (SELECT 1 FROM pages p WHERE p.folder_id = f.id AND p.name = 'SKILL.md')",
-        stash_id,
-    )
-    skill_ids = [r["id"] for r in skill_folder_ids]
-    files = await pool.fetch(
-        "SELECT id, name, size_bytes, content_type, storage_key, created_at, linked_table_id "
-        "FROM files WHERE workspace_id = $1 ORDER BY created_at DESC",
-        stash_id,
-    )
-    folders = await pool.fetch(
-        "SELECT id, name, parent_folder_id FROM folders "
-        "WHERE workspace_id = $1 "
-        + (" AND id <> ALL($2::uuid[])" if skill_ids else "")
-        + " ORDER BY name",
-        *([stash_id, skill_ids] if skill_ids else [stash_id]),
+    folder_rows, page_rows, file_rows = await asyncio.gather(
+        pool.fetch(
+            "SELECT f.id, f.name, f.parent_folder_id, "
+            "       (SELECT COUNT(*) FROM pages p WHERE p.folder_id = f.id) AS page_count, "
+            "       (SELECT COUNT(*) FROM files fi WHERE fi.folder_id = f.id) AS file_count, "
+            "       EXISTS(SELECT 1 FROM pages p WHERE p.folder_id = f.id AND p.name = 'SKILL.md') AS has_skill "
+            "FROM folders f WHERE f.workspace_id = $1 ORDER BY f.name",
+            stash_id,
+        ),
+        pool.fetch(
+            "SELECT id, name, folder_id, public_in_share "
+            "FROM pages WHERE workspace_id = $1 ORDER BY name",
+            stash_id,
+        ),
+        pool.fetch(
+            "SELECT id, name, folder_id, size_bytes, content_type, storage_key, "
+            "       created_at, linked_table_id "
+            "FROM files WHERE workspace_id = $1 ORDER BY created_at DESC",
+            stash_id,
+        ),
     )
 
     file_payload = []
-    for f in files:
+    for f in file_rows:
         try:
             url = await storage_service.get_file_url(f["storage_key"])
         except Exception:
@@ -271,24 +258,37 @@ async def _spine_drive(stash_id: UUID) -> dict:
             {
                 "id": str(f["id"]),
                 "name": f["name"],
+                "folder_id": str(f["folder_id"]) if f["folder_id"] else None,
                 "size_bytes": f["size_bytes"],
                 "content_type": f["content_type"],
                 "url": url,
                 "created_at": f["created_at"],
-                "linked_table_id": (str(f["linked_table_id"]) if f["linked_table_id"] else None),
+                "linked_table_id": str(f["linked_table_id"]) if f["linked_table_id"] else None,
             }
         )
 
     return {
-        "files": file_payload,
         "folders": [
             {
-                "id": str(f["id"]),
-                "name": f["name"],
-                "parent_folder_id": str(f["parent_folder_id"]) if f["parent_folder_id"] else None,
+                "id": str(r["id"]),
+                "name": r["name"],
+                "parent_folder_id": str(r["parent_folder_id"]) if r["parent_folder_id"] else None,
+                "page_count": int(r["page_count"] or 0),
+                "file_count": int(r["file_count"] or 0),
+                "has_skill": bool(r["has_skill"]),
             }
-            for f in folders
+            for r in folder_rows
         ],
+        "pages": [
+            {
+                "id": str(r["id"]),
+                "name": r["name"],
+                "folder_id": str(r["folder_id"]) if r["folder_id"] else None,
+                "public_in_share": r["public_in_share"],
+            }
+            for r in page_rows
+        ],
+        "files": file_payload,
     }
 
 
@@ -350,19 +350,6 @@ async def ask_stash(
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
-
-
-async def _spine_root_pages(stash_id: UUID) -> list[dict]:
-    pool = get_pool()
-    rows = await pool.fetch(
-        "SELECT id, name, public_in_share FROM pages "
-        "WHERE workspace_id = $1 AND folder_id IS NULL ORDER BY name",
-        stash_id,
-    )
-    return [
-        {"id": str(r["id"]), "name": r["name"], "public_in_share": r["public_in_share"]}
-        for r in rows
-    ]
 
 
 # ---------------------------------------------------------------------------
@@ -441,22 +428,20 @@ async def get_stash_activity(
 
 @router.get("/{stash_id}/spine")
 async def get_stash_spine(stash_id: UUID, current_user: dict = Depends(get_current_user)):
-    """Returns {sessions, skills, drive, root_pages} for the stash home + tree."""
+    """Returns {sessions, wiki} for the stash home + sidebar tree.
+
+    `wiki` is one shape: {folders, pages, files}. All rows carry their
+    parent_folder_id / folder_id so the frontend can build a tree."""
     if not await workspace_service.is_member(stash_id, current_user["id"]):
         ws = await workspace_service.get_workspace(stash_id)
         if not ws or not ws.get("is_public"):
             raise HTTPException(status_code=404, detail="Stash not found")
 
-    sessions = await _spine_sessions(stash_id)
-    skills = await _spine_skills(stash_id)
-    drive = await _spine_drive(stash_id)
-    root_pages = await _spine_root_pages(stash_id)
-    return {
-        "sessions": sessions,
-        "skills": skills,
-        "drive": drive,
-        "root_pages": root_pages,
-    }
+    sessions, wiki = await asyncio.gather(
+        _spine_sessions(stash_id),
+        _spine_wiki(stash_id),
+    )
+    return {"sessions": sessions, "wiki": wiki}
 
 
 # ---------------------------------------------------------------------------

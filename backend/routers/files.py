@@ -13,7 +13,7 @@ import re
 from datetime import datetime
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, Form, HTTPException, UploadFile
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
 
@@ -39,6 +39,7 @@ async def _file_to_response(row: dict) -> FileResponse:
     return FileResponse(
         id=row["id"],
         workspace_id=row["workspace_id"],
+        folder_id=row.get("folder_id"),
         name=row["name"],
         content_type=row["content_type"],
         size_bytes=row["size_bytes"],
@@ -56,6 +57,7 @@ async def _file_to_response(row: dict) -> FileResponse:
 async def upload_ws_file(
     workspace_id: UUID,
     file: UploadFile,
+    folder_id: UUID | None = Form(None),
     current_user: dict = Depends(get_current_user),
 ):
     await _check_member(workspace_id, current_user["id"])
@@ -77,16 +79,25 @@ async def upload_ws_file(
     )
 
     pool = get_pool()
+    if folder_id is not None:
+        owns = await pool.fetchval(
+            "SELECT 1 FROM folders WHERE id = $1 AND workspace_id = $2",
+            folder_id,
+            workspace_id,
+        )
+        if not owns:
+            raise HTTPException(status_code=400, detail="folder_id does not belong to workspace")
     row = await pool.fetchrow(
-        "INSERT INTO files (workspace_id, name, content_type, size_bytes, storage_key, uploaded_by) "
-        "VALUES ($1, $2, $3, $4, $5, $6) "
-        "RETURNING id, workspace_id, name, content_type, size_bytes, storage_key, uploaded_by, created_at",
+        "INSERT INTO files (workspace_id, name, content_type, size_bytes, storage_key, uploaded_by, folder_id) "
+        "VALUES ($1, $2, $3, $4, $5, $6, $7) "
+        "RETURNING id, workspace_id, folder_id, name, content_type, size_bytes, storage_key, uploaded_by, created_at",
         workspace_id,
         filename,
         content_type,
         len(content),
         storage_key,
         current_user["id"],
+        folder_id,
     )
     return await _file_to_response(dict(row))
 
@@ -99,7 +110,7 @@ async def list_ws_files(
     await _check_member(workspace_id, current_user["id"])
     pool = get_pool()
     rows = await pool.fetch(
-        "SELECT id, workspace_id, name, content_type, size_bytes, storage_key, uploaded_by, created_at, linked_table_id "
+        "SELECT id, workspace_id, folder_id, name, content_type, size_bytes, storage_key, uploaded_by, created_at, linked_table_id "
         "FROM files WHERE workspace_id = $1 ORDER BY created_at DESC",
         workspace_id,
     )
@@ -116,7 +127,7 @@ async def get_ws_file(
     await _check_member(workspace_id, current_user["id"])
     pool = get_pool()
     row = await pool.fetchrow(
-        "SELECT id, workspace_id, name, content_type, size_bytes, storage_key, uploaded_by, created_at, linked_table_id "
+        "SELECT id, workspace_id, folder_id, name, content_type, size_bytes, storage_key, uploaded_by, created_at, linked_table_id "
         "FROM files WHERE id = $1 AND workspace_id = $2",
         file_id,
         workspace_id,
@@ -194,7 +205,7 @@ async def patch_ws_file(
         idx += 1
     if not sets:
         row = await pool.fetchrow(
-            "SELECT id, workspace_id, name, content_type, size_bytes, storage_key, uploaded_by, created_at, linked_table_id "
+            "SELECT id, workspace_id, folder_id, name, content_type, size_bytes, storage_key, uploaded_by, created_at, linked_table_id "
             "FROM files WHERE id = $1 AND workspace_id = $2",
             file_id,
             workspace_id,
@@ -206,7 +217,7 @@ async def patch_ws_file(
     args.append(workspace_id)
     row = await pool.fetchrow(
         f"UPDATE files SET {', '.join(sets)} WHERE id = ${idx} AND workspace_id = ${idx + 1} "
-        "RETURNING id, workspace_id, name, content_type, size_bytes, storage_key, uploaded_by, created_at, linked_table_id",
+        "RETURNING id, workspace_id, folder_id, name, content_type, size_bytes, storage_key, uploaded_by, created_at, linked_table_id",
         *args,
     )
     if not row:

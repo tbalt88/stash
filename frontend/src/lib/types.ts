@@ -204,6 +204,7 @@ export interface TableWithWorkspace extends Table {
 export interface FileInfo {
   id: string;
   workspace_id: string | null;
+  folder_id?: string | null;
   name: string;
   content_type: string;
   size_bytes: number;

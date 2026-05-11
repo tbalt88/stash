@@ -680,6 +680,7 @@ class PublishResponse(BaseModel):
 class FileResponse(BaseModel):
     id: UUID
     workspace_id: UUID | None
+    folder_id: UUID | None = None
     name: str
     content_type: str
     size_bytes: int

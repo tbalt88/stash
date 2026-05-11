@@ -8,7 +8,13 @@ import remarkGfm from "remark-gfm";
 import AppShell from "../../../../../components/AppShell";
 import { useBreadcrumbs } from "../../../../../components/BreadcrumbContext";
 import { useAuth } from "../../../../../hooks/useAuth";
-import { getPage, getWorkspace, togglePagePublic } from "../../../../../lib/api";
+import {
+  getFolderContents,
+  getPage,
+  getWorkspace,
+  togglePagePublic,
+  type FolderBreadcrumb,
+} from "../../../../../lib/api";
 import type { Page, Workspace } from "../../../../../lib/types";
 
 export default function StashPageView() {
@@ -20,17 +26,31 @@ export default function StashPageView() {
 
   const [stash, setStash] = useState<Workspace | null>(null);
   const [page, setPage] = useState<Page | null>(null);
+  const [folderChain, setFolderChain] = useState<FolderBreadcrumb[]>([]);
   const [error, setError] = useState("");
 
   useBreadcrumbs(
-    page ? [{ label: page.name.replace(/\.md$/, "") }] : [{ label: "Page" }],
-    `${stashId}/page/${pageId}/${page?.name ?? ""}`
+    [
+      ...folderChain.map((c) => ({
+        label: c.name,
+        href: `/stashes/${stashId}/folders/${c.id}`,
+      })),
+      { label: page ? page.name.replace(/\.md$/, "") : "Page" },
+    ],
+    `${stashId}/page/${pageId}/${page?.name ?? ""}/${folderChain.map((c) => c.id).join(",")}`
   );
 
   const load = useCallback(async () => {
     try {
       setStash(await getWorkspace(stashId));
-      setPage(await getPage(stashId, pageId));
+      const p = await getPage(stashId, pageId);
+      setPage(p);
+      if (p.folder_id) {
+        const contents = await getFolderContents(stashId, p.folder_id);
+        setFolderChain(contents.breadcrumbs);
+      } else {
+        setFolderChain([]);
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load page");
     }

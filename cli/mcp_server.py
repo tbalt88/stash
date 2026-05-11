@@ -412,12 +412,16 @@ def stash_stash_tree(stash_id: str = "") -> str:
     return stash_workspace_tree(stash_id)
 
 
-# ── Skills (Phase 2 wiring; Phase 1 stubs return empty until skill_service lands) ──
+# ── Wiki folders (formerly "skills" — any folder is a folder; SKILL.md is
+# just a recognized filename inside one of them) ──
 
 
 @mcp.tool()
-def stash_list_skills(stash_id: str = "") -> str:
-    """List skills (wiki folders containing SKILL.md) in the stash."""
+def stash_list_folders(stash_id: str = "") -> str:
+    """List wiki folders in the stash. A folder may contain pages
+    (markdown/HTML), files (PDFs/CSVs/etc.), and subfolders. Folders that
+    contain a SKILL.md page expose that page's frontmatter as a tool
+    definition for agents."""
     client, default_ws = _client()
     ws = _require_ws(stash_id or default_ws)
     try:
@@ -428,15 +432,30 @@ def stash_list_skills(stash_id: str = "") -> str:
 
 
 @mcp.tool()
-def stash_read_skill(skill_name: str, stash_id: str = "") -> str:
-    """Read a skill by name. Returns SKILL.md frontmatter + body + sibling files concatenated."""
+def stash_read_folder(folder_name: str, stash_id: str = "") -> str:
+    """Read a wiki folder by name. Returns the folder's SKILL.md (if any)
+    + sibling pages, concatenated for agent context."""
     client, default_ws = _client()
     ws = _require_ws(stash_id or default_ws)
     try:
-        data = client._get(f"/api/v1/stashes/{ws}/skills/{skill_name}")
+        data = client._get(f"/api/v1/stashes/{ws}/skills/{folder_name}")
     except Exception as e:
         data = {"error": str(e)}
     return _json(data)
+
+
+# Backward-compat aliases — old MCP clients still see these names.
+# Deprecate in a future release once external consumers have migrated.
+@mcp.tool()
+def stash_list_skills(stash_id: str = "") -> str:
+    """[DEPRECATED] Renamed to stash_list_folders."""
+    return stash_list_folders(stash_id)
+
+
+@mcp.tool()
+def stash_read_skill(skill_name: str, stash_id: str = "") -> str:
+    """[DEPRECATED] Renamed to stash_read_folder."""
+    return stash_read_folder(skill_name, stash_id)
 
 
 # ── Files ─────────────────────────────────────────────────────────

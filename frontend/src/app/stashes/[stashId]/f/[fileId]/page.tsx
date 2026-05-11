@@ -7,7 +7,13 @@ import remarkGfm from "remark-gfm";
 import AppShell from "../../../../../components/AppShell";
 import { useBreadcrumbs } from "../../../../../components/BreadcrumbContext";
 import { useAuth } from "../../../../../hooks/useAuth";
-import { getFile, ingestCsvFile, toggleFilePublic } from "../../../../../lib/api";
+import {
+  getFile,
+  getFolderContents,
+  ingestCsvFile,
+  toggleFilePublic,
+  type FolderBreadcrumb,
+} from "../../../../../lib/api";
 import type { FileInfo } from "../../../../../lib/types";
 
 function isCsv(ct: string) {
@@ -37,18 +43,35 @@ export default function FileViewerPage() {
   const { user, loading, logout } = useAuth();
 
   const [file, setFile] = useState<FileInfo | null>(null);
+  const [folderChain, setFolderChain] = useState<FolderBreadcrumb[]>([]);
   const [textBody, setTextBody] = useState<string | null>(null);
   const [error, setError] = useState("");
 
   useBreadcrumbs(
-    file ? [{ label: file.name }] : [{ label: "File" }],
-    `${stashId}/file/${fileId}/${file?.name ?? ""}`
+    [
+      ...folderChain.map((c) => ({
+        label: c.name,
+        href: `/stashes/${stashId}/folders/${c.id}`,
+      })),
+      { label: file ? file.name : "File" },
+    ],
+    `${stashId}/file/${fileId}/${file?.name ?? ""}/${folderChain.map((c) => c.id).join(",")}`
   );
 
   const load = useCallback(async () => {
     try {
       const f = await getFile(stashId, fileId);
       setFile(f);
+      if (f.folder_id) {
+        try {
+          const contents = await getFolderContents(stashId, f.folder_id);
+          setFolderChain(contents.breadcrumbs);
+        } catch {
+          setFolderChain([]);
+        }
+      } else {
+        setFolderChain([]);
+      }
 
       // CSVs always live in /tables/[id]. If already linked, redirect.
       // Otherwise ingest and then redirect — user never sees this route for CSVs.
