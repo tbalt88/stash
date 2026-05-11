@@ -175,6 +175,41 @@ async def push_events_batch(
     return results
 
 
+async def read_session_events(workspace_id: UUID, session_id: str) -> list[dict]:
+    """Ordered events for a session within a workspace. The canonical
+    source for chat-thread rendering — replaces reading the R2 transcript
+    blob."""
+    pool = get_pool()
+    rows = await pool.fetch(
+        "SELECT id, agent_name, event_type, tool_name, content, metadata, created_at "
+        "FROM history_events WHERE workspace_id = $1 AND session_id = $2 "
+        "ORDER BY created_at, id",
+        workspace_id,
+        session_id,
+    )
+    return [dict(r) for r in rows]
+
+
+async def list_workspace_sessions(workspace_id: UUID) -> list[dict]:
+    """One row per session_id in this workspace. Powers the spine sessions
+    list — replaces a SELECT against session_transcripts."""
+    pool = get_pool()
+    rows = await pool.fetch(
+        "SELECT session_id, "
+        "       MAX(agent_name) AS agent_name, "
+        "       COUNT(*)::INT AS event_count, "
+        "       SUM(LENGTH(content))::BIGINT AS size_bytes, "
+        "       MIN(created_at) AS started_at, "
+        "       MAX(created_at) AS last_at "
+        "FROM history_events "
+        "WHERE workspace_id = $1 AND session_id IS NOT NULL "
+        "GROUP BY session_id "
+        "ORDER BY last_at DESC",
+        workspace_id,
+    )
+    return [dict(r) for r in rows]
+
+
 async def get_workspace_event(event_id: UUID, workspace_id: UUID) -> dict | None:
     pool = get_pool()
     row = await pool.fetchrow(

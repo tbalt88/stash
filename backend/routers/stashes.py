@@ -36,7 +36,15 @@ from ..models import (
     WorkspaceResponse,
     WorkspaceUpdateRequest,
 )
-from ..services import ask_service, skill_service, stash_service, storage_service, workspace_service
+from ..services import (
+    ask_service,
+    memory_service,
+    skill_service,
+    stash_service,
+    storage_service,
+    transcript_import,
+    workspace_service,
+)
 from . import workspaces as ws_router_module
 
 # ---------------------------------------------------------------------------
@@ -195,23 +203,18 @@ async def revoke_stash_invite_token(
 
 
 async def _spine_sessions(stash_id: UUID) -> list[dict]:
-    pool = get_pool()
-    rows = await pool.fetch(
-        "SELECT session_id, agent_name, size_bytes, uploaded_at "
-        "FROM session_transcripts WHERE workspace_id = $1 "
-        "ORDER BY uploaded_at DESC",
-        stash_id,
-    )
+    """Sessions in this workspace, sourced from history_events rows."""
+    sessions = await memory_service.list_workspace_sessions(stash_id)
     return [
         {
-            "session_id": r["session_id"],
-            "title": r["session_id"],
-            "agent_name": r["agent_name"],
-            "size_bytes": r["size_bytes"],
-            "last_at": r["uploaded_at"],
-            "updated_at": r["uploaded_at"],
+            "session_id": s["session_id"],
+            "title": s["session_id"],
+            "agent_name": s["agent_name"] or "",
+            "size_bytes": int(s["size_bytes"] or 0),
+            "last_at": s["last_at"],
+            "updated_at": s["last_at"],
         }
-        for r in rows
+        for s in sessions
     ]
 
 
@@ -533,29 +536,43 @@ async def upload_stash_transcript(
     file: UploadFile,
     current_user: dict = Depends(get_current_user),
 ):
+    """Parse the uploaded transcript into history_events for this stash's
+    session. No-op if the session already has events streamed in."""
     stash = await stash_service.get_stash_by_id(stash_id)
     if not stash:
         raise HTTPException(status_code=404, detail="Stash not found")
     if not await workspace_service.is_member(stash["workspace_id"], current_user["id"]):
         raise HTTPException(status_code=403, detail="Not a workspace member")
-    if not storage_service.is_configured():
-        raise HTTPException(status_code=503, detail="File storage is not configured")
 
     body = await file.read()
     MAX_TRANSCRIPT_SIZE = 50 * 1024 * 1024
     if len(body) > MAX_TRANSCRIPT_SIZE:
         raise HTTPException(status_code=413, detail="Transcript too large (max 50 MB)")
 
-    name = file.filename or "transcript.jsonl.gz"
-
-    storage_key = await storage_service.upload_file(
-        str(stash["workspace_id"]),
-        name,
-        body,
-        "application/gzip",
+    session_id = stash["session_id"]
+    pool = get_pool()
+    existing = await pool.fetchval(
+        "SELECT COUNT(*) FROM history_events " "WHERE workspace_id = $1 AND session_id = $2",
+        stash["workspace_id"],
+        session_id,
     )
-    await stash_service.set_transcript_key(stash_id, storage_key)
-    return {"status": "ok"}
+    if existing:
+        return {"status": "ok", "imported": 0, "skipped": True}
+
+    events = transcript_import.parse_jsonl_to_events(
+        body,
+        session_id=session_id,
+        agent_name=stash.get("agent_name") or "",
+    )
+    if stash.get("cwd"):
+        for e in events:
+            e["metadata"] = {**(e.get("metadata") or {}), "cwd": stash["cwd"]}
+    inserted = await memory_service.push_events_batch(
+        stash["workspace_id"],
+        current_user["id"],
+        events,
+    )
+    return {"status": "ok", "imported": len(inserted), "skipped": False}
 
 
 @public_router.patch("/{stash_id}", response_model=StashResponse)
@@ -626,72 +643,72 @@ async def get_stash_artifact(slug: str, artifact_id: UUID):
     )
 
 
+def _event_role(event_type: str | None) -> str | None:
+    if event_type == "user_message":
+        return "user"
+    if event_type in ("assistant_message", "tool_use"):
+        return "assistant"
+    return None
+
+
 @public_router.get("/{slug}/transcript")
 async def get_stash_transcript(slug: str):
+    """JSONL projection of the session — one line per history_events row."""
+    import json as json_mod
+
     stash = await stash_service.get_stash_by_slug(slug)
     if not stash:
         raise HTTPException(status_code=404, detail="Stash not found")
 
-    transcript_key = await stash_service.get_transcript_key(stash["id"])
-    if not transcript_key:
+    events = await memory_service.read_session_events(
+        stash["workspace_id"],
+        stash["session_id"],
+    )
+    if not events:
         raise HTTPException(status_code=404, detail="Transcript not available")
 
-    import gzip
-
-    raw = await storage_service.download_file(transcript_key)
-    try:
-        text = gzip.decompress(raw).decode("utf-8", errors="replace")
-    except Exception:
-        text = raw.decode("utf-8", errors="replace")
-    return PlainTextResponse(text, media_type="application/jsonl")
+    lines: list[str] = []
+    for ev in events:
+        role = _event_role(ev.get("event_type"))
+        if role is None:
+            continue
+        line = {
+            "type": role,
+            "message": {"content": ev.get("content") or ""},
+            "timestamp": ev["created_at"].isoformat() if ev.get("created_at") else None,
+        }
+        if ev.get("tool_name"):
+            line["tool_name"] = ev["tool_name"]
+        lines.append(json_mod.dumps(line, ensure_ascii=False))
+    return PlainTextResponse(
+        ("\n".join(lines) + ("\n" if lines else "")),
+        media_type="application/jsonl",
+    )
 
 
 @public_router.get("/{slug}/transcript/messages")
 async def get_stash_transcript_messages(slug: str):
+    """Structured chat-thread view. Used by the public /b/{slug} viewer."""
     stash = await stash_service.get_stash_by_slug(slug)
     if not stash:
         raise HTTPException(status_code=404, detail="Stash not found")
 
-    transcript_key = await stash_service.get_transcript_key(stash["id"])
-    if not transcript_key:
+    events = await memory_service.read_session_events(
+        stash["workspace_id"],
+        stash["session_id"],
+    )
+    if not events:
         raise HTTPException(status_code=404, detail="Transcript not available")
 
-    import gzip
-    import json as json_mod
-
-    raw = await storage_service.download_file(transcript_key)
-    try:
-        text = gzip.decompress(raw).decode("utf-8", errors="replace")
-    except Exception:
-        text = raw.decode("utf-8", errors="replace")
-
     messages = []
-    for line in text.splitlines():
-        if not line.strip():
+    for ev in events:
+        role = _event_role(ev.get("event_type"))
+        if role is None:
             continue
-        try:
-            obj = json_mod.loads(line)
-        except Exception:
+        text = (ev.get("content") or "").strip()
+        if not text:
             continue
-        entry_type = obj.get("type")
-        if entry_type not in ("user", "assistant"):
-            continue
-        content = obj.get("message", {}).get("content", "")
-        text_parts = []
-        if isinstance(content, str):
-            if content.strip():
-                text_parts.append(content)
-        elif isinstance(content, list):
-            for block in content:
-                if (
-                    isinstance(block, dict)
-                    and block.get("type") == "text"
-                    and block.get("text", "").strip()
-                ):
-                    text_parts.append(block["text"])
-        if text_parts:
-            messages.append({"role": entry_type, "text": "\n\n".join(text_parts)})
-
+        messages.append({"role": role, "text": text})
     return {"messages": messages}
 
 
