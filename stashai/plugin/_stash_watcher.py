@@ -1,9 +1,9 @@
-"""Background watcher: monitors the Claude Code process and progressively
-uploads the transcript while the session is running. After exit, uploads
-final transcript, artifacts, and generates the summary.
+"""Background watcher: waits for the Claude Code process to exit, then
+spawns artifact upload + AI summary generation for the stash.
 
-The stash is created eagerly at session start so the URL is known immediately.
-This watcher fills in the content as the session progresses.
+The stash is created eagerly at session start so the URL is known
+immediately. Session content flows in live via hooks.push_event — this
+watcher no longer needs to upload the transcript itself.
 
 argv: script.py <agent_pid> <session_id> <workspace_id> <agent_name>
                 <base_url> <api_key> <cwd> <data_dir> <stash_id>
@@ -15,8 +15,6 @@ import os
 import sys
 import time
 from pathlib import Path
-
-UPLOAD_INTERVAL = 30
 
 
 def _is_alive(pid: int) -> bool:
@@ -57,17 +55,20 @@ def _state_transcript_path(data_dir: str) -> str:
     return value if isinstance(value, str) else ""
 
 
-def _upload_transcript(client, stash_id: str, transcript_path: Path) -> bool:
-    try:
-        client.upload_stash_transcript(stash_id, transcript_path)
-        return True
-    except Exception:
-        return False
-
-
 def main() -> None:
-    (_, agent_pid_str, session_id, workspace_id, agent_name,
-     base_url, api_key, cwd, data_dir, stash_id, *rest) = sys.argv
+    (
+        _,
+        agent_pid_str,
+        session_id,
+        workspace_id,
+        agent_name,
+        base_url,
+        api_key,
+        cwd,
+        data_dir,
+        stash_id,
+        *rest,
+    ) = sys.argv
 
     agent_pid = int(agent_pid_str)
     initial_transcript_path = rest[0] if rest else ""
@@ -75,44 +76,19 @@ def main() -> None:
     if not stash_id:
         return
 
-    from stashai.plugin.stash_client import StashClient
-
     transcript_path = ""
-    last_upload_size = 0
-    last_upload_time = 0
 
-    with StashClient(base_url=base_url, api_key=api_key) as client:
-        # Poll until the agent exits, uploading transcript periodically.
-        while _is_alive(agent_pid):
-            now = time.monotonic()
+    seed_path = initial_transcript_path or _state_transcript_path(data_dir)
 
-            if not transcript_path or not Path(transcript_path).is_file():
-                transcript_path = _find_transcript(
-                    session_id,
-                    initial_transcript_path or _state_transcript_path(data_dir),
-                )
-
-            if transcript_path and now - last_upload_time >= UPLOAD_INTERVAL:
-                tp = Path(transcript_path)
-                if tp.is_file():
-                    current_size = tp.stat().st_size
-                    if current_size > last_upload_size:
-                        if _upload_transcript(client, stash_id, tp):
-                            last_upload_size = current_size
-                            last_upload_time = now
-
-            time.sleep(1)
-
-        # Session ended — final upload
+    # Wait for the agent to exit. Events stream live via hooks.push_event; this
+    # watcher only needs to fire artifact upload + AI summary generation.
+    while _is_alive(agent_pid):
         if not transcript_path or not Path(transcript_path).is_file():
-            transcript_path = _find_transcript(
-                session_id,
-                initial_transcript_path or _state_transcript_path(data_dir),
-            )
+            transcript_path = _find_transcript(session_id, seed_path)
+        time.sleep(1)
 
-        tp = Path(transcript_path)
-        if tp.is_file():
-            _upload_transcript(client, stash_id, tp)
+    if not transcript_path or not Path(transcript_path).is_file():
+        transcript_path = _find_transcript(session_id, seed_path)
 
     # Upload artifacts and generate summary in a separate process
     stats_path = Path(data_dir) / "state.json"

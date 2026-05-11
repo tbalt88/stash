@@ -18,9 +18,17 @@ from pathlib import Path
 from stashai.plugin.stash_client import StashClient
 
 SKIP_PATTERNS = {
-    ".env", ".env.local", ".env.production", ".env.development",
-    "id_rsa", "id_ed25519", "id_ecdsa", "id_dsa",
-    "credentials.json", ".npmrc", ".pypirc",
+    ".env",
+    ".env.local",
+    ".env.production",
+    ".env.development",
+    "id_rsa",
+    "id_ed25519",
+    "id_ecdsa",
+    "id_dsa",
+    "credentials.json",
+    ".npmrc",
+    ".pypirc",
 }
 SKIP_EXTENSIONS = {".pem", ".key", ".p12", ".pfx", ".jks"}
 MAX_FILE_SIZE = 1 * 1024 * 1024  # 1MB per file
@@ -41,7 +49,10 @@ def _collect_git_files(cwd: str) -> list[str]:
     try:
         result = subprocess.run(
             ["git", "diff", "--name-only", "HEAD"],
-            capture_output=True, text=True, cwd=cwd, timeout=10,
+            capture_output=True,
+            text=True,
+            cwd=cwd,
+            timeout=10,
         )
         if result.returncode == 0:
             files.extend(result.stdout.strip().splitlines())
@@ -50,7 +61,10 @@ def _collect_git_files(cwd: str) -> list[str]:
     try:
         result = subprocess.run(
             ["git", "ls-files", "--others", "--exclude-standard"],
-            capture_output=True, text=True, cwd=cwd, timeout=10,
+            capture_output=True,
+            text=True,
+            cwd=cwd,
+            timeout=10,
         )
         if result.returncode == 0:
             files.extend(result.stdout.strip().splitlines())
@@ -88,6 +102,7 @@ def _read_transcript_text(transcript_path: Path) -> str | None:
     # Decompress if gzipped
     if raw[:2] == b"\x1f\x8b":
         import gzip
+
         raw = gzip.decompress(raw)
     return raw.decode("utf-8", errors="replace")
 
@@ -131,6 +146,7 @@ def _generate_summary(source_text: str, source_label: str) -> str | None:
 
     try:
         import httpx
+
         resp = httpx.post(
             "https://api.anthropic.com/v1/messages",
             headers={
@@ -141,19 +157,21 @@ def _generate_summary(source_text: str, source_label: str) -> str | None:
             json={
                 "model": "claude-haiku-4-5-20251001",
                 "max_tokens": 2048,
-                "messages": [{
-                    "role": "user",
-                    "content": (
-                        f"Summarize this coding session {source_label}. Include:\n"
-                        "1. What the session accomplished (1-2 sentences)\n"
-                        "2. Key files modified or created\n"
-                        "3. Important decisions made\n"
-                        "4. Any unfinished work or known issues\n\n"
-                        "Keep the summary concise and useful for someone picking up "
-                        "where this session left off.\n\n"
-                        f"SESSION {source_label.upper()}:\n{source_text}"
-                    ),
-                }],
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": (
+                            f"Summarize this coding session {source_label}. Include:\n"
+                            "1. What the session accomplished (1-2 sentences)\n"
+                            "2. Key files modified or created\n"
+                            "3. Important decisions made\n"
+                            "4. Any unfinished work or known issues\n\n"
+                            "Keep the summary concise and useful for someone picking up "
+                            "where this session left off.\n\n"
+                            f"SESSION {source_label.upper()}:\n{source_text}"
+                        ),
+                    }
+                ],
             },
             timeout=120.0,
         )
@@ -166,17 +184,12 @@ def _generate_summary(source_text: str, source_label: str) -> str | None:
 
 
 def main() -> None:
-    _, stash_id, transcript_path, cwd, workspace_id, session_id, agent_name, base_url, api_key = sys.argv
+    _, stash_id, transcript_path, cwd, workspace_id, session_id, agent_name, base_url, api_key = (
+        sys.argv
+    )
     files_touched = json.loads(os.environ.get("STASH_FILES_TOUCHED", "[]"))
 
     with StashClient(base_url=base_url, api_key=api_key) as client:
-        tp = Path(transcript_path)
-        if tp.is_file():
-            try:
-                client.upload_stash_transcript(stash_id, tp)
-            except Exception:
-                pass
-
         all_paths = _resolve_paths(files_touched, cwd)
         for fp in all_paths:
             if _should_skip(fp):
@@ -197,7 +210,8 @@ def main() -> None:
                 continue
 
         client.update_stash(stash_id, status="summarizing")
-        source_text = _read_transcript_text(tp) if tp.is_file() else None
+        tp = Path(transcript_path) if transcript_path else None
+        source_text = _read_transcript_text(tp) if tp and tp.is_file() else None
         source_label = "transcript"
         if not source_text:
             source_text = _history_text(client, workspace_id, session_id)
