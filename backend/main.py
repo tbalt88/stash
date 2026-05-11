@@ -15,7 +15,6 @@ from .middleware import limiter
 from .routers import (
     admin,
     aggregate,
-    stashes,
     discover,
     files,
     memory,
@@ -24,6 +23,7 @@ from .routers import (
     publish,
     sessions,
     skill,
+    stashes,
     tables,
     transcripts,
     users,

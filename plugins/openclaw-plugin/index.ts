@@ -43,6 +43,7 @@ const CONFIG_PATH = join(homedir(), ".stash", "config.json");
 const DATA_DIR = join(homedir(), ".stash", "plugins", "openclaw");
 const PLUGIN_ROOT = dirname(fileURLToPath(import.meta.url));
 const SCRIPTS = join(PLUGIN_ROOT, "scripts");
+const RUN_SH = join(SCRIPTS, "_run.sh");
 const QUEUE_PATH = join(DATA_DIR, "event_queue.jsonl");
 const QUEUE_MAX = 1000;
 const DRAIN_BATCH = 50;
@@ -184,13 +185,13 @@ function send(body: EventBody): void {
 }
 
 function runHook(script: string, payload: unknown): void {
-  const python = process.env.STASH_PYTHON || "python3";
+  const hookName = script.replace(/\.py$/, "");
   try {
-    const child = spawn(python, [join(SCRIPTS, script)], {
+    const child = spawn("bash", [RUN_SH, hookName], {
       stdio: ["pipe", "ignore", "ignore"],
       detached: true,
     });
-    child.on("error", () => { /* python missing / crash — swallow */ });
+    child.on("error", () => { /* bash missing / crash — swallow */ });
     child.stdin?.write(JSON.stringify(payload));
     child.stdin?.end();
     child.unref();

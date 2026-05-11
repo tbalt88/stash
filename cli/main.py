@@ -1691,7 +1691,9 @@ def hist_query(
     limit: int = typer.Option(50, "-n", "--limit"),
     before: str = typer.Option(None, "--before", help="Cursor: ISO timestamp for previous page"),
     after: str = typer.Option(None, "--after", help="Cursor: ISO timestamp for next page"),
-    order: str = typer.Option("desc", "--order", help="Sort order: desc (newest first) or asc (oldest first)"),
+    order: str = typer.Option(
+        "desc", "--order", help="Sort order: desc (newest first) or asc (oldest first)"
+    ),
     all_: bool = typer.Option(False, "--all"),
     as_json: bool = typer.Option(False, "--json"),
 ):
@@ -1702,7 +1704,15 @@ def hist_query(
                 data = c.all_events(agent_name=agent_name, event_type=event_type, limit=limit)
             else:
                 ws = workspace_id or _resolve_workspace()
-                data = c.query_events(ws, agent_name=agent_name, event_type=event_type, limit=limit, before=before, after=after, order=order)
+                data = c.query_events(
+                    ws,
+                    agent_name=agent_name,
+                    event_type=event_type,
+                    limit=limit,
+                    before=before,
+                    after=after,
+                    order=order,
+                )
         except StashError as e:
             _err(e)
     if _use_json(as_json):
