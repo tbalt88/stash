@@ -2,7 +2,7 @@
 
 Verified against openai/codex (codex-rs/hooks/src/, April 2026).
 
-The `codex_hooks` feature (Stage::UnderDevelopment) implements a
+The `hooks` feature implements a
 Claude-Code-style engine: hooks.json in ~/.codex/, PascalCase event names,
 JSON payload on stdin.
 
@@ -18,9 +18,6 @@ Per-event extras:
 
 Codex today hardcodes tool_name="Bash" for shell calls; non-shell tools do
 not trigger PreToolUse/PostToolUse.
-
-`notify` fallback (separate top-level config.toml key) passes JSON as
-argv[last] with stdin nulled. Only emits `agent-turn-complete`.
 """
 
 from __future__ import annotations
@@ -75,18 +72,4 @@ def adapt_stop(data: dict) -> HookEvent:
         cwd=data.get("cwd", ""),
         last_assistant_message=data.get("last_assistant_message", ""),
         transcript_path=data.get("transcript_path", ""),
-    )
-
-
-def adapt_notify(data: dict) -> HookEvent:
-    """Codex `notify` payload: kebab-case keys, no session_id.
-
-    Payload: {type: "agent-turn-complete", thread-id, turn-id, cwd, client,
-    input-messages, last-assistant-message}.
-    """
-    return HookEvent(
-        kind="stop",
-        session_id=data.get("thread-id", ""),
-        cwd=data.get("cwd", ""),
-        last_assistant_message=data.get("last-assistant-message", ""),
     )

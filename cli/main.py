@@ -456,10 +456,8 @@ def _install_codex(force: bool) -> tuple[str, str]:
 
     cfg_path.parent.mkdir(parents=True, exist_ok=True)
     if _CODEX_MARKER not in existing:
-        with cfg_path.open("a") as f:
-            if existing and not existing.endswith("\n"):
-                f.write("\n")
-            f.write(f"\n{_CODEX_MARKER}\n{snippet}\n")
+        sep = "\n" if existing and not existing.endswith("\n") else ""
+        cfg_path.write_text(f"{existing}{sep}\n{_CODEX_MARKER}\n{snippet}\n")
 
     agents_src = root / "AGENTS.md"
     agents_dest = Path.home() / ".codex" / "AGENTS.md"
@@ -559,8 +557,117 @@ def whoami(as_json: bool = typer.Option(False, "--json")):
 # Workspaces
 # ===========================================================================
 
-ws_app = typer.Typer(help="Workspace management.")
+ws_app = typer.Typer(help="Workspace management. (Deprecated alias for 'stash stash'.)")
 app.add_typer(ws_app, name="workspaces")
+
+stash_app = typer.Typer(help="Stash management — the canonical 'shared bundle' unit.")
+app.add_typer(stash_app, name="stash")
+
+
+@stash_app.command("list")
+def stash_list(
+    mine: bool = typer.Option(False, "--mine"), as_json: bool = typer.Option(False, "--json")
+):
+    """List stashes."""
+    with _client() as c:
+        try:
+            data = c.list_workspaces(mine=mine)
+        except StashError as e:
+            _err(e)
+    if _use_json(as_json):
+        output_json(data)
+    else:
+        print_rooms(data, title="My Stashes" if mine else "Public Stashes")
+
+
+@stash_app.command("create")
+def stash_create(
+    name: str = typer.Argument(...),
+    description: str = typer.Option(""),
+    public: bool = typer.Option(False, "--public"),
+    as_json: bool = typer.Option(False, "--json"),
+):
+    """Create stash."""
+    with _client() as c:
+        try:
+            data = c.create_workspace(name, description=description, is_public=public)
+        except StashError as e:
+            _err(e)
+    if _use_json(as_json):
+        output_json(data)
+    else:
+        console.print(
+            f"[green]Created '{data['name']}'[/green]  ID: {data['id']}  Invite: {data['invite_code']}"
+        )
+
+
+@stash_app.command("join")
+def stash_join(
+    invite_code: str = typer.Argument(...), as_json: bool = typer.Option(False, "--json")
+):
+    """Join stash by invite code."""
+    with _client() as c:
+        try:
+            data = c.join_workspace(invite_code)
+        except StashError as e:
+            _err(e)
+    if _use_json(as_json):
+        output_json(data)
+    else:
+        console.print(f"[green]Joined '{data.get('name')}'[/green]")
+
+
+@stash_app.command("info")
+def stash_info(stash_id: str = typer.Argument(...), as_json: bool = typer.Option(False, "--json")):
+    """Show stash details."""
+    with _client() as c:
+        try:
+            data = c.get_workspace(stash_id)
+        except StashError as e:
+            _err(e)
+    if _use_json(as_json):
+        output_json(data)
+    else:
+        console.print(
+            f"[bold]{data['name']}[/bold]  Members: {data.get('member_count', '?')}  Public: {data['is_public']}"
+        )
+        console.print(f"ID: {data['id']}  Invite: {data['invite_code']}")
+
+
+@stash_app.command("members")
+def stash_members(
+    stash_id: str = typer.Argument(...), as_json: bool = typer.Option(False, "--json")
+):
+    """List stash members."""
+    with _client() as c:
+        try:
+            data = c.workspace_members(stash_id)
+        except StashError as e:
+            _err(e)
+    if _use_json(as_json):
+        output_json(data)
+    else:
+        print_members(data)
+
+
+@stash_app.command("fork")
+def stash_fork(
+    stash_id: str = typer.Argument(...),
+    name: str = typer.Option("", "--name"),
+):
+    """Fork a public stash."""
+    _do_fork(stash_id, suggested_name=name)
+
+
+@stash_app.command("leave")
+def stash_leave(stash_id: str = typer.Argument(...)):
+    """Leave a stash."""
+    with _client() as c:
+        try:
+            c.leave_workspace(stash_id)
+        except StashError as e:
+            _err(e)
+    console.print("[green]Left stash.[/green]")
 
 
 @ws_app.command("list")
@@ -1701,7 +1808,14 @@ def hist_query(
     with _client() as c:
         try:
             if all_:
-                data = c.all_events(agent_name=agent_name, event_type=event_type, limit=limit)
+                data = c.all_events(
+                    agent_name=agent_name,
+                    event_type=event_type,
+                    limit=limit,
+                    before=before,
+                    after=after,
+                    order=order,
+                )
             else:
                 ws = workspace_id or _resolve_workspace()
                 data = c.query_events(
@@ -3655,6 +3769,93 @@ def publish_cmd(
         folder_id=folder_id,
     )
     console.print(result["url"])
+
+
+# ===========================================================================
+# Skills (markdown folders containing SKILL.md frontmatter)
+# ===========================================================================
+
+skill_app = typer.Typer(help="Skills — wiki folders with a SKILL.md frontmatter file.")
+app.add_typer(skill_app, name="skill")
+
+
+@skill_app.command("list")
+def skill_list(
+    stash_id: str = typer.Argument("", help="Stash ID (defaults to active stash)."),
+    as_json: bool = typer.Option(False, "--json"),
+):
+    """List skills in a stash."""
+    cfg = load_config()
+    c = StashClient(cfg["base_url"], cfg.get("api_key", ""))
+    ws = stash_id or (load_manifest() or {}).get("workspace_id")
+    if not ws:
+        console.print("[red]No stash. Pass an ID or run `stash connect`.[/red]")
+        raise typer.Exit(1)
+    try:
+        data = c._get(f"/api/v1/stashes/{ws}/skills")
+    except StashError as e:
+        _err(e)
+    if _use_json(as_json):
+        output_json(data)
+    else:
+        for s in data:
+            console.print(
+                f"  [bold]{s['name']}[/bold]  ({s['file_count']} files)  {s.get('description', '')}"
+            )
+        if not data:
+            console.print(
+                "[muted]No skills yet. `stash skill add <stash> <folder>` to create one.[/muted]"
+            )
+
+
+@skill_app.command("show")
+def skill_show(
+    stash_id: str = typer.Argument(...),
+    name: str = typer.Argument(...),
+):
+    """Read a skill (SKILL.md frontmatter + body + sibling files concatenated)."""
+    cfg = load_config()
+    c = StashClient(cfg["base_url"], cfg.get("api_key", ""))
+    try:
+        data = c._get(f"/api/v1/stashes/{stash_id}/skills/{name}")
+    except StashError as e:
+        _err(e)
+    console.print(data["combined"])
+
+
+@skill_app.command("add")
+def skill_add(
+    stash_id: str = typer.Argument(...),
+    folder: str = typer.Argument(..., help="Local folder containing a SKILL.md file."),
+):
+    """Upload a local skill folder (must contain a SKILL.md) into a stash as a wiki folder."""
+    src = Path(folder)
+    if not src.is_dir():
+        console.print(f"[red]Not a folder: {folder}[/red]")
+        raise typer.Exit(1)
+    skill_md_path = src / "SKILL.md"
+    if not skill_md_path.exists():
+        console.print(f"[red]Missing SKILL.md in {folder}[/red]")
+        raise typer.Exit(1)
+
+    cfg = load_config()
+    c = StashClient(cfg["base_url"], cfg.get("api_key", ""))
+    folder_name = src.name
+    try:
+        # Reach for the existing wiki endpoints — skills are just wiki folders.
+        new_folder = c.create_folder(stash_id, folder_name)
+        folder_id = new_folder["id"]
+        for md_file in sorted(src.glob("*.md")):
+            c.create_page(
+                stash_id,
+                name=md_file.name,
+                content=md_file.read_text(),
+                folder_id=folder_id,
+                content_type="markdown",
+            )
+    except StashError as e:
+        _err(e)
+    console.print(f"[green]Added skill '{folder_name}' to stash {stash_id}.[/green]")
 
 
 if __name__ == "__main__":

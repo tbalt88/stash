@@ -361,6 +361,84 @@ def stash_fork_workspace(workspace_id: str, name: str = "") -> str:
     return _json(client.fork_workspace(workspace_id, name=name))
 
 
+# ── Stash-named aliases (canonical going forward) ─────────────────
+
+
+@mcp.tool()
+def stash_list_stashes() -> str:
+    """List stashes you are a member of."""
+    return stash_list_workspaces()
+
+
+@mcp.tool()
+def stash_stash_info(stash_id: str = "") -> str:
+    """Get detailed info about a stash."""
+    return stash_workspace_info(stash_id)
+
+
+@mcp.tool()
+def stash_create_stash(name: str, description: str = "", is_public: bool = False) -> str:
+    """Create a new stash."""
+    return stash_create_workspace(name, description=description, is_public=is_public)
+
+
+@mcp.tool()
+def stash_stash_members(stash_id: str = "") -> str:
+    """List members of a stash."""
+    return stash_workspace_members(stash_id)
+
+
+@mcp.tool()
+def stash_join_stash(invite_code: str) -> str:
+    """Join a stash using an invite code."""
+    return stash_join_workspace(invite_code)
+
+
+@mcp.tool()
+def stash_leave_stash(stash_id: str) -> str:
+    """Leave a stash."""
+    return stash_leave_workspace(stash_id)
+
+
+@mcp.tool()
+def stash_fork_stash(stash_id: str, name: str = "") -> str:
+    """Fork a public stash into your account."""
+    return stash_fork_workspace(stash_id, name=name)
+
+
+@mcp.tool()
+def stash_stash_tree(stash_id: str = "") -> str:
+    """Nested folder/page tree for the stash."""
+    return stash_workspace_tree(stash_id)
+
+
+# ── Skills (Phase 2 wiring; Phase 1 stubs return empty until skill_service lands) ──
+
+
+@mcp.tool()
+def stash_list_skills(stash_id: str = "") -> str:
+    """List skills (wiki folders containing SKILL.md) in the stash."""
+    client, default_ws = _client()
+    ws = _require_ws(stash_id or default_ws)
+    try:
+        data = client._get(f"/api/v1/stashes/{ws}/skills")
+    except Exception:
+        data = []
+    return _json(data)
+
+
+@mcp.tool()
+def stash_read_skill(skill_name: str, stash_id: str = "") -> str:
+    """Read a skill by name. Returns SKILL.md frontmatter + body + sibling files concatenated."""
+    client, default_ws = _client()
+    ws = _require_ws(stash_id or default_ws)
+    try:
+        data = client._get(f"/api/v1/stashes/{ws}/skills/{skill_name}")
+    except Exception as e:
+        data = {"error": str(e)}
+    return _json(data)
+
+
 # ── Files ─────────────────────────────────────────────────────────
 
 

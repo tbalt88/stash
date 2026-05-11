@@ -45,6 +45,7 @@ function FilesPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const workspaceId = searchParams.get("ws");
+  const fileIdParam = searchParams.get("file");
   const { user, loading, logout } = useAuth();
   const [files, setFiles] = useState<FileInfo[]>([]);
   const [filesLoading, setFilesLoading] = useState(true);
@@ -65,6 +66,15 @@ function FilesPageInner() {
   useEffect(() => {
     if (user && workspaceId) loadFiles();
   }, [user, workspaceId, loadFiles]);
+
+  // ?file=<id> navigates the tab directly to the file's S3 URL once loaded.
+  // The browser handles rendering inline for CSVs/HTML/PDFs.
+  const fileUrl = files.find((x) => x.id === fileIdParam)?.url;
+  useEffect(() => {
+    if (fileIdParam && fileUrl) {
+      window.location.replace(fileUrl);
+    }
+  }, [fileIdParam, fileUrl]);
 
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];

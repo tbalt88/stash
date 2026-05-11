@@ -235,7 +235,7 @@ def stream_user_message(
             workspace_id=workspace_id,
             agent_name=cfg["agent_name"],
             event_type="user_message",
-            content=prompt_text[:2000],
+            content=prompt_text,
             session_id=state.get("session_id", ""),
             client=cfg.get("client") or None,
         )
@@ -296,7 +296,7 @@ def stream_assistant_message(
             workspace_id=workspace_id,
             agent_name=cfg["agent_name"],
             event_type="assistant_message",
-            content=event.last_assistant_message[:4000],
+            content=event.last_assistant_message,
             session_id=state.get("session_id", ""),
             client=cfg.get("client") or None,
         )

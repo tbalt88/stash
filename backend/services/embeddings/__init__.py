@@ -57,14 +57,50 @@ async def embed_text(text: str) -> np.ndarray | None:
         return None
 
 
+# OpenAI caps embedding requests at 300k tokens. We estimate ~1 token per
+# 4 chars and use 240k tokens (~960k chars) as the per-shard budget to leave
+# headroom for tokenizer variance.
+_SHARD_CHAR_BUDGET = 960_000
+
+
+def _shard_by_chars(texts: list[str], budget: int) -> list[list[int]]:
+    """Group text indices into shards where total chars per shard <= budget."""
+    shards: list[list[int]] = []
+    current: list[int] = []
+    current_size = 0
+    for i, t in enumerate(texts):
+        n = len(t)
+        if current and current_size + n > budget:
+            shards.append(current)
+            current, current_size = [], 0
+        current.append(i)
+        current_size += n
+    if current:
+        shards.append(current)
+    return shards
+
+
 async def embed_batch(texts: list[str]) -> list[np.ndarray] | None:
-    """Embed multiple texts in one call."""
+    """Embed multiple texts in one call. Shards large batches under the
+    provider's per-request token limit so giant agent-transcript uploads
+    don't blow up the embedding API."""
+    if not texts:
+        return []
     embedder = get_embedder()
+    shards = _shard_by_chars(texts, _SHARD_CHAR_BUDGET)
+    out: list[np.ndarray | None] = [None] * len(texts)
     try:
-        return await with_retry(lambda: embedder.embed_batch(texts))
+        for shard in shards:
+            batch = [texts[i] for i in shard]
+            vecs = await with_retry(lambda b=batch: embedder.embed_batch(b))
+            if vecs is None:
+                return None
+            for idx, vec in zip(shard, vecs):
+                out[idx] = vec
     except TransientEmbeddingError:
         logger.warning("Embedding provider failed after retries", exc_info=True)
         return None
+    return out  # type: ignore[return-value]
 
 
 def is_configured() -> bool:

@@ -581,7 +581,7 @@ function TableEditorPageInner() {
                     setTimeout(() => setBackfillStatus(""), 2000);
                   } catch (err) { setError(err instanceof Error ? err.message : "Failed"); }
                 }}
-                className="text-xs bg-brand hover:bg-brand-hover text-foreground px-2 py-1 rounded"
+                className="text-xs bg-[var(--color-brand-600)] hover:bg-[var(--color-brand-700)] text-white px-2 py-1 rounded"
               >
                 Save
               </button>
@@ -748,7 +748,7 @@ function TableEditorPageInner() {
               </div>
               <div className="flex justify-end gap-2 mt-5">
                 <button onClick={() => setShowAddCol(false)} className="text-sm text-muted hover:text-foreground px-3 py-1.5">Cancel</button>
-                <button onClick={handleAddColumn} className="text-sm bg-brand hover:bg-brand-hover text-foreground px-4 py-1.5 rounded">Add</button>
+                <button onClick={handleAddColumn} className="text-sm bg-[var(--color-brand-600)] hover:bg-[var(--color-brand-700)] text-white px-4 py-1.5 rounded">Add</button>
               </div>
             </div>
           </div>
@@ -790,7 +790,7 @@ function TableEditorPageInner() {
                 <button onClick={() => { handleDuplicateRow(detailRow.id); setDetailRow(null); }} className="text-sm text-muted hover:text-foreground px-3 py-1.5">Duplicate</button>
                 <div className="flex gap-2">
                   <button onClick={() => setDetailRow(null)} className="text-sm text-muted hover:text-foreground px-3 py-1.5">Cancel</button>
-                  <button onClick={saveDetail} className="text-sm bg-brand hover:bg-brand-hover text-foreground px-4 py-1.5 rounded">Save</button>
+                  <button onClick={saveDetail} className="text-sm bg-[var(--color-brand-600)] hover:bg-[var(--color-brand-700)] text-white px-4 py-1.5 rounded">Save</button>
                 </div>
               </div>
             </div>

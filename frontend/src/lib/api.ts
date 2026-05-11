@@ -203,6 +203,17 @@ export async function joinWorkspace(inviteCode: string): Promise<Workspace> {
   return apiFetch(`/api/v1/workspaces/join/${inviteCode}`, { method: "POST" });
 }
 
+export async function createInviteToken(
+  workspaceId: string,
+  maxUses = 5,
+  ttlDays = 7
+): Promise<{ id: string; token: string; workspace_id: string; expires_at: string }> {
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/invite-tokens`, {
+    method: "POST",
+    body: JSON.stringify({ max_uses: maxUses, ttl_days: ttlDays }),
+  });
+}
+
 export async function rotateWorkspaceInvite(workspaceId: string): Promise<Workspace> {
   return apiFetch(`/api/v1/workspaces/${workspaceId}/invite-code/rotate`, { method: "POST" });
 }
@@ -933,6 +944,16 @@ export async function listFiles(workspaceId: string): Promise<FileInfo[]> {
   return data.files;
 }
 
+export async function getFile(workspaceId: string, fileId: string): Promise<FileInfo> {
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/files/${fileId}`);
+}
+
+export async function ingestCsvFile(workspaceId: string, fileId: string): Promise<Table> {
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/files/${fileId}/ingest-csv`, {
+    method: "POST",
+  });
+}
+
 export async function deleteFile(workspaceId: string, fileId: string): Promise<void> {
   await apiFetch(`/api/v1/workspaces/${workspaceId}/files/${fileId}`, { method: "DELETE" });
 }
@@ -1157,4 +1178,285 @@ export async function listAgentNames(workspaceId: string): Promise<string[]> {
     `/api/v1/workspaces/${workspaceId}/memory/agent-names`
   );
   return data.agent_names;
+}
+
+// --- Share toggles ---
+
+export async function togglePagePublic(
+  workspaceId: string,
+  pageId: string,
+  publicInShare: boolean
+): Promise<Page> {
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/pages/${pageId}`, {
+    method: "PATCH",
+    body: JSON.stringify({ public_in_share: publicInShare }),
+  });
+}
+
+export async function toggleFilePublic(
+  workspaceId: string,
+  fileId: string,
+  publicInShare: boolean
+): Promise<FileInfo> {
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/files/${fileId}`, {
+    method: "PATCH",
+    body: JSON.stringify({ public_in_share: publicInShare }),
+  });
+}
+
+// --- Activity feed ---
+
+export interface ActivityEvent {
+  kind: string;
+  ts: string;
+  actor: { name: string; display_name: string | null };
+  target_id: string;
+  target_label: string;
+}
+
+export async function listStashActivity(stashId: string, limit = 50): Promise<ActivityEvent[]> {
+  return apiFetch(`/api/v1/stashes/${stashId}/activity?limit=${limit}`);
+}
+
+// --- Session transcripts ---
+
+export interface SessionTranscript {
+  id: string;
+  workspace_id: string;
+  session_id: string;
+  agent_name: string;
+  size_bytes: number;
+  cwd: string | null;
+  uploaded_by: string;
+  uploaded_at: string;
+  download_url: string | null;
+}
+
+export async function getStashTranscript(
+  stashId: string,
+  sessionId: string
+): Promise<SessionTranscript> {
+  return apiFetch(
+    `/api/v1/workspaces/${stashId}/transcripts/${encodeURIComponent(sessionId)}`
+  );
+}
+
+export async function downloadStashTranscriptText(
+  stashId: string,
+  sessionId: string
+): Promise<string> {
+  const token = getToken();
+  const headers: Record<string, string> = {};
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  const res = await fetch(
+    `${API_BASE}/api/v1/workspaces/${stashId}/transcripts/${encodeURIComponent(sessionId)}/download`,
+    { headers }
+  );
+  if (!res.ok) throw new ApiError(res.status, `Transcript download failed: ${res.status}`);
+  return res.text();
+}
+
+// --- Stashes (canonical naming, aliases /api/v1/workspaces/* on the server) ---
+
+export interface StashSpineSession {
+  session_id: string;
+  title: string;
+  agent_name: string;
+  size_bytes: number;
+  last_at: string;
+  updated_at: string;
+}
+export interface StashSpineSkill {
+  folder_id: string;
+  name: string;
+  description: string;
+  file_count: number;
+  files: string[];
+}
+export interface StashSpineDriveFile {
+  id: string;
+  name: string;
+  size_bytes: number;
+  content_type: string;
+  url: string | null;
+  created_at: string;
+  linked_table_id?: string | null;
+}
+export interface StashSpineDriveFolder {
+  id: string;
+  name: string;
+  parent_folder_id: string | null;
+}
+export interface StashSpineRootPage {
+  id: string;
+  name: string;
+  public_in_share: boolean;
+}
+export interface StashSpine {
+  sessions: StashSpineSession[];
+  skills: StashSpineSkill[];
+  drive: { files: StashSpineDriveFile[]; folders: StashSpineDriveFolder[] };
+  root_pages: StashSpineRootPage[];
+}
+
+export async function getStashSpine(stashId: string): Promise<StashSpine> {
+  return apiFetch(`/api/v1/stashes/${stashId}/spine`);
+}
+
+export interface StashSkillDetail {
+  folder_id: string;
+  name: string;
+  description: string;
+  when_to_use: string;
+  body: string;
+  files: { id: string; name: string; updated_at: string; content: string }[];
+  combined: string;
+}
+
+export async function listStashSkills(stashId: string): Promise<StashSpineSkill[]> {
+  return apiFetch(`/api/v1/stashes/${stashId}/skills`);
+}
+
+export async function getStashSkill(stashId: string, name: string): Promise<StashSkillDetail> {
+  return apiFetch(`/api/v1/stashes/${stashId}/skills/${encodeURIComponent(name)}`);
+}
+
+// --- Ask-the-stash agent (SSE) ---
+
+export interface AskCitation {
+  id: string;
+  label: string;
+  summary: string;
+}
+export type AskEvent =
+  | { type: "text"; delta: string }
+  | { type: "tool"; name: string; args?: unknown; result_summary?: string }
+  | { type: "end" }
+  | { type: "error"; message: string };
+
+interface AskRequest {
+  stashId: string | null;
+  shareToken?: string;
+  messages: { role: "user" | "assistant"; content: string }[];
+  scope?: string;
+}
+
+// --- Share links ---
+
+export interface ShareLink {
+  token: string;
+  workspace_id: string;
+  created_by: string;
+  created_at: string;
+  expires_at: string | null;
+  permission: "view" | "comment" | "edit-request";
+  view_count: number;
+  url: string;
+}
+
+export async function createStashShareLink(
+  stashId: string,
+  body: { permission: "view" | "comment" | "edit-request"; ttl_days: number | null }
+): Promise<ShareLink> {
+  return apiFetch(`/api/v1/stashes/${stashId}/shares`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export async function listStashShareLinks(stashId: string): Promise<ShareLink[]> {
+  return apiFetch(`/api/v1/stashes/${stashId}/shares`);
+}
+
+export async function revokeStashShareLink(stashId: string, token: string): Promise<void> {
+  await apiFetch(`/api/v1/stashes/${stashId}/shares/${token}`, { method: "DELETE" });
+}
+
+export interface ShareProjection {
+  stash: {
+    id: string;
+    name: string;
+    description: string;
+    summary: string | null;
+    cover_image_url: string | null;
+    creator: { name: string; display_name: string | null };
+  };
+  share: {
+    token: string;
+    permission: string;
+    expires_at: string | null;
+    view_count: number;
+    created_at: string;
+  };
+  narrative: { id: string; name: string; body: string } | null;
+  deck:
+    | { index: number; title: string; kicker: string; body: string }[]
+    | null;
+  pages: { id: string; name: string; body: string }[];
+  files: { id: string; name: string; content_type: string; size_bytes: number }[];
+}
+
+export async function resolveShare(token: string): Promise<ShareProjection> {
+  return apiFetch(`/api/v1/shares/${token}`);
+}
+
+export async function shareForkStash(
+  token: string,
+  name?: string
+): Promise<{ id: string; name: string }> {
+  return apiFetch(`/api/v1/shares/${token}/fork`, {
+    method: "POST",
+    body: JSON.stringify(name ? { name } : {}),
+  });
+}
+
+export async function shareRequestEdit(
+  token: string,
+  body: { email?: string; message?: string }
+): Promise<{ status: string }> {
+  return apiFetch(`/api/v1/shares/${token}/request-edit`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export async function askStash(req: AskRequest, onEvent: (e: AskEvent) => void): Promise<void> {
+  const url = req.shareToken
+    ? `/api/v1/shares/${req.shareToken}/ask`
+    : `/api/v1/stashes/${req.stashId}/ask`;
+  const token = getToken();
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
+  const res = await fetch(url, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ messages: req.messages, scope: req.scope ?? "stash" }),
+  });
+  if (!res.ok || !res.body) {
+    const txt = await res.text().catch(() => "");
+    throw new Error(txt || `Ask failed: ${res.status}`);
+  }
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buf = "";
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buf += decoder.decode(value, { stream: true });
+    let idx;
+    while ((idx = buf.indexOf("\n\n")) >= 0) {
+      const chunk = buf.slice(0, idx).trim();
+      buf = buf.slice(idx + 2);
+      if (!chunk.startsWith("data:")) continue;
+      const payload = chunk.slice(5).trim();
+      if (!payload || payload === "[DONE]") continue;
+      try {
+        onEvent(JSON.parse(payload) as AskEvent);
+      } catch {
+        // ignore malformed
+      }
+    }
+  }
 }

@@ -14,7 +14,7 @@ block the hook timeout) with a 60s cooldown between uploads per session.
 
 from config import DATA_DIR, get_client, get_config, get_stdin_data, is_configured
 from stashai.plugin.hooks import remember_transcript_path, stream_assistant_message
-from stashai.plugin.state import load_state, mark_codex_hooks_active
+from stashai.plugin.state import load_state
 from stashai.plugin.transcript_upload import spawn_transcript_upload
 
 from adapt import adapt_stop
@@ -24,7 +24,6 @@ from stashai.plugin.curate_spawn import spawn_curation
 def main():
     if not is_configured():
         return
-    mark_codex_hooks_active()
     state = load_state(DATA_DIR)
     event = adapt_stop(get_stdin_data())
     remember_transcript_path(state, event, DATA_DIR)

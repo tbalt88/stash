@@ -137,14 +137,6 @@ def test_cursor_tool_output_json_string_parses():
     assert event2.tool_response == {"raw": "not-json-text"}
 
 
-def test_codex_notify_fallback():
-    adapt = _load_adapt("codex")
-    event = adapt.adapt_notify(_load_fixture("codex", "notify"))
-    assert event.kind == "stop"
-    assert event.session_id == "cdx-1"  # comes from thread-id
-    assert event.last_assistant_message == "Turn complete."
-
-
 def test_push_event_stamps_client_into_metadata():
     """StashClient.push_event should merge the `client` facet into metadata."""
     from stashai.plugin.stash_client import StashClient

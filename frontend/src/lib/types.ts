@@ -26,6 +26,9 @@ export interface Workspace {
   created_at: string;
   updated_at: string;
   member_count: number | null;
+  summary?: string | null;
+  tags?: string[];
+  category?: string | null;
 }
 
 export interface WorkspaceMember {
@@ -62,6 +65,7 @@ export interface Page {
   updated_by: string | null;
   created_at: string;
   updated_at: string;
+  public_in_share?: boolean;
 }
 
 // Lightweight tree node — pages live as `pages: PageSummary[]` in each folder.
@@ -200,6 +204,7 @@ export interface FileInfo {
   url: string;
   uploaded_by: string;
   created_at: string;
+  linked_table_id?: string | null;
 }
 
 export interface Attachment {

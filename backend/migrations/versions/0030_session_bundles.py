@@ -4,21 +4,24 @@ A stash captures the full context of an agent session: transcript,
 artifacts (files touched), and an AI-generated summary. Stashes are served
 at /b/{slug} for humans and ?format=text for agent consumption.
 
-Revision ID: 0027
-Revises: 0026
+Revision ID: 0030
+Revises: 0029
 """
 
 from alembic import op
 
-revision = "0027"
-down_revision = "0026"
+revision = "0030"
+down_revision = "0029"
 branch_labels = None
 depends_on = None
 
 
 def upgrade() -> None:
+    # Idempotent: prod ran an older variant of this migration when it was
+    # numbered 0027 (before the merge renumbered the chain). On those DBs
+    # the tables and indexes already exist, so guard every statement.
     op.execute("""
-        CREATE TABLE stashes (
+        CREATE TABLE IF NOT EXISTS stashes (
             id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
             workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
             session_id TEXT NOT NULL,
@@ -36,7 +39,7 @@ def upgrade() -> None:
         )
     """)
     op.execute("""
-        CREATE TABLE stash_artifacts (
+        CREATE TABLE IF NOT EXISTS stash_artifacts (
             id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
             stash_id UUID NOT NULL REFERENCES stashes(id) ON DELETE CASCADE,
             file_path TEXT NOT NULL,
@@ -45,9 +48,9 @@ def upgrade() -> None:
             created_at TIMESTAMPTZ NOT NULL DEFAULT now()
         )
     """)
-    op.execute("CREATE INDEX idx_stashes_workspace ON stashes(workspace_id)")
-    op.execute("CREATE INDEX idx_stashes_session ON stashes(session_id)")
-    op.execute("CREATE INDEX idx_stash_artifacts_stash ON stash_artifacts(stash_id)")
+    op.execute("CREATE INDEX IF NOT EXISTS idx_stashes_workspace ON stashes(workspace_id)")
+    op.execute("CREATE INDEX IF NOT EXISTS idx_stashes_session ON stashes(session_id)")
+    op.execute("CREATE INDEX IF NOT EXISTS idx_stash_artifacts_stash ON stash_artifacts(stash_id)")
 
 
 def downgrade() -> None:
