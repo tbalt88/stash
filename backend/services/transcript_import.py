@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import gzip
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 
@@ -38,7 +38,7 @@ def _parse_ts(raw: Any) -> datetime | None:
             raw = raw[:-1] + "+00:00"
         dt = datetime.fromisoformat(raw)
         if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=timezone.utc)
+            dt = dt.replace(tzinfo=UTC)
         return dt
     except ValueError:
         return None
@@ -108,15 +108,17 @@ def parse_jsonl_to_events(
         created_at = _parse_ts(obj.get("timestamp")) or _parse_ts(message.get("timestamp"))
 
         if text_content.strip():
-            events.append({
-                "agent_name": agent_name,
-                "event_type": "user_message" if entry_type == "user" else "assistant_message",
-                "content": text_content,
-                "session_id": session_id,
-                "tool_name": None,
-                "metadata": {"source": "transcript_import"},
-                "created_at": created_at,
-            })
+            events.append(
+                {
+                    "agent_name": agent_name,
+                    "event_type": "user_message" if entry_type == "user" else "assistant_message",
+                    "content": text_content,
+                    "session_id": session_id,
+                    "tool_name": None,
+                    "metadata": {"source": "transcript_import"},
+                    "created_at": created_at,
+                }
+            )
 
         # Surface tool_use blocks (assistant side) as their own events so
         # the timeline shows tool calls alongside messages — mirrors what
@@ -125,18 +127,22 @@ def parse_jsonl_to_events(
             tool_name = tu.get("name") or ""
             tool_input = tu.get("input")
             try:
-                content_repr = json.dumps(tool_input, ensure_ascii=False) if tool_input is not None else ""
+                content_repr = (
+                    json.dumps(tool_input, ensure_ascii=False) if tool_input is not None else ""
+                )
             except (TypeError, ValueError):
                 content_repr = str(tool_input)
-            events.append({
-                "agent_name": agent_name,
-                "event_type": "tool_use",
-                "content": content_repr,
-                "session_id": session_id,
-                "tool_name": tool_name or None,
-                "metadata": {"source": "transcript_import"},
-                "created_at": created_at,
-            })
+            events.append(
+                {
+                    "agent_name": agent_name,
+                    "event_type": "tool_use",
+                    "content": content_repr,
+                    "session_id": session_id,
+                    "tool_name": tool_name or None,
+                    "metadata": {"source": "transcript_import"},
+                    "created_at": created_at,
+                }
+            )
 
         fallback_idx += 1
 

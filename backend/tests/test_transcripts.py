@@ -13,11 +13,16 @@ from httpx import AsyncClient
 
 from .conftest import unique_name
 
-
 BODY = (
     json.dumps({"type": "user", "message": {"content": "hi"}, "timestamp": "2026-05-10T20:00:00Z"})
     + "\n"
-    + json.dumps({"type": "assistant", "message": {"content": [{"type": "text", "text": "hello"}]}, "timestamp": "2026-05-10T20:00:01Z"})
+    + json.dumps(
+        {
+            "type": "assistant",
+            "message": {"content": [{"type": "text", "text": "hello"}]},
+            "timestamp": "2026-05-10T20:00:01Z",
+        }
+    )
     + "\n"
 ).encode()
 

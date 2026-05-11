@@ -2,9 +2,7 @@
 
 import gzip
 import json
-from datetime import datetime, timezone
-
-import pytest
+from datetime import UTC, datetime
 
 from backend.services.transcript_import import parse_jsonl_to_events
 
@@ -14,10 +12,19 @@ def _line(**kw) -> str:
 
 
 def test_parses_user_and_assistant_text():
-    body = ("\n".join([
-        _line(type="user", message={"content": "hi"}, timestamp="2026-05-10T00:00:00Z"),
-        _line(type="assistant", message={"content": [{"type": "text", "text": "hey"}]}, timestamp="2026-05-10T00:00:01Z"),
-    ]) + "\n").encode()
+    body = (
+        "\n".join(
+            [
+                _line(type="user", message={"content": "hi"}, timestamp="2026-05-10T00:00:00Z"),
+                _line(
+                    type="assistant",
+                    message={"content": [{"type": "text", "text": "hey"}]},
+                    timestamp="2026-05-10T00:00:01Z",
+                ),
+            ]
+        )
+        + "\n"
+    ).encode()
     events = parse_jsonl_to_events(body, session_id="s1", agent_name="claude")
     assert len(events) == 2
     assert events[0]["event_type"] == "user_message"
@@ -26,7 +33,7 @@ def test_parses_user_and_assistant_text():
     assert events[0]["agent_name"] == "claude"
     assert events[1]["event_type"] == "assistant_message"
     assert events[1]["content"] == "hey"
-    assert events[0]["created_at"] == datetime(2026, 5, 10, 0, 0, 0, tzinfo=timezone.utc)
+    assert events[0]["created_at"] == datetime(2026, 5, 10, 0, 0, 0, tzinfo=UTC)
 
 
 def test_handles_gzipped_input():
@@ -38,13 +45,18 @@ def test_handles_gzipped_input():
 
 
 def test_surfaces_tool_use_blocks_as_events():
-    body = (_line(
-        type="assistant",
-        message={"content": [
-            {"type": "text", "text": "Let me read that file"},
-            {"type": "tool_use", "name": "Read", "input": {"file": "x.py"}},
-        ]},
-    ) + "\n").encode()
+    body = (
+        _line(
+            type="assistant",
+            message={
+                "content": [
+                    {"type": "text", "text": "Let me read that file"},
+                    {"type": "tool_use", "name": "Read", "input": {"file": "x.py"}},
+                ]
+            },
+        )
+        + "\n"
+    ).encode()
     events = parse_jsonl_to_events(body, session_id="s3", agent_name="claude")
     assert [e["event_type"] for e in events] == ["assistant_message", "tool_use"]
     assert events[1]["tool_name"] == "Read"

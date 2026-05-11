@@ -108,14 +108,20 @@ async def update_stash(stash_id: UUID, **fields) -> dict | None:
 
 
 async def add_artifact(
-    stash_id: UUID, file_path: str, storage_key: str, size_bytes: int,
+    stash_id: UUID,
+    file_path: str,
+    storage_key: str,
+    size_bytes: int,
 ) -> dict:
     pool = get_pool()
     row = await pool.fetchrow(
         "INSERT INTO stash_artifacts (stash_id, file_path, storage_key, size_bytes) "
         "VALUES ($1, $2, $3, $4) "
         "RETURNING id, file_path, size_bytes, created_at",
-        stash_id, file_path, storage_key, size_bytes,
+        stash_id,
+        file_path,
+        storage_key,
+        size_bytes,
     )
     return dict(row)
 
@@ -140,5 +146,3 @@ async def get_artifact(artifact_id: UUID) -> dict | None:
         artifact_id,
     )
     return dict(row) if row else None
-
-

@@ -155,14 +155,8 @@ async def push_events_batch(
     session_ids = [e.get("session_id") for e in events]
     tool_names = [e.get("tool_name") for e in events]
     metadatas = [json.dumps(e.get("metadata") or {}) for e in events]
-    attachments = [
-        json.dumps(e["attachments"]) if e.get("attachments") else None
-        for e in events
-    ]
-    timestamps = [
-        _normalize_ts(e["created_at"]) if e.get("created_at") else now
-        for e in events
-    ]
+    attachments = [json.dumps(e["attachments"]) if e.get("attachments") else None for e in events]
+    timestamps = [_normalize_ts(e["created_at"]) if e.get("created_at") else now for e in events]
 
     rows = await pool.fetch(
         """

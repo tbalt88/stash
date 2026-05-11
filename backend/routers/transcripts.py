@@ -49,8 +49,7 @@ async def upload_transcript(
 
     pool = get_pool()
     existing = await pool.fetchval(
-        "SELECT COUNT(*) FROM history_events "
-        "WHERE workspace_id = $1 AND session_id = $2",
+        "SELECT COUNT(*) FROM history_events " "WHERE workspace_id = $1 AND session_id = $2",
         workspace_id,
         session_id,
     )
@@ -69,9 +68,7 @@ async def upload_transcript(
         for e in events:
             e["metadata"] = {**(e.get("metadata") or {}), "cwd": cwd}
 
-    inserted = await memory_service.push_events_batch(
-        workspace_id, current_user["id"], events
-    )
+    inserted = await memory_service.push_events_batch(workspace_id, current_user["id"], events)
     return {
         "session_id": session_id,
         "imported": len(inserted),
@@ -159,5 +156,3 @@ async def download_transcript(
         media_type="application/jsonl",
         headers={"Cache-Control": "private, max-age=60"},
     )
-
-
