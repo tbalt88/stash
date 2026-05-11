@@ -15,6 +15,8 @@ interface AppSidebarProps {
   user?: User;
   onLogout?: () => void;
   collapsed?: boolean;
+  cmdkOpen?: boolean;
+  onCmdkOpen?: () => void;
 }
 
 interface StashNode extends Workspace {
@@ -242,7 +244,7 @@ function StashTree({
   );
 }
 
-export default function AppSidebar({ user, collapsed }: AppSidebarProps) {
+export default function AppSidebar({ user, collapsed, onCmdkOpen }: AppSidebarProps) {
   const pathname = usePathname();
   const [mine, setMine] = useState<Workspace[]>([]);
   const [shared, setShared] = useState<Workspace[]>([]);
@@ -310,7 +312,10 @@ export default function AppSidebar({ user, collapsed }: AppSidebarProps) {
       </div>
 
       <nav className="px-2 pt-2 text-[13px]">
-        <button className="flex w-full items-center gap-2 rounded-md px-2 py-1 text-muted hover:bg-raised">
+        <button
+          onClick={onCmdkOpen}
+          className="flex w-full items-center gap-2 rounded-md px-2 py-1 text-muted hover:bg-raised"
+        >
           <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <circle cx="11" cy="11" r="8" />
             <path d="m21 21-4.3-4.3" />

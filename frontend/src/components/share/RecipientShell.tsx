@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import AskRail from "../AskRail";
 import { shareForkStash, shareRequestEdit, type ShareProjection } from "../../lib/api";
 
 interface RecipientShellProps {
@@ -66,11 +65,8 @@ export default function RecipientShell({
   }
 
   return (
-    <div
-      className="grid h-screen overflow-hidden"
-      style={{ gridTemplateColumns: "1fr 360px" }}
-    >
-      <main className="flex min-w-0 flex-col overflow-y-auto">
+    <div className="flex h-screen flex-col overflow-hidden">
+      <main className="flex min-w-0 flex-1 flex-col overflow-y-auto">
         <header className="border-b border-border-subtle bg-surface px-6 py-3">
           <div className="flex items-center gap-3">
             <span
@@ -156,8 +152,6 @@ export default function RecipientShell({
           </div>
         )}
       </main>
-
-      <AskRail stashId={null} shareToken={token} mode="recipient" />
     </div>
   );
 }

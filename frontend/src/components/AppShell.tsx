@@ -6,7 +6,6 @@ import { usePathname } from "next/navigation";
 import { User, Workspace } from "../lib/types";
 import { listMyWorkspaces } from "../lib/api";
 import AppSidebar from "./AppSidebar";
-import AskRail from "./AskRail";
 import ShareModal from "./ShareModal";
 import { useBreadcrumbsValue } from "./BreadcrumbContext";
 
@@ -17,7 +16,6 @@ interface AppShellProps {
 }
 
 const SIDEBAR_KEY = "stash_sidebar_collapsed";
-const RAIL_KEY = "stash_rail_collapsed";
 
 function readBool(key: string): boolean {
   if (typeof window === "undefined") return false;
@@ -34,27 +32,17 @@ function SidebarToggleIcon({ collapsed }: { collapsed: boolean }) {
   );
 }
 
-function RailToggleIcon() {
-  return (
-    <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-      <rect x="3" y="3" width="18" height="18" rx="2" />
-      <path d="M15 3v18" />
-    </svg>
-  );
-}
-
 export default function AppShell({ user, onLogout, children }: AppShellProps) {
   const pathname = usePathname();
   const breadcrumbs = useBreadcrumbsValue();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [railCollapsed, setRailCollapsed] = useState(false);
   const [activeStashId, setActiveStashId] = useState<string | null>(null);
   const [stashes, setStashes] = useState<Workspace[]>([]);
   const [shareOpen, setShareOpen] = useState(false);
+  const [cmdkOpen, setCmdkOpen] = useState(false);
 
   useEffect(() => {
     setSidebarCollapsed(readBool(SIDEBAR_KEY));
-    setRailCollapsed(readBool(RAIL_KEY));
     listMyWorkspaces()
       .then((r) => setStashes(r.workspaces ?? []))
       .catch(() => {});
@@ -69,13 +57,9 @@ export default function AppShell({ user, onLogout, children }: AppShellProps) {
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      if ((e.metaKey || e.ctrlKey) && e.key === ".") {
+      if ((e.metaKey || e.ctrlKey) && e.key === "k") {
         e.preventDefault();
-        setRailCollapsed((c) => {
-          const next = !c;
-          if (typeof window !== "undefined") localStorage.setItem(RAIL_KEY, next ? "1" : "0");
-          return next;
-        });
+        setCmdkOpen((o) => !o);
       }
       if ((e.metaKey || e.ctrlKey) && e.key === "\\") {
         e.preventDefault();
@@ -95,7 +79,6 @@ export default function AppShell({ user, onLogout, children }: AppShellProps) {
 
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-base">
-      {/* Sticky top header — spans all three columns */}
       <header className="sticky top-0 z-30 flex h-11 flex-shrink-0 items-center justify-between border-b border-border bg-base/85 px-3 backdrop-blur-md">
         <div className="flex min-w-0 items-center gap-1.5 text-[13px]">
           <button
@@ -112,10 +95,7 @@ export default function AppShell({ user, onLogout, children }: AppShellProps) {
           >
             <SidebarToggleIcon collapsed={sidebarCollapsed} />
           </button>
-          <Breadcrumb
-            activeStash={activeStash}
-            pageCrumbs={breadcrumbs}
-          />
+          <Breadcrumb activeStash={activeStash} pageCrumbs={breadcrumbs} />
         </div>
 
         <div className="flex items-center gap-1">
@@ -134,19 +114,6 @@ export default function AppShell({ user, onLogout, children }: AppShellProps) {
               Share
             </button>
           )}
-          <button
-            onClick={() => {
-              setRailCollapsed((c) => {
-                const next = !c;
-                if (typeof window !== "undefined") localStorage.setItem(RAIL_KEY, next ? "1" : "0");
-                return next;
-              });
-            }}
-            className="ml-0.5 rounded p-1 text-muted hover:bg-raised"
-            title="Toggle agent sidebar (⌘.)"
-          >
-            <RailToggleIcon />
-          </button>
           <button onClick={onLogout} className="rounded p-1 text-muted hover:bg-raised" title="Sign out">
             <svg className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor">
               <circle cx="5" cy="12" r="1.5" />
@@ -160,27 +127,19 @@ export default function AppShell({ user, onLogout, children }: AppShellProps) {
       <div
         className="grid min-h-0 flex-1 overflow-hidden"
         style={{
-          gridTemplateColumns: `${sidebarCollapsed ? "0px" : "260px"} minmax(0, 1fr) ${railCollapsed ? "0px" : "360px"}`,
+          gridTemplateColumns: `${sidebarCollapsed ? "0px" : "260px"} minmax(0, 1fr)`,
         }}
       >
         <AppSidebar
           user={user}
           onLogout={onLogout}
           collapsed={sidebarCollapsed}
+          cmdkOpen={cmdkOpen}
+          onCmdkOpen={() => setCmdkOpen(true)}
         />
         <main className="flex min-w-0 flex-col overflow-y-auto bg-base">{children}</main>
-        <AskRail
-          stashId={activeStashId}
-          collapsed={railCollapsed}
-          onToggleCollapsed={() => {
-            setRailCollapsed((c) => {
-              const next = !c;
-              if (typeof window !== "undefined") localStorage.setItem(RAIL_KEY, next ? "1" : "0");
-              return next;
-            });
-          }}
-        />
       </div>
+
       {activeStashId && (
         <ShareModal
           open={shareOpen}
