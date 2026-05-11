@@ -26,14 +26,19 @@ Previous Claude coding sessions are stored as `.jsonl` files in your ~/.claude f
 
 When you create or update a PR, share the GitHub link with the user at the end of your session.
 
-<!-- stash-context -->
-## Stash
 
-This repo uses [Stash](https://joinstash.ai) for shared agent history.
-Your coding agent has the `stash` CLI on its PATH. Run `stash --help` to see commands.
+# Stash
+
+You have the `stash` CLI on your PATH. Run `stash --help` to see commands. Use it to read transcripts, notebooks, and history from your team's shared Stash workspace.
+
+Your activity in this repo is streamed to that workspace, so teammates' agents and humans can see what you're working on.
 
 Common reads (all support `--json`):
-- `stash history search "<query>"` — full-text search across transcripts
-- `stash history query --limit 20` — latest events
-- `stash history agents` — who's been active
-- `stash notebooks list --all` — shared notebooks
+- `stash history search "<query>"` - full-text search across transcripts
+- `stash history query --limit 20` - recent events
+- `stash history agents` - who's been active
+- `stash notebooks list --all` - shared notebooks
+
+## PR hygiene
+
+When opening or updating a PR that includes GUI changes, always add product screenshots to the PR description or PR thread. Capture the changed user-facing screens yourself, and include admin/configuration screens too when they are part of the workflow.

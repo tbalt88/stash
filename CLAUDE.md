@@ -25,6 +25,10 @@ Previous Claude coding sessions are stored as `.jsonl` files in your ~/.claude f
 
 When you create or update a PR, share the GitHub link with the user at the end of your session.
 
+### PR hygiene
+
+When opening or updating a PR that includes GUI changes, always add product screenshots to the PR description or PR thread. Capture the changed user-facing screens yourself, and include admin/configuration screens too when they are part of the workflow.
+
 <!-- stash-context -->
 ## Stash
 
