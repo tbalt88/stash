@@ -1,14 +1,13 @@
 # Stash Plugin for Codex CLI
 
-Streams Codex CLI sessions to Stash. Uses Codex's experimental `hooks`
-system with a stable `notify` fallback for older builds.
+Streams Codex CLI sessions to Stash using Codex's native `hooks` system.
 
 ## Prerequisites
 
 - `stash` CLI installed and logged in
 - `.stash` manifest present in repo (or ancestor)
 - Python 3.10+ and `httpx`
-- Codex CLI with `features.codex_hooks = true` enabled for hook-based streaming
+- Codex CLI with `features.hooks = true` enabled for hook-based streaming
 
 ## Install
 
@@ -20,7 +19,7 @@ mkdir -p ~/.codex
 # Hooks manifest
 envsubst < hooks.json > ~/.codex/hooks.json
 
-# Merge the config.toml snippet (enables hooks + registers notify fallback)
+# Merge the config.toml snippet (enables hooks)
 envsubst < config.toml.snippet >> ~/.codex/config.toml
 
 # Agent context — tells Codex it has the stash CLI available
@@ -65,15 +64,6 @@ approval behavior.
 2. **Windows.** Codex hook support is disabled on Windows in current builds.
 3. **No SessionEnd event.** We clear state + trigger curation in `Stop` instead.
 
-## Fallback: the `notify` path
-
-If you're on a Codex build where `codex_hooks` isn't available, the
-`notify` command in `config.toml` fires at every turn end with a JSON
-payload on stdin. `on_notify.py` handles this case.
-
-**Pick ONE of hooks or notify — enabling both double-fires every turn.**
-The `config.toml.snippet` has two mutually-exclusive variants.
-
 ## What streams
 
 | Codex event | Stash event | Notes |
@@ -82,7 +72,6 @@ The `config.toml.snippet` has two mutually-exclusive variants.
 | `UserPromptSubmit` | `user_message` | — |
 | `PostToolUse` | `tool_use` | **Bash only today** — Codex hardcodes `tool_name="Bash"` for every shell call |
 | `Stop` | `assistant_message` + `session_end` | — |
-| `notify` (fallback) | `assistant_message` + `session_end` | Dedups with Stop — pick one |
 
 ## Retrieval
 

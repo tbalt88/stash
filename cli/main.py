@@ -456,10 +456,8 @@ def _install_codex(force: bool) -> tuple[str, str]:
 
     cfg_path.parent.mkdir(parents=True, exist_ok=True)
     if _CODEX_MARKER not in existing:
-        with cfg_path.open("a") as f:
-            if existing and not existing.endswith("\n"):
-                f.write("\n")
-            f.write(f"\n{_CODEX_MARKER}\n{snippet}\n")
+        sep = "\n" if existing and not existing.endswith("\n") else ""
+        cfg_path.write_text(f"{existing}{sep}\n{_CODEX_MARKER}\n{snippet}\n")
 
     agents_src = root / "AGENTS.md"
     agents_dest = Path.home() / ".codex" / "AGENTS.md"
