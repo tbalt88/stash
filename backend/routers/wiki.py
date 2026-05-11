@@ -10,6 +10,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from ..auth import get_current_user
+from ..database import get_pool
 from ..models import (
     FolderCreateRequest,
     FolderListResponse,
@@ -26,7 +27,6 @@ from ..models import (
     WorkspacePageListResponse,
     WorkspaceTreeResponse,
 )
-from ..database import get_pool
 from ..services import permission_service, storage_service, wiki_service, workspace_service
 from ..services.wiki_service import (
     DuplicateFolderName,
@@ -157,8 +157,7 @@ async def get_folder_contents(
         folder_id,
     )
     pages = await pool.fetch(
-        "SELECT id, name, public_in_share FROM pages "
-        "WHERE folder_id = $1 ORDER BY name",
+        "SELECT id, name, public_in_share FROM pages WHERE folder_id = $1 ORDER BY name",
         folder_id,
     )
     files = await pool.fetch(
@@ -173,21 +172,25 @@ async def get_folder_contents(
             url = await storage_service.get_file_url(f["storage_key"])
         except Exception:
             url = None
-        file_payload.append({
-            "id": str(f["id"]),
-            "name": f["name"],
-            "size_bytes": f["size_bytes"],
-            "content_type": f["content_type"],
-            "url": url,
-            "created_at": f["created_at"],
-            "linked_table_id": str(f["linked_table_id"]) if f["linked_table_id"] else None,
-        })
+        file_payload.append(
+            {
+                "id": str(f["id"]),
+                "name": f["name"],
+                "size_bytes": f["size_bytes"],
+                "content_type": f["content_type"],
+                "url": url,
+                "created_at": f["created_at"],
+                "linked_table_id": str(f["linked_table_id"]) if f["linked_table_id"] else None,
+            }
+        )
 
     return {
         "folder": {
             "id": str(folder["id"]),
             "name": folder["name"],
-            "parent_folder_id": str(folder["parent_folder_id"]) if folder["parent_folder_id"] else None,
+            "parent_folder_id": (
+                str(folder["parent_folder_id"]) if folder["parent_folder_id"] else None
+            ),
         },
         "breadcrumbs": breadcrumbs,
         "subfolders": [

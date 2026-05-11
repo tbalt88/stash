@@ -4,14 +4,14 @@ Wiki collapse PR: folders should hold both pages AND files (PDFs, CSVs,
 HTML uploads, etc.) — same mental model as a file system. Before this
 migration, files were always workspace-root; folders held pages only.
 
-Revision ID: 0034
-Revises: 0033
+Revision ID: 0035
+Revises: 0034
 """
 
 from alembic import op
 
-revision = "0034"
-down_revision = "0033"
+revision = "0035"
+down_revision = "0034"
 branch_labels = None
 depends_on = None
 
@@ -22,9 +22,7 @@ def upgrade() -> None:
         "ADD COLUMN IF NOT EXISTS folder_id UUID "
         "REFERENCES folders(id) ON DELETE SET NULL"
     )
-    op.execute(
-        "CREATE INDEX IF NOT EXISTS idx_files_folder ON files(folder_id)"
-    )
+    op.execute("CREATE INDEX IF NOT EXISTS idx_files_folder ON files(folder_id)")
 
 
 def downgrade() -> None:
