@@ -106,23 +106,6 @@ function StashTree({
         </Link>
       </summary>
       <div className="ml-3 space-y-0.5 border-l border-border pl-2">
-        <NavRow
-          href={
-            spine?.narrative
-              ? `/stashes/${stash.id}/p/${spine.narrative.id}`
-              : `/stashes/${stash.id}`
-          }
-          icon="📌"
-          label="Narrative"
-          active={isActive}
-          trailing={
-            <span className="rounded bg-surface px-1 py-0 text-[9px] font-medium uppercase tracking-wide text-muted ring-1 ring-border">
-              readme
-            </span>
-          }
-        />
-        <div className="my-1 ml-3.5 h-px bg-border" />
-
         <details open className="text-[13px]">
           <summary className="page-row flex items-center gap-1 rounded-md px-2 py-1 hover:bg-raised">
             <Chevron />

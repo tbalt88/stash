@@ -210,26 +210,6 @@ export default function StashHomePage() {
             </div>
           )}
 
-          {/* Start here narrative CTA */}
-          {spine?.narrative && (
-            <div className="mt-6 rounded-lg border border-[var(--color-brand-200)] bg-[var(--color-brand-50)]/60 p-4">
-              <div className="text-[11px] font-semibold uppercase tracking-wide text-[var(--color-brand-700)]">
-                📌 Start here
-              </div>
-              <Link
-                href={`/stashes/${stashId}/p/${spine.narrative.id}`}
-                className="mt-1 block text-left"
-              >
-                <div className="text-[15px] font-semibold text-foreground">
-                  Read the narrative →
-                </div>
-                <div className="text-[12.5px] text-muted">
-                  3-min read · the why behind this stash
-                </div>
-              </Link>
-            </div>
-          )}
-
           {/* Stash structure callout */}
           <div className="mt-8 rounded-xl border border-border bg-surface/50 p-4">
             <div className="text-[10.5px] font-semibold uppercase tracking-wider text-muted">

@@ -1272,10 +1272,6 @@ export interface StashSpineDriveFolder {
   name: string;
   parent_folder_id: string | null;
 }
-export interface StashSpineNarrative {
-  id: string;
-  name: string;
-}
 export interface StashSpineRootPage {
   id: string;
   name: string;
@@ -1285,7 +1281,6 @@ export interface StashSpine {
   sessions: StashSpineSession[];
   skills: StashSpineSkill[];
   drive: { files: StashSpineDriveFile[]; folders: StashSpineDriveFolder[] };
-  narrative: StashSpineNarrative | null;
   root_pages: StashSpineRootPage[];
 }
 

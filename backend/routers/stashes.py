@@ -365,21 +365,6 @@ async def ask_stash(
     )
 
 
-async def _spine_narrative(stash_id: UUID) -> dict | None:
-    """The 'README' page — first match by name='Narrative.md', else first
-    public_in_share root page, else first root page. Returns id + name."""
-    pool = get_pool()
-    row = await pool.fetchrow(
-        "SELECT id, name FROM pages "
-        "WHERE workspace_id = $1 AND folder_id IS NULL "
-        "ORDER BY (name = 'Narrative.md') DESC, public_in_share DESC, name ASC LIMIT 1",
-        stash_id,
-    )
-    if not row:
-        return None
-    return {"id": str(row["id"]), "name": row["name"]}
-
-
 async def _spine_root_pages(stash_id: UUID) -> list[dict]:
     pool = get_pool()
     rows = await pool.fetch(
@@ -465,8 +450,7 @@ async def get_stash_activity(
 
 @router.get("/{stash_id}/spine")
 async def get_stash_spine(stash_id: UUID, current_user: dict = Depends(get_current_user)):
-    """Returns {sessions, skills, drive, narrative, root_pages} for the new
-    stash home + sidebar tree."""
+    """Returns {sessions, skills, drive, root_pages} for the stash home + tree."""
     if not await workspace_service.is_member(stash_id, current_user["id"]):
         ws = await workspace_service.get_workspace(stash_id)
         if not ws or not ws.get("is_public"):
@@ -475,13 +459,11 @@ async def get_stash_spine(stash_id: UUID, current_user: dict = Depends(get_curre
     sessions = await _spine_sessions(stash_id)
     skills = await _spine_skills(stash_id)
     drive = await _spine_drive(stash_id)
-    narrative = await _spine_narrative(stash_id)
     root_pages = await _spine_root_pages(stash_id)
     return {
         "sessions": sessions,
         "skills": skills,
         "drive": drive,
-        "narrative": narrative,
         "root_pages": root_pages,
     }
 

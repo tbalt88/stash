@@ -48,7 +48,6 @@ export default function StashPageView() {
     return <div className="flex h-screen items-center justify-center text-muted">Loading…</div>;
   if (!user) return null;
 
-  const isNarrative = page?.name?.toLowerCase().startsWith("narrative");
   const updatedAt = page?.updated_at
     ? new Date(page.updated_at).toLocaleString(undefined, {
         month: "short",
@@ -61,17 +60,9 @@ export default function StashPageView() {
   return (
     <AppShell user={user} onLogout={logout}>
       <div className="scroll-thin flex-1 overflow-y-auto">
-        {/* Notion-style hero gradient strip — taller for narratives */}
-        <div
-          className={
-            "w-full " +
-            (isNarrative
-              ? "h-28 bg-gradient-to-r from-[var(--color-brand-700)] via-[var(--color-brand-500)] to-emerald-300"
-              : "h-16 bg-gradient-to-r from-[var(--color-brand-200)] via-[var(--color-brand-100)] to-amber-100")
-          }
-        />
+        <div className="h-16 w-full bg-gradient-to-r from-[var(--color-brand-200)] via-[var(--color-brand-100)] to-amber-100" />
         <div className="mx-auto -mt-6 max-w-3xl px-12 pb-20">
-          <div className="text-5xl">{isNarrative ? "📌" : "📄"}</div>
+          <div className="text-5xl">📄</div>
           <h1 className="mt-1 font-display text-[36px] font-bold tracking-tight text-foreground">
             {(page?.name || "").replace(/\.md$/, "")}
           </h1>
