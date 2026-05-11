@@ -203,6 +203,17 @@ export async function joinWorkspace(inviteCode: string): Promise<Workspace> {
   return apiFetch(`/api/v1/workspaces/join/${inviteCode}`, { method: "POST" });
 }
 
+export async function createInviteToken(
+  workspaceId: string,
+  maxUses = 5,
+  ttlDays = 7
+): Promise<{ id: string; token: string; workspace_id: string; expires_at: string }> {
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/invite-tokens`, {
+    method: "POST",
+    body: JSON.stringify({ max_uses: maxUses, ttl_days: ttlDays }),
+  });
+}
+
 export async function rotateWorkspaceInvite(workspaceId: string): Promise<Workspace> {
   return apiFetch(`/api/v1/workspaces/${workspaceId}/invite-code/rotate`, { method: "POST" });
 }

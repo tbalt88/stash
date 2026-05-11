@@ -2,14 +2,17 @@
 
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import AppShell from "../../../components/AppShell";
+import MembersModal from "../../../components/MembersModal";
 import { useAuth } from "../../../hooks/useAuth";
 import {
+  createPage,
   getStashSpine,
   getWorkspace,
   getWorkspaceMembers,
   joinWorkspace,
+  uploadFile,
   type StashSpine,
 } from "../../../lib/api";
 import type { Workspace, WorkspaceMember } from "../../../lib/types";
@@ -73,6 +76,8 @@ export default function StashHomePage() {
   const [members, setMembers] = useState<WorkspaceMember[]>([]);
   const [spine, setSpine] = useState<StashSpine | null>(null);
   const [error, setError] = useState("");
+  const [membersOpen, setMembersOpen] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async () => {
     try {
@@ -171,7 +176,9 @@ export default function StashHomePage() {
           )}
 
           <div className="mt-3 flex flex-wrap items-center gap-2 text-[12px] text-muted">
-            <MemberStack members={members} />
+            <button onClick={() => setMembersOpen(true)} title="Manage members">
+              <MemberStack members={members} />
+            </button>
             <span>· updated {stash?.updated_at ? formatRelative(stash.updated_at) : ""}</span>
             <span className="text-muted">·</span>
             <span>{stash?.is_public ? "Public" : "Private"}</span>
@@ -275,6 +282,36 @@ export default function StashHomePage() {
               spine?.drive.folders.length === 1 ? "" : "s"
             }`}
           />
+          {isMember && (
+            <div className="mt-2 mb-3 flex flex-wrap items-center gap-2">
+              <input ref={fileInputRef} type="file" className="hidden" onChange={async (e) => {
+                const file = e.target.files?.[0];
+                if (!file) return;
+                try {
+                  await uploadFile(stashId, file);
+                  await load();
+                } catch { /* */ }
+                if (fileInputRef.current) fileInputRef.current.value = "";
+              }} />
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                className="rounded-md border border-border bg-base px-2.5 py-1 text-[12px] text-foreground hover:bg-raised"
+              >
+                + Upload file
+              </button>
+              <button
+                onClick={async () => {
+                  try {
+                    const p = await createPage(stashId, "Untitled");
+                    router.push(`/stashes/${stashId}/p/${p.id}`);
+                  } catch { /* */ }
+                }}
+                className="rounded-md border border-border bg-base px-2.5 py-1 text-[12px] text-foreground hover:bg-raised"
+              >
+                + New page
+              </button>
+            </div>
+          )}
           {driveFolders.length + driveFiles.length > 0 ? (
             <CardGrid items={[...driveFolders, ...driveFiles]} hover="brand" />
           ) : (
@@ -282,6 +319,7 @@ export default function StashHomePage() {
           )}
         </div>
       </div>
+      <MembersModal stashId={stashId} open={membersOpen} onClose={() => setMembersOpen(false)} />
     </AppShell>
   );
 }
