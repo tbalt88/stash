@@ -8,7 +8,7 @@ import remarkGfm from "remark-gfm";
 import AppShell from "../../../../../components/AppShell";
 import { useBreadcrumbs } from "../../../../../components/BreadcrumbContext";
 import { useAuth } from "../../../../../hooks/useAuth";
-import { getPage, getWorkspace } from "../../../../../lib/api";
+import { getPage, getWorkspace, togglePagePublic } from "../../../../../lib/api";
 import type { Page, Workspace } from "../../../../../lib/types";
 
 export default function StashPageView() {
@@ -75,12 +75,30 @@ export default function StashPageView() {
           <h1 className="mt-1 font-display text-[36px] font-bold tracking-tight text-foreground">
             {(page?.name || "").replace(/\.md$/, "")}
           </h1>
-          {updatedAt && (
-            <p className="mt-1 text-[12px] text-muted">
-              Last edited {updatedAt}
-              {stash ? <span> in <span className="text-foreground">{stash.name}</span></span> : null}
-            </p>
-          )}
+          <div className="mt-1 flex items-center gap-3 text-[12px] text-muted">
+            {updatedAt && (
+              <span>
+                Last edited {updatedAt}
+                {stash ? <span> in <span className="text-foreground">{stash.name}</span></span> : null}
+              </span>
+            )}
+            {page && (
+              <label className="flex items-center gap-1.5 cursor-pointer select-none" title="When on, this page is visible to anyone with a share link.">
+                <input
+                  type="checkbox"
+                  checked={!!(page as Page & { public_in_share?: boolean }).public_in_share}
+                  onChange={async (e) => {
+                    try {
+                      const updated = await togglePagePublic(stashId, pageId, e.target.checked);
+                      setPage(updated);
+                    } catch { /* */ }
+                  }}
+                  className="accent-[var(--color-brand)]"
+                />
+                <span className="text-[11px]">Visible in share</span>
+              </label>
+            )}
+          </div>
 
           {error && (
             <div className="mt-4 rounded-lg border border-red-300/40 bg-red-500/10 px-4 py-2 text-[13px] text-red-500">

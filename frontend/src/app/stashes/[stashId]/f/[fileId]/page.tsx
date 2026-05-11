@@ -7,7 +7,7 @@ import remarkGfm from "remark-gfm";
 import AppShell from "../../../../../components/AppShell";
 import { useBreadcrumbs } from "../../../../../components/BreadcrumbContext";
 import { useAuth } from "../../../../../hooks/useAuth";
-import { getFile, ingestCsvFile } from "../../../../../lib/api";
+import { getFile, ingestCsvFile, toggleFilePublic } from "../../../../../lib/api";
 import type { FileInfo } from "../../../../../lib/types";
 
 function isCsv(ct: string) {
@@ -99,20 +99,38 @@ export default function FileViewerPage() {
               </span>
             )}
           </div>
-          {file?.url && (
-            <a
-              href={file.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              download={file.name}
-              className="rounded-md p-1.5 text-muted hover:bg-raised"
-              title="Download"
-            >
-              <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3" />
-              </svg>
-            </a>
-          )}
+          <div className="flex items-center gap-1">
+            {file && (
+              <label className="flex items-center gap-1.5 cursor-pointer select-none mr-2" title="When on, this file is visible to anyone with a share link.">
+                <input
+                  type="checkbox"
+                  checked={!!(file as FileInfo & { public_in_share?: boolean }).public_in_share}
+                  onChange={async (e) => {
+                    try {
+                      const updated = await toggleFilePublic(stashId, fileId, e.target.checked);
+                      setFile(updated);
+                    } catch { /* */ }
+                  }}
+                  className="accent-[var(--color-brand)]"
+                />
+                <span className="text-[11px] text-muted">Share</span>
+              </label>
+            )}
+            {file?.url && (
+              <a
+                href={file.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                download={file.name}
+                className="rounded-md p-1.5 text-muted hover:bg-raised"
+                title="Download"
+              >
+                <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3" />
+                </svg>
+              </a>
+            )}
+          </div>
         </div>
 
         {error && (

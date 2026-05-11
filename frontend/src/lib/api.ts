@@ -1180,6 +1180,30 @@ export async function listAgentNames(workspaceId: string): Promise<string[]> {
   return data.agent_names;
 }
 
+// --- Share toggles ---
+
+export async function togglePagePublic(
+  workspaceId: string,
+  pageId: string,
+  publicInShare: boolean
+): Promise<Page> {
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/pages/${pageId}`, {
+    method: "PATCH",
+    body: JSON.stringify({ public_in_share: publicInShare }),
+  });
+}
+
+export async function toggleFilePublic(
+  workspaceId: string,
+  fileId: string,
+  publicInShare: boolean
+): Promise<FileInfo> {
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/files/${fileId}`, {
+    method: "PATCH",
+    body: JSON.stringify({ public_in_share: publicInShare }),
+  });
+}
+
 // --- Activity feed ---
 
 export interface ActivityEvent {

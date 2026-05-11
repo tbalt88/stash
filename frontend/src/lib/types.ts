@@ -65,6 +65,7 @@ export interface Page {
   updated_by: string | null;
   created_at: string;
   updated_at: string;
+  public_in_share?: boolean;
 }
 
 // Lightweight tree node — pages live as `pages: PageSummary[]` in each folder.
