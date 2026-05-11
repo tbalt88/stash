@@ -246,6 +246,7 @@ function StashTree({
 
 export default function AppSidebar({ user, collapsed, onCmdkOpen }: AppSidebarProps) {
   const pathname = usePathname();
+  const activeStashId = pathname.match(/^\/stashes\/([^/]+)/)?.[1] ?? null;
   const [mine, setMine] = useState<Workspace[]>([]);
   const [shared, setShared] = useState<Workspace[]>([]);
   const [openStashes, setOpenStashes] = useState<Record<string, boolean>>({});
@@ -332,10 +333,10 @@ export default function AppSidebar({ user, collapsed, onCmdkOpen }: AppSidebarPr
           active={pathname.startsWith("/discover")}
         />
         <NavRow
-          href="/memory"
+          href={activeStashId ? `/stashes/${activeStashId}/activity` : "/memory"}
           icon={<span>⏱</span>}
           label="Activity"
-          active={pathname.startsWith("/memory")}
+          active={pathname.startsWith("/memory") || pathname.includes("/activity")}
         />
       </nav>
 

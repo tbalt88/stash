@@ -1169,6 +1169,20 @@ export async function listAgentNames(workspaceId: string): Promise<string[]> {
   return data.agent_names;
 }
 
+// --- Activity feed ---
+
+export interface ActivityEvent {
+  kind: string;
+  ts: string;
+  actor: { name: string; display_name: string | null };
+  target_id: string;
+  target_label: string;
+}
+
+export async function listStashActivity(stashId: string, limit = 50): Promise<ActivityEvent[]> {
+  return apiFetch(`/api/v1/stashes/${stashId}/activity?limit=${limit}`);
+}
+
 // --- Session transcripts ---
 
 export interface SessionTranscript {
