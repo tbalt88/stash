@@ -1262,19 +1262,22 @@ export async function getStashTranscript(
   );
 }
 
-export async function downloadStashTranscriptText(
+export interface SessionEvent {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  tool_name: string | null;
+  created_at: string | null;
+}
+
+export async function getSessionEvents(
   stashId: string,
   sessionId: string
-): Promise<string> {
-  const token = getToken();
-  const headers: Record<string, string> = {};
-  if (token) headers["Authorization"] = `Bearer ${token}`;
-  const res = await fetch(
-    `${API_BASE}/api/v1/workspaces/${stashId}/transcripts/${encodeURIComponent(sessionId)}/download`,
-    { headers }
+): Promise<SessionEvent[]> {
+  const res = await apiFetch<{ events: SessionEvent[] }>(
+    `/api/v1/workspaces/${stashId}/transcripts/${encodeURIComponent(sessionId)}/events`
   );
-  if (!res.ok) throw new ApiError(res.status, `Transcript download failed: ${res.status}`);
-  return res.text();
+  return res.events;
 }
 
 // --- Stashes (canonical naming, aliases /api/v1/workspaces/* on the server) ---

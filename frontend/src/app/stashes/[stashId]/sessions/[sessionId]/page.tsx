@@ -6,62 +6,37 @@ import AppShell from "../../../../../components/AppShell";
 import { useBreadcrumbs } from "../../../../../components/BreadcrumbContext";
 import { useAuth } from "../../../../../hooks/useAuth";
 import {
-  downloadStashTranscriptText,
+  getSessionEvents,
   getStashTranscript,
   getWorkspace,
+  type SessionEvent,
   type SessionTranscript,
 } from "../../../../../lib/api";
 import type { Workspace } from "../../../../../lib/types";
 
 interface MessageTurn {
   kind: "message";
-  who: string; // "user" / "assistant" / etc.
-  role?: string;
+  who: "user" | "assistant";
   name: string;
   time?: string;
   content: string;
+  toolName?: string | null;
 }
-interface DateTurn {
-  kind: "date";
-  date: string;
-  isNew?: boolean;
-}
-interface SummaryTurn {
-  kind: "summary";
-  content: string;
-}
-type Turn = MessageTurn | DateTurn | SummaryTurn;
 
-function parseJsonl(text: string): Turn[] {
-  const out: Turn[] = [];
-  for (const raw of text.split("\n")) {
-    const line = raw.trim();
-    if (!line) continue;
-    let obj: Record<string, unknown>;
-    try {
-      obj = JSON.parse(line) as Record<string, unknown>;
-    } catch {
-      out.push({ kind: "message", who: "user", name: "user", content: line });
-      continue;
-    }
-    const t = (obj.type as string) || "user";
-    if (t === "summary") {
-      out.push({ kind: "summary", content: (obj.summary as string) || "" });
-    } else if (t === "date") {
-      const date = (obj.date as string) || "";
-      out.push({ kind: "date", date, isNew: /new messages/i.test(date) });
-    } else {
-      out.push({
-        kind: "message",
-        who: t,
-        role: obj.role as string | undefined,
-        name: (obj.name as string) || (t === "assistant" ? "agent" : "user"),
-        time: obj.time as string | undefined,
-        content: (obj.content as string) || (obj.text as string) || "",
-      });
-    }
-  }
-  return out;
+function eventToTurn(ev: SessionEvent): MessageTurn {
+  return {
+    kind: "message",
+    who: ev.role,
+    name: ev.role === "assistant" ? "agent" : "user",
+    time: ev.created_at
+      ? new Date(ev.created_at).toLocaleTimeString(undefined, {
+          hour: "numeric",
+          minute: "2-digit",
+        })
+      : undefined,
+    content: ev.content,
+    toolName: ev.tool_name,
+  };
 }
 
 const AVATAR_PALETTE: { bg: string; fg: string }[] = [
@@ -98,7 +73,7 @@ export default function SessionViewerPage() {
 
   const [stash, setStash] = useState<Workspace | null>(null);
   const [transcript, setTranscript] = useState<SessionTranscript | null>(null);
-  const [turns, setTurns] = useState<Turn[]>([]);
+  const [turns, setTurns] = useState<MessageTurn[]>([]);
   const [error, setError] = useState("");
 
   useBreadcrumbs(
@@ -111,8 +86,8 @@ export default function SessionViewerPage() {
       setStash(await getWorkspace(stashId));
       const tx = await getStashTranscript(stashId, sessionId);
       setTranscript(tx);
-      const text = await downloadStashTranscriptText(stashId, sessionId);
-      setTurns(parseJsonl(text));
+      const events = await getSessionEvents(stashId, sessionId);
+      setTurns(events.map(eventToTurn));
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load session");
     }
@@ -130,9 +105,6 @@ export default function SessionViewerPage() {
     return <div className="flex h-screen items-center justify-center text-muted">Loading…</div>;
   if (!user) return null;
 
-  const summary = turns.find((t): t is SummaryTurn => t.kind === "summary");
-  const messageTurns = turns.filter((t) => t.kind !== "summary");
-
   return (
     <AppShell user={user} onLogout={logout}>
       <div className="scroll-thin flex-1 overflow-y-auto">
@@ -143,12 +115,9 @@ export default function SessionViewerPage() {
               <h1 className="font-display text-[24px] font-bold tracking-tight text-foreground">
                 #{sessionId.replace(/^acme-/, "")}
               </h1>
-              {summary && (
-                <p className="mt-1 text-[13px] text-muted">{summary.content}</p>
-              )}
               {transcript && (
                 <p className="mt-1.5 text-[11.5px] text-muted">
-                  {messageTurns.filter((t) => t.kind === "message").length} messages
+                  {turns.length} messages
                   {stash ? <span> · in <span className="text-foreground">{stash.name}</span></span> : null}
                 </p>
               )}
@@ -167,14 +136,10 @@ export default function SessionViewerPage() {
           )}
 
           <div className="flex flex-col">
-            {messageTurns.map((turn, i) =>
-              turn.kind === "date" ? (
-                <DateDivider key={i} date={turn.date} isNew={turn.isNew} />
-              ) : turn.kind === "message" ? (
-                <MessageRow key={i} turn={turn} />
-              ) : null
-            )}
-            {!error && messageTurns.length === 0 && (
+            {turns.map((turn, i) => (
+              <MessageRow key={i} turn={turn} />
+            ))}
+            {!error && turns.length === 0 && (
               <div className="rounded-lg border border-dashed border-border bg-surface/30 px-4 py-6 text-center text-[12.5px] text-muted">
                 Loading transcript…
               </div>
@@ -186,27 +151,8 @@ export default function SessionViewerPage() {
   );
 }
 
-function DateDivider({ date, isNew }: { date: string; isNew?: boolean }) {
-  return (
-    <div className="my-3 flex items-center gap-2">
-      <div className="h-px flex-1 bg-border" />
-      <span
-        className={
-          "rounded-full px-2 py-0.5 text-[10.5px] font-medium uppercase tracking-wide " +
-          (isNew
-            ? "bg-[var(--color-brand-100)] text-[var(--color-brand-800)]"
-            : "bg-surface text-muted ring-1 ring-border")
-        }
-      >
-        {date}
-      </span>
-      <div className="h-px flex-1 bg-border" />
-    </div>
-  );
-}
-
 function MessageRow({ turn }: { turn: MessageTurn }) {
-  const isAgent = turn.who === "assistant" || /agent/i.test(turn.name);
+  const isAgent = turn.who === "assistant";
   const avatar = avatarFor(turn.name);
   return (
     <div className="msg-row group flex gap-3 rounded-md px-2 py-2">
@@ -228,9 +174,9 @@ function MessageRow({ turn }: { turn: MessageTurn }) {
               app
             </span>
           )}
-          {turn.role === "guest" && (
-            <span className="rounded bg-indigo-50 px-1 py-0 text-[9.5px] uppercase tracking-wide text-indigo-700 ring-1 ring-indigo-200">
-              guest
+          {turn.toolName && (
+            <span className="rounded bg-indigo-50 px-1 py-0 font-mono text-[10px] text-indigo-700 ring-1 ring-indigo-200">
+              {turn.toolName}
             </span>
           )}
           {turn.time && <span className="text-[10.5px] text-muted">{turn.time}</span>}

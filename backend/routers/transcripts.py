@@ -8,11 +8,14 @@ Upload is treated as a backstop: if a session already has events streamed
 in, the upload is a no-op. If it doesn't (e.g., a backfilled session, or
 a CLI that lost connectivity mid-session), the upload parses the JSONL
 and inserts the missing events.
+
+Read side returns events as a JSON array. We don't reserialize to JSONL
+just to have the client parse it back — the rows are the source of truth.
 """
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Form, HTTPException, Response, UploadFile
+from fastapi import APIRouter, Depends, Form, HTTPException, UploadFile
 
 from ..auth import get_current_user
 from ..database import get_pool
@@ -76,35 +79,35 @@ async def upload_transcript(
     }
 
 
-def _events_to_jsonl(events: list[dict]) -> bytes:
-    """Render events as JSONL in a shape the chat viewer can parse —
-    matches the Anthropic transcript format the viewer already understands.
-    """
-    import json
+def _event_role(event_type: str | None) -> str | None:
+    """user/assistant projection for the chat viewer.
 
-    lines: list[str] = []
+    tool_use events fold into 'assistant' so the timeline shows tool calls
+    inline with assistant turns instead of dropping them silently."""
+    if event_type == "user_message":
+        return "user"
+    if event_type in ("assistant_message", "tool_use"):
+        return "assistant"
+    return None
+
+
+def _events_to_viewer_shape(events: list[dict]) -> list[dict]:
+    """Project history_events rows into the shape the chat viewer renders.
+    One dict per turn; downstream renderers don't need to know about row
+    columns, just role + content + timing."""
+    out: list[dict] = []
     for ev in events:
-        et = ev.get("event_type") or ""
-        if et == "user_message":
-            entry_type = "user"
-        elif et == "assistant_message":
-            entry_type = "assistant"
-        elif et == "tool_use":
-            # Tool calls are folded into the assistant turn shape so the
-            # existing viewer logic that filters to user/assistant doesn't
-            # silently drop them.
-            entry_type = "assistant"
-        else:
+        role = _event_role(ev.get("event_type"))
+        if role is None:
             continue
-        line = {
-            "type": entry_type,
-            "message": {"content": ev.get("content") or ""},
-            "timestamp": ev["created_at"].isoformat() if ev.get("created_at") else None,
-        }
-        if ev.get("tool_name"):
-            line["tool_name"] = ev["tool_name"]
-        lines.append(json.dumps(line, ensure_ascii=False))
-    return ("\n".join(lines) + ("\n" if lines else "")).encode("utf-8")
+        out.append({
+            "id": str(ev["id"]),
+            "role": role,
+            "content": ev.get("content") or "",
+            "tool_name": ev.get("tool_name"),
+            "created_at": ev["created_at"].isoformat() if ev.get("created_at") else None,
+        })
+    return out
 
 
 @router.get("/{session_id}")
@@ -139,20 +142,16 @@ async def get_transcript_metadata(
     }
 
 
-@router.get("/{session_id}/download")
-async def download_transcript(
+@router.get("/{session_id}/events")
+async def get_transcript_events(
     workspace_id: UUID,
     session_id: str,
     current_user: dict = Depends(get_current_user),
 ):
-    """Stream the chat thread as JSONL. Reconstructed from history_events
-    rows — there is no R2 blob to fetch."""
+    """Chat-thread turns for a session, in render order. Sourced directly
+    from history_events — no JSONL serialization round-trip."""
     await _check_member(workspace_id, current_user["id"])
     events = await memory_service.read_session_events(workspace_id, session_id)
     if not events:
         raise HTTPException(status_code=404, detail="Transcript not found")
-    return Response(
-        content=_events_to_jsonl(events),
-        media_type="application/jsonl",
-        headers={"Cache-Control": "private, max-age=60"},
-    )
+    return {"events": _events_to_viewer_shape(events)}
