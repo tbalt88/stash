@@ -3,15 +3,15 @@
 /* === Design System Tokens (DESIGN.md) === */
 
 :root {
-  /* Light mode (default) */
+  /* Notion-tan palette (matches stash-share-mockup) */
   --bg-base: #FFFFFF;
-  --bg-surface: #F8FAFC;
-  --bg-raised: #F1F5F9;
-  --border-color: #E2E8F0;
-  --border-subtle-color: #F1F5F9;
-  --text-primary: #0F172A;
-  --text-dim: #475569;
-  --text-muted: #94A3B8;
+  --bg-surface: #F7F7F5;
+  --bg-raised: #EFEFEE;
+  --border-color: #ECECEA;
+  --border-subtle-color: #F1F1EE;
+  --text-primary: #37352F;
+  --text-dim: #5C5A53;
+  --text-muted: #9B9A97;
 }
 
 [data-theme="dark"] {
@@ -41,10 +41,21 @@
   --color-border: var(--border-color);
   --color-border-subtle: var(--border-subtle-color);
 
-  /* Brand (orange) */
+  /* Brand (orange — DESIGN.md: #F97316 primary) */
+  --color-brand-50: #FFF7ED;
+  --color-brand-100: #FFEDD5;
+  --color-brand-200: #FED7AA;
+  --color-brand-300: #FDBA74;
+  --color-brand-400: #FB923C;
+  --color-brand-500: #F97316;
+  --color-brand-600: #EA580C;
+  --color-brand-700: #C2410C;
+  --color-brand-800: #9A3412;
+  --color-brand-900: #7C2D12;
   --color-brand: #F97316;
   --color-brand-hover: #EA580C;
-  --color-brand-muted: oklch(0.7 0.14 55 / 0.15);
+  --color-brand-muted: #FFF7ED;
+  --color-brand-deep: #C2410C;
 
   /* Agent (violet) */
   --color-agent: #8B5CF6;
@@ -64,7 +75,7 @@
 
   /* Typography */
   --font-sans: var(--font-instrument-sans), 'Instrument Sans', sans-serif;
-  --font-display: 'Satoshi', sans-serif;
+  --font-display: var(--font-space-grotesk), 'Space Grotesk', 'Satoshi', sans-serif;
   --font-mono: var(--font-jetbrains-mono), 'JetBrains Mono', monospace;
 }
 
@@ -73,6 +84,104 @@ body {
   color: var(--text-primary);
   font-family: var(--font-sans), sans-serif;
   transition: background 0.2s ease, color 0.2s ease;
+  font-size: 14px;
+}
+
+/* Notion-style sidebar primitives */
+.scroll-thin::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+.scroll-thin::-webkit-scrollbar-thumb {
+  background: #d8d8d4;
+  border-radius: 3px;
+}
+.scroll-thin::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+details > summary {
+  list-style: none;
+  cursor: pointer;
+}
+details > summary::-webkit-details-marker {
+  display: none;
+}
+details[open] > summary .chev {
+  transform: rotate(90deg);
+}
+.chev {
+  transition: transform 0.12s ease;
+}
+
+.page-row .page-handle {
+  opacity: 0;
+}
+.page-row:hover .page-handle {
+  opacity: 1;
+}
+
+.hl-yellow {
+  background: #fef9c3;
+  border-bottom: 2px solid #facc15;
+}
+
+/* Narrative stat cards (3-up grid) */
+.markdown-content .stat-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.5rem;
+  margin: 1.25rem 0 1.5rem;
+  text-align: center;
+}
+.markdown-content .stat-card {
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 0.75rem;
+  background: var(--bg-base);
+}
+.markdown-content .stat-num {
+  font-family: var(--font-display), sans-serif;
+  font-weight: 700;
+  font-size: 1.5rem;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+}
+.markdown-content .stat-num.stat-pos {
+  color: #047857;
+}
+.markdown-content .stat-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  margin-top: 0.15rem;
+}
+
+/* Brand-bordered quote callout used in narratives */
+.markdown-content .quote-callout {
+  border-left: 4px solid var(--color-brand-500, #F97316);
+  background: var(--color-brand-50, #FFF7ED);
+  border-radius: 4px;
+  padding: 0.85rem 1rem;
+  margin: 1rem 0 1.25rem;
+}
+.markdown-content .quote-eyebrow {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--color-brand-700, #C2410C);
+}
+.markdown-content .quote-body {
+  font-style: italic;
+  font-size: 14px;
+  margin-top: 0.25rem;
+}
+.markdown-content .quote-cite {
+  font-size: 11.5px;
+  color: var(--text-muted);
+  margin-top: 0.25rem;
 }
 
 /* === TipTap Editor === */

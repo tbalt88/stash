@@ -1,13 +1,13 @@
 """Add explicit Discover catalog curation.
 
-Revision ID: 0029
-Revises: 0028
+Revision ID: 0034
+Revises: 0033
 """
 
 from alembic import op
 
-revision = "0029"
-down_revision = "0028"
+revision = "0034"
+down_revision = "0033"
 branch_labels = None
 depends_on = None
 

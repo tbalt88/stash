@@ -1,17 +1,30 @@
-"""Minimal backend coverage: upload + fetch round-trip, 413 oversize,
-non-member 403. storage_service is stubbed in-memory."""
+"""Backend coverage for the rows-only transcript path.
+
+Upload now parses JSONL into history_events rows; no R2 blob. The
+roundtrip test confirms the events come back out of the /download
+endpoint shaped like JSONL the chat viewer can parse.
+"""
 
 import io
+import json
 
 import pytest
-import pytest_asyncio
 from httpx import AsyncClient
-
-from backend.services import storage_service
 
 from .conftest import unique_name
 
-BODY = b'{"type":"user"}\n{"type":"assistant"}\n'
+BODY = (
+    json.dumps({"type": "user", "message": {"content": "hi"}, "timestamp": "2026-05-10T20:00:00Z"})
+    + "\n"
+    + json.dumps(
+        {
+            "type": "assistant",
+            "message": {"content": [{"type": "text", "text": "hello"}]},
+            "timestamp": "2026-05-10T20:00:01Z",
+        }
+    )
+    + "\n"
+).encode()
 
 
 async def _register(client):
@@ -32,47 +45,69 @@ async def _workspace(client, key):
     return r.json()["id"]
 
 
-@pytest_asyncio.fixture
-async def stub_storage(monkeypatch):
-    blobs: dict[str, bytes] = {}
-
-    async def _upload(ws, name, content, ct):
-        k = f"{ws}/{name}-{len(blobs)}"
-        blobs[k] = content
-        return k
-
-    async def _url(k, expires_in=3600):
-        return f"http://test/blobs/{k}"
-
-    monkeypatch.setattr(storage_service, "is_configured", lambda: True)
-    monkeypatch.setattr(storage_service, "upload_file", _upload)
-    monkeypatch.setattr(storage_service, "get_file_url", _url)
-
-
 @pytest.mark.asyncio
-async def test_upload_and_fetch_roundtrip(client: AsyncClient, stub_storage):
+async def test_upload_inserts_events_and_download_roundtrips(client: AsyncClient):
     key = await _register(client)
     ws = await _workspace(client, key)
+    headers = {"Authorization": f"Bearer {key}"}
 
     up = await client.post(
         f"/api/v1/workspaces/{ws}/transcripts",
         files={"file": ("s.jsonl", io.BytesIO(BODY), "application/jsonl")},
         data={"session_id": "sess-1", "agent_name": "claude"},
-        headers={"Authorization": f"Bearer {key}"},
+        headers=headers,
     )
     assert up.status_code == 201, up.text
-    assert up.json()["size_bytes"] == len(BODY)
+    payload = up.json()
+    assert payload["imported"] == 2
+    assert payload["skipped"] is False
 
-    got = await client.get(
+    meta = await client.get(
         f"/api/v1/workspaces/{ws}/transcripts/sess-1",
-        headers={"Authorization": f"Bearer {key}"},
+        headers=headers,
     )
-    assert got.status_code == 200
-    assert got.json()["download_url"].startswith("http://test/blobs/")
+    assert meta.status_code == 200
+    assert meta.json()["event_count"] == 2
+
+    dl = await client.get(
+        f"/api/v1/workspaces/{ws}/transcripts/sess-1/download",
+        headers=headers,
+    )
+    assert dl.status_code == 200
+    lines = [json.loads(line) for line in dl.text.splitlines() if line.strip()]
+    assert [line["type"] for line in lines] == ["user", "assistant"]
+    assert lines[0]["message"]["content"] == "hi"
+    assert lines[1]["message"]["content"] == "hello"
 
 
 @pytest.mark.asyncio
-async def test_oversize_rejected(client: AsyncClient, stub_storage):
+async def test_reupload_is_noop_when_events_exist(client: AsyncClient):
+    key = await _register(client)
+    ws = await _workspace(client, key)
+    headers = {"Authorization": f"Bearer {key}"}
+
+    first = await client.post(
+        f"/api/v1/workspaces/{ws}/transcripts",
+        files={"file": ("s.jsonl", io.BytesIO(BODY), "application/jsonl")},
+        data={"session_id": "sess-dup", "agent_name": "claude"},
+        headers=headers,
+    )
+    assert first.status_code == 201
+    assert first.json()["imported"] == 2
+
+    second = await client.post(
+        f"/api/v1/workspaces/{ws}/transcripts",
+        files={"file": ("s.jsonl", io.BytesIO(BODY), "application/jsonl")},
+        data={"session_id": "sess-dup", "agent_name": "claude"},
+        headers=headers,
+    )
+    assert second.status_code == 201
+    assert second.json()["skipped"] is True
+    assert second.json()["imported"] == 0
+
+
+@pytest.mark.asyncio
+async def test_oversize_rejected(client: AsyncClient):
     key = await _register(client)
     ws = await _workspace(client, key)
     big = b"x" * (50 * 1024 * 1024 + 1)
@@ -86,7 +121,7 @@ async def test_oversize_rejected(client: AsyncClient, stub_storage):
 
 
 @pytest.mark.asyncio
-async def test_non_member_forbidden(client: AsyncClient, stub_storage):
+async def test_non_member_forbidden(client: AsyncClient):
     owner = await _register(client)
     other = await _register(client)
     ws = await _workspace(client, owner)

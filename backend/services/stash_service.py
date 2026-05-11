@@ -39,11 +39,29 @@ async def create_stash(
     return dict(row)
 
 
+async def _hydrate_stash(row: dict) -> dict:
+    """Common projection for stash rows. `has_transcript` is derived from
+    the existence of history_events for this session."""
+    d = dict(row)
+    pool = get_pool()
+    if d.get("session_id"):
+        exists = await pool.fetchval(
+            "SELECT EXISTS(SELECT 1 FROM history_events "
+            "WHERE workspace_id = $1 AND session_id = $2)",
+            d["workspace_id"],
+            d["session_id"],
+        )
+        d["has_transcript"] = bool(exists)
+    else:
+        d["has_transcript"] = False
+    return d
+
+
 async def get_stash_by_slug(slug: str) -> dict | None:
     pool = get_pool()
     row = await pool.fetchrow(
         "SELECT s.id, s.workspace_id, s.session_id, s.slug, s.agent_name, s.cwd, "
-        "s.status, s.summary, s.files_touched, s.transcript_storage_key, "
+        "s.status, s.summary, s.files_touched, "
         "s.created_by, s.created_at, s.updated_at, "
         "(SELECT COUNT(*) FROM stash_artifacts sa WHERE sa.stash_id = s.id) AS artifact_count "
         "FROM stashes s WHERE s.slug = $1",
@@ -51,16 +69,14 @@ async def get_stash_by_slug(slug: str) -> dict | None:
     )
     if not row:
         return None
-    d = dict(row)
-    d["has_transcript"] = bool(d.pop("transcript_storage_key", None))
-    return d
+    return await _hydrate_stash(dict(row))
 
 
 async def get_stash_by_id(stash_id: UUID) -> dict | None:
     pool = get_pool()
     row = await pool.fetchrow(
         "SELECT s.id, s.workspace_id, s.session_id, s.slug, s.agent_name, s.cwd, "
-        "s.status, s.summary, s.files_touched, s.transcript_storage_key, "
+        "s.status, s.summary, s.files_touched, "
         "s.created_by, s.created_at, s.updated_at, "
         "(SELECT COUNT(*) FROM stash_artifacts sa WHERE sa.stash_id = s.id) AS artifact_count "
         "FROM stashes s WHERE s.id = $1",
@@ -68,9 +84,7 @@ async def get_stash_by_id(stash_id: UUID) -> dict | None:
     )
     if not row:
         return None
-    d = dict(row)
-    d["has_transcript"] = bool(d.pop("transcript_storage_key", None))
-    return d
+    return await _hydrate_stash(dict(row))
 
 
 async def update_stash(stash_id: UUID, **fields) -> dict | None:
@@ -92,14 +106,20 @@ async def update_stash(stash_id: UUID, **fields) -> dict | None:
 
 
 async def add_artifact(
-    stash_id: UUID, file_path: str, storage_key: str, size_bytes: int,
+    stash_id: UUID,
+    file_path: str,
+    storage_key: str,
+    size_bytes: int,
 ) -> dict:
     pool = get_pool()
     row = await pool.fetchrow(
         "INSERT INTO stash_artifacts (stash_id, file_path, storage_key, size_bytes) "
         "VALUES ($1, $2, $3, $4) "
         "RETURNING id, file_path, size_bytes, created_at",
-        stash_id, file_path, storage_key, size_bytes,
+        stash_id,
+        file_path,
+        storage_key,
+        size_bytes,
     )
     return dict(row)
 
@@ -124,22 +144,3 @@ async def get_artifact(artifact_id: UUID) -> dict | None:
         artifact_id,
     )
     return dict(row) if row else None
-
-
-async def set_transcript_key(stash_id: UUID, storage_key: str) -> None:
-    pool = get_pool()
-    await pool.execute(
-        "UPDATE stashes SET transcript_storage_key = $2, updated_at = now() WHERE id = $1",
-        stash_id, storage_key,
-    )
-
-
-async def get_transcript_key(stash_id: UUID) -> str | None:
-    pool = get_pool()
-    row = await pool.fetchrow(
-        "SELECT transcript_storage_key FROM stashes WHERE id = $1",
-        stash_id,
-    )
-    if not row:
-        return None
-    return row["transcript_storage_key"]

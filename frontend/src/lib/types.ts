@@ -70,6 +70,7 @@ export interface Page {
   updated_by: string | null;
   created_at: string;
   updated_at: string;
+  public_in_share?: boolean;
 }
 
 // Lightweight tree node — pages live as `pages: PageSummary[]` in each folder.
@@ -113,6 +114,7 @@ export interface HistoryEvent {
   tool_name: string | null;
   content: string;
   metadata: Record<string, unknown>;
+  attachments?: Attachment[] | null;
   created_at: string;
   created_by: string | null;
   created_by_name: string | null;
@@ -208,6 +210,7 @@ export interface FileInfo {
   url: string;
   uploaded_by: string;
   created_at: string;
+  linked_table_id?: string | null;
 }
 
 export interface Attachment {

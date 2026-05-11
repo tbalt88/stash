@@ -21,9 +21,12 @@ def test_fresh_install_writes_profile_block(monkeypatch, tmp_path: Path) -> None
     body = cfg.read_text()
     assert "[profiles.stash]" in body
     assert "[sandbox_workspace_write]" in body
+    assert "hooks = true" in body
+    assert "codex_hooks" not in body
     # TOML must still parse cleanly after our append.
     with cfg.open("rb") as f:
         parsed = tomllib.load(f)
+    assert parsed["features"]["hooks"] is True
     assert parsed["profiles"]["stash"]["approval_policy"] == "on-failure"
     assert parsed["profiles"]["stash"]["sandbox_mode"] == "workspace-write"
     assert parsed["profiles"]["stash"]["sandbox_workspace_write"]["network_access"] is True

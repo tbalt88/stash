@@ -239,6 +239,7 @@ async def update_page(
             content_type=req.content_type,
             content_html=req.content_html,
             move_to_root=req.move_to_root,
+            public_in_share=req.public_in_share,
         )
     except DuplicatePageName as e:
         raise HTTPException(status_code=409, detail=str(e))
