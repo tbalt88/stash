@@ -32,9 +32,16 @@ depends_on = None
 
 
 def upgrade() -> None:
+    import logging
+    log = logging.getLogger("alembic.migration.0036")
+
+    def step(msg: str) -> None:
+        log.info("0036 step: %s", msg)
+
     # ──────────────────────────────────────────────────────────────────
     # 1. sessions — first-class session-metadata table
     # ──────────────────────────────────────────────────────────────────
+    step("1a. CREATE TABLE sessions")
     op.execute("""
         CREATE TABLE IF NOT EXISTS sessions (
             id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -52,8 +59,10 @@ def upgrade() -> None:
             UNIQUE (workspace_id, session_id)
         )
     """)
+    step("1b. idx_sessions_workspace")
     op.execute("CREATE INDEX IF NOT EXISTS idx_sessions_workspace ON sessions(workspace_id)")
 
+    step("1c. backfill sessions from history_events")
     # Backfill from history_events — one sessions row per (workspace_id, session_id)
     # that has any events. Idempotent via ON CONFLICT.
     op.execute("""
@@ -69,6 +78,7 @@ def upgrade() -> None:
         ON CONFLICT (workspace_id, session_id) DO NOTHING
     """)
 
+    step("1d. copy session metadata from stashes")
     # Copy session-level metadata from any existing stashes rows.
     op.execute("""
         UPDATE sessions s
@@ -90,11 +100,14 @@ def upgrade() -> None:
     # ──────────────────────────────────────────────────────────────────
     # 2. session_artifacts — renamed from stash_artifacts, FK to sessions
     # ──────────────────────────────────────────────────────────────────
+    step("2a. RENAME stash_artifacts -> session_artifacts")
     op.execute("ALTER TABLE IF EXISTS stash_artifacts RENAME TO session_artifacts")
+    step("2b. ADD COLUMN session_artifacts.session_id")
     op.execute(
         "ALTER TABLE session_artifacts "
         "ADD COLUMN IF NOT EXISTS session_id UUID REFERENCES sessions(id) ON DELETE CASCADE"
     )
+    step("2c. backfill session_artifacts.session_id from stashes")
     # Backfill via the join through the still-living stashes table.
     op.execute("""
         UPDATE session_artifacts sa
@@ -104,7 +117,9 @@ def upgrade() -> None:
             ON s.workspace_id = st.workspace_id AND s.session_id = st.session_id
         WHERE sa.stash_id = st.id AND sa.session_id IS NULL
     """)
+    step("2d. DROP session_artifacts.stash_id")
     op.execute("ALTER TABLE session_artifacts DROP COLUMN IF EXISTS stash_id")
+    step("2e. idx_session_artifacts_session")
     op.execute(
         "CREATE INDEX IF NOT EXISTS idx_session_artifacts_session "
         "ON session_artifacts(session_id)"
@@ -113,18 +128,18 @@ def upgrade() -> None:
     # ──────────────────────────────────────────────────────────────────
     # 3. share_links — extend with polymorphic target + slug
     # ──────────────────────────────────────────────────────────────────
+    step("3a. ADD COLUMN share_links.target_type / target_id / slug")
     op.execute("ALTER TABLE share_links ADD COLUMN IF NOT EXISTS target_type TEXT")
     op.execute("ALTER TABLE share_links ADD COLUMN IF NOT EXISTS target_id UUID")
     op.execute("ALTER TABLE share_links ADD COLUMN IF NOT EXISTS slug TEXT")
 
-    # Existing share_links rows are workspace-targeted (that's all they could
-    # have been before this PR).
+    step("3b. backfill share_links target_type/id = workspace")
     op.execute(
         "UPDATE share_links SET target_type = 'workspace', target_id = workspace_id "
         "WHERE target_type IS NULL"
     )
 
-    # Collapse the old permission enum (view, comment, edit-request) to (view, edit).
+    step("3c. collapse permission enum to (view, edit)")
     op.execute("UPDATE share_links SET permission = 'view' WHERE permission IN ('comment', 'edit-request')")
     op.execute("ALTER TABLE share_links DROP CONSTRAINT IF EXISTS share_links_permission_check")
     op.execute(
@@ -132,7 +147,7 @@ def upgrade() -> None:
         "CHECK (permission IN ('view', 'edit'))"
     )
 
-    # target_type / target_id constraints.
+    step("3d. target_type CHECK + NOT NULL")
     op.execute("ALTER TABLE share_links DROP CONSTRAINT IF EXISTS share_links_target_type_check")
     op.execute(
         "ALTER TABLE share_links ADD CONSTRAINT share_links_target_type_check "
@@ -141,6 +156,7 @@ def upgrade() -> None:
     op.execute("ALTER TABLE share_links ALTER COLUMN target_type SET NOT NULL")
     op.execute("ALTER TABLE share_links ALTER COLUMN target_id SET NOT NULL")
 
+    step("3e. share_links indexes")
     op.execute(
         "CREATE UNIQUE INDEX IF NOT EXISTS idx_share_links_slug "
         "ON share_links(slug) WHERE slug IS NOT NULL"
@@ -153,6 +169,7 @@ def upgrade() -> None:
     # ──────────────────────────────────────────────────────────────────
     # 4. Migrate every `stashes` row into a `share_links` row.
     # ──────────────────────────────────────────────────────────────────
+    step("4a. INSERT INTO share_links FROM stashes JOIN sessions")
     op.execute("""
         INSERT INTO share_links (
             token, workspace_id, created_by, created_at,
@@ -174,18 +191,22 @@ def upgrade() -> None:
         ON CONFLICT (token) DO NOTHING
     """)
 
-    # Now safe to drop the table.
+    step("4b. DROP TABLE stashes CASCADE")
     op.execute("DROP TABLE IF EXISTS stashes CASCADE")
 
     # ──────────────────────────────────────────────────────────────────
     # 5. workspace_members.role → owner/editor/viewer
     # ──────────────────────────────────────────────────────────────────
+    step("5a. DROP workspace_members role check")
     op.execute("ALTER TABLE workspace_members DROP CONSTRAINT IF EXISTS workspace_members_role_check")
+    step("5b. UPDATE roles admin->owner")
     op.execute("UPDATE workspace_members SET role = 'owner' WHERE role IN ('admin', 'owner')")
+    step("5c. UPDATE roles other->editor")
     op.execute(
         "UPDATE workspace_members SET role = 'editor' "
         "WHERE role IS NULL OR role NOT IN ('owner', 'editor', 'viewer')"
     )
+    step("5d. ADD workspace_members role check (owner/editor/viewer)")
     op.execute(
         "ALTER TABLE workspace_members ADD CONSTRAINT workspace_members_role_check "
         "CHECK (role IN ('owner', 'editor', 'viewer'))"
@@ -195,31 +216,40 @@ def upgrade() -> None:
     # 6. One-time defensive backfill of object_permissions from the
     #    legacy visibility columns, then drop those columns.
     # ──────────────────────────────────────────────────────────────────
+    step("6a. backfill object_permissions from workspaces.is_public")
     op.execute("""
         INSERT INTO object_permissions (object_type, object_id, visibility)
         SELECT 'workspace', id, 'public' FROM workspaces WHERE is_public = true
         ON CONFLICT (object_type, object_id) DO UPDATE SET visibility = 'public'
     """)
+    step("6b. backfill object_permissions from views.is_public")
     op.execute("""
         INSERT INTO object_permissions (object_type, object_id, visibility)
         SELECT 'view', id, 'public' FROM views WHERE is_public = true
         ON CONFLICT (object_type, object_id) DO UPDATE SET visibility = 'public'
     """)
+    step("6c. backfill object_permissions from pages.public_in_share")
     op.execute("""
         INSERT INTO object_permissions (object_type, object_id, visibility)
         SELECT 'page', id, 'public' FROM pages WHERE public_in_share = true
         ON CONFLICT (object_type, object_id) DO UPDATE SET visibility = 'public'
     """)
+    step("6d. backfill object_permissions from files.public_in_share")
     op.execute("""
         INSERT INTO object_permissions (object_type, object_id, visibility)
         SELECT 'file', id, 'public' FROM files WHERE public_in_share = true
         ON CONFLICT (object_type, object_id) DO UPDATE SET visibility = 'public'
     """)
 
+    step("6e. DROP workspaces.is_public")
     op.execute("ALTER TABLE workspaces DROP COLUMN IF EXISTS is_public")
+    step("6f. DROP views.is_public")
     op.execute("ALTER TABLE views DROP COLUMN IF EXISTS is_public")
+    step("6g. DROP pages.public_in_share")
     op.execute("ALTER TABLE pages DROP COLUMN IF EXISTS public_in_share")
+    step("6h. DROP files.public_in_share")
     op.execute("ALTER TABLE files DROP COLUMN IF EXISTS public_in_share")
+    step("done")
 
 
 def downgrade() -> None:
