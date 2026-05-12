@@ -7,7 +7,6 @@ import {
   getFolderContents,
   getStashSpine,
   listMyWorkspaces,
-  listPublicWorkspaces,
   type FolderContents,
   type StashSpine,
   type WikiFile,
@@ -290,34 +289,38 @@ export default function AppSidebar({ user, collapsed, onCmdkOpen }: AppSidebarPr
   const router = useRouter();
   const pathname = usePathname();
   const activeStashId = pathname.match(/^\/stashes\/([^/]+)/)?.[1] ?? null;
+  const userId = user?.id;
   const [mine, setMine] = useState<Workspace[]>([]);
   const [shared, setShared] = useState<Workspace[]>([]);
   const [openStashes, setOpenStashes] = useState<Record<string, boolean>>({});
   const [spines, setSpines] = useState<Record<string, StashSpine>>({});
 
   useEffect(() => {
+    if (!userId) return;
+
     listMyWorkspaces()
-      .then((r) => setMine(r.workspaces ?? []))
-      .catch(() => {});
-    listPublicWorkspaces()
       .then((r) => {
-        if (!user) return;
-        setShared((r.workspaces ?? []).filter((w) => w.creator_id !== user.id).slice(0, 6));
+        const workspaces = r.workspaces ?? [];
+        setMine(workspaces.filter((w) => w.creator_id === userId));
+        setShared(workspaces.filter((w) => w.creator_id !== userId));
       })
       .catch(() => {});
-  }, [user?.id]);
+  }, [userId]);
 
   useEffect(() => {
-    const m = pathname.match(/^\/stashes\/([^/]+)/);
-    if (m?.[1]) {
-      setOpenStashes((s) => ({ ...s, [m[1]]: true }));
-      if (!spines[m[1]]) {
-        getStashSpine(m[1])
-          .then((sp) => setSpines((all) => ({ ...all, [m[1]]: sp })))
-          .catch(() => {});
-      }
+    if (!activeStashId || spines[activeStashId]) return;
+
+    getStashSpine(activeStashId)
+      .then((sp) => setSpines((all) => ({ ...all, [activeStashId]: sp })))
+      .catch(() => {});
+  }, [activeStashId, spines]);
+
+  function isStashOpen(stashId: string) {
+    if (activeStashId === stashId) {
+      return true;
     }
-  }, [pathname, spines]);
+    return !!openStashes[stashId];
+  }
 
   function handleOpen(stashId: string) {
     setOpenStashes((s) => ({ ...s, [stashId]: true }));
@@ -328,12 +331,12 @@ export default function AppSidebar({ user, collapsed, onCmdkOpen }: AppSidebarPr
     }
   }
 
-  const targetStashId = activeStashId ?? mine[0]?.id ?? null;
+  const targetStashId = activeStashId ?? mine[0]?.id ?? shared[0]?.id ?? null;
 
   function addSomethingToStash() {
     const params = new URLSearchParams(window.location.search);
     const currentStashId = params.get("ws") ?? params.get("workspaceId");
-    const stashId = activeStashId ?? currentStashId ?? mine[0]?.id ?? null;
+    const stashId = activeStashId ?? currentStashId ?? mine[0]?.id ?? shared[0]?.id ?? null;
     if (!stashId) return;
     router.push(`/memory?ws=${encodeURIComponent(stashId)}&add=stash`);
   }
@@ -410,7 +413,7 @@ export default function AppSidebar({ user, collapsed, onCmdkOpen }: AppSidebarPr
                 key={s.id}
                 stash={{ ...s, shared: true }}
                 spine={spines[s.id] ?? null}
-                defaultOpen={!!openStashes[s.id]}
+                defaultOpen={isStashOpen(s.id)}
                 onOpen={() => handleOpen(s.id)}
                 pathname={pathname}
               />
@@ -437,7 +440,7 @@ export default function AppSidebar({ user, collapsed, onCmdkOpen }: AppSidebarPr
             key={s.id}
             stash={s}
             spine={spines[s.id] ?? null}
-            defaultOpen={!!openStashes[s.id]}
+            defaultOpen={isStashOpen(s.id)}
             onOpen={() => handleOpen(s.id)}
             pathname={pathname}
           />
