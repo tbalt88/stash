@@ -410,7 +410,7 @@ function MemberStack({ members }: { members: WorkspaceMember[] }) {
                 " " +
                 palette.fg
               }
-              title={`${label}${m.role && m.role !== "member" ? ` · ${m.role}` : ""}`}
+              title={`${label}${m.role && m.role !== "editor" ? ` · ${m.role}` : ""}`}
             >
               {label.slice(0, 2).toUpperCase()}
             </span>

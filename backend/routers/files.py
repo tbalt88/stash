@@ -28,8 +28,18 @@ MAX_FILE_SIZE = 50 * 1024 * 1024  # 50 MB
 
 
 async def _check_member(workspace_id: UUID, user_id: UUID) -> None:
+    """Read gate: any member."""
     if not await workspace_service.is_member(workspace_id, user_id):
         raise HTTPException(status_code=403, detail="Not a workspace member")
+
+
+async def _check_write(workspace_id: UUID, user_id: UUID) -> None:
+    """Write gate: owner or editor only."""
+    if not await workspace_service.can_write(workspace_id, user_id):
+        raise HTTPException(
+            status_code=403,
+            detail="Viewers can read but not modify files",
+        )
 
 
 async def _file_to_response(row: dict) -> FileResponse:
@@ -58,7 +68,7 @@ async def upload_ws_file(
     folder_id: UUID | None = Form(None),
     current_user: dict = Depends(get_current_user),
 ):
-    await _check_member(workspace_id, current_user["id"])
+    await _check_write(workspace_id, current_user["id"])
     if not storage_service.is_configured():
         raise HTTPException(status_code=503, detail="File storage is not configured")
 
@@ -195,7 +205,7 @@ async def delete_ws_file(
     file_id: UUID,
     current_user: dict = Depends(get_current_user),
 ):
-    await _check_member(workspace_id, current_user["id"])
+    await _check_write(workspace_id, current_user["id"])
     pool = get_pool()
     row = await pool.fetchrow(
         "SELECT storage_key FROM files WHERE id = $1 AND workspace_id = $2",
@@ -276,7 +286,7 @@ async def ingest_csv_file(
 
     Idempotent: if the file is already linked, returns the existing table.
     """
-    await _check_member(workspace_id, current_user["id"])
+    await _check_write(workspace_id, current_user["id"])
     pool = get_pool()
     row = await pool.fetchrow(
         "SELECT id, workspace_id, name, content_type, storage_key, linked_table_id "

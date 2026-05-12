@@ -21,6 +21,9 @@ public_router = APIRouter(prefix="/api/v1/shares", tags=["shares-public"])
 class CreateShareRequest(BaseModel):
     permission: str = "view"
     ttl_days: int | None = 14
+    # Default to workspace target so old clients keep working.
+    target_type: str = "workspace"
+    target_id: UUID | None = None  # None implies the workspace itself
 
 
 @sender_router.post("/{stash_id}/shares")
@@ -29,21 +32,23 @@ async def mint_share_link(
     req: CreateShareRequest,
     current_user: dict = Depends(get_current_user),
 ):
-    """Mint a share link. `stash_id` in this URL is the workspace.
-
-    For now, this endpoint creates a workspace-target link. Target picker
-    UI lands in a follow-up — the polymorphic create endpoint (page /
-    folder / file / session targets) is on `share_service.create_link`
-    once the request model gains target_type/target_id fields."""
+    """Mint a share link. `stash_id` in this URL is the workspace; the
+    link's target may be anywhere inside it (session/page/folder/file)
+    or the workspace itself."""
     if not await workspace_service.is_member(stash_id, current_user["id"]):
         raise HTTPException(status_code=403, detail="Not a stash member")
     if req.permission not in ("view", "edit"):
         raise HTTPException(status_code=400, detail="Invalid permission")
+    if req.target_type not in ("workspace", "session", "page", "folder", "file"):
+        raise HTTPException(status_code=400, detail="Invalid target_type")
+    target_id = req.target_id or stash_id
+    if req.target_type == "workspace":
+        target_id = stash_id
     return await share_service.create_link(
         workspace_id=stash_id,
         creator_id=current_user["id"],
-        target_type="workspace",
-        target_id=stash_id,
+        target_type=req.target_type,
+        target_id=target_id,
         ttl_days=req.ttl_days,
         permission=req.permission,
     )
