@@ -139,7 +139,9 @@ export default function AppShell({ user, onLogout, children }: AppShellProps) {
           cmdkOpen={cmdkOpen}
           onCmdkOpen={() => setCmdkOpen(true)}
         />
-        <main className="flex min-w-0 flex-col overflow-y-auto bg-base">{children}</main>
+        <main className="flex min-w-0 flex-col overflow-y-auto bg-base">
+          {children}
+        </main>
       </div>
 
       {activeStashId && (
