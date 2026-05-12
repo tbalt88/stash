@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import {
   getFolderContents,
@@ -24,6 +24,36 @@ interface AppSidebarProps {
 
 interface StashNode extends Workspace {
   shared?: boolean;
+}
+
+type SidebarSection = "sessions" | "wiki";
+
+const OPEN_STASHES_KEY = "stash_sidebar_open_stashes";
+const OPEN_SECTIONS_KEY = "stash_sidebar_open_sections";
+
+function readOpenMap(key: string): Record<string, boolean> {
+  if (typeof window === "undefined") return {};
+
+  const raw = window.localStorage.getItem(key);
+  if (!raw) return {};
+
+  return Object.fromEntries(
+    raw
+      .split("\n")
+      .filter(Boolean)
+      .map((id) => [id, true])
+  );
+}
+
+function writeOpenMap(key: string, value: Record<string, boolean>) {
+  if (typeof window === "undefined") return;
+
+  const openIds = Object.keys(value).filter((id) => value[id]);
+  window.localStorage.setItem(key, openIds.join("\n"));
+}
+
+function sectionKey(stashId: string, section: SidebarSection): string {
+  return `${stashId}:${section}`;
 }
 
 function Chevron() {
@@ -75,24 +105,26 @@ function NavRow({
 function StashTree({
   stash,
   spine,
-  defaultOpen,
-  onOpen,
+  open,
+  onOpenChange,
+  openSections,
+  onSectionOpenChange,
   pathname,
 }: {
   stash: StashNode;
   spine: StashSpine | null;
-  defaultOpen: boolean;
-  onOpen: () => void;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  openSections: Record<SidebarSection, boolean>;
+  onSectionOpenChange: (section: SidebarSection, open: boolean) => void;
   pathname: string;
 }) {
   const isActive = pathname === `/stashes/${stash.id}`;
 
   return (
     <details
-      open={defaultOpen}
-      onToggle={(e) => {
-        if ((e.target as HTMLDetailsElement).open) onOpen();
-      }}
+      open={open}
+      onToggle={(e) => onOpenChange(e.currentTarget.open)}
       className="group/stash"
     >
       <summary className="page-row flex items-center gap-1 rounded-md px-2 py-1 text-[13px] hover:bg-raised">
@@ -109,7 +141,11 @@ function StashTree({
         </Link>
       </summary>
       <div className="ml-3 space-y-0.5 border-l border-border pl-2">
-        <details open className="text-[13px]">
+        <details
+          open={openSections.sessions}
+          onToggle={(e) => onSectionOpenChange("sessions", e.currentTarget.open)}
+          className="text-[13px]"
+        >
           <summary className="page-row flex items-center gap-1 rounded-md px-2 py-1 hover:bg-raised">
             <Chevron />
             <span className="text-[14px]">💬</span>
@@ -131,7 +167,12 @@ function StashTree({
           </div>
         </details>
 
-        <WikiBlock stash={stash} spine={spine} />
+        <WikiBlock
+          stash={stash}
+          spine={spine}
+          open={openSections.wiki}
+          onOpenChange={(nextOpen) => onSectionOpenChange("wiki", nextOpen)}
+        />
       </div>
     </details>
   );
@@ -242,7 +283,17 @@ function FolderTreeNode({
   );
 }
 
-function WikiBlock({ stash, spine }: { stash: StashNode; spine: StashSpine | null }) {
+function WikiBlock({
+  stash,
+  spine,
+  open,
+  onOpenChange,
+}: {
+  stash: StashNode;
+  spine: StashSpine | null;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
   const folders = spine?.wiki.folders ?? [];
   const pages = spine?.wiki.pages ?? [];
   const files = spine?.wiki.files ?? [];
@@ -251,7 +302,11 @@ function WikiBlock({ stash, spine }: { stash: StashNode; spine: StashSpine | nul
   const rootFiles = files.filter((f) => !f.folder_id);
   const total = folders.length + pages.length + files.length;
   return (
-    <details open className="text-[13px]">
+    <details
+      open={open}
+      onToggle={(e) => onOpenChange(e.currentTarget.open)}
+      className="text-[13px]"
+    >
       <summary className="page-row flex items-center gap-1 rounded-md px-2 py-1 hover:bg-raised">
         <Chevron />
         <span className="text-[14px]">📖</span>
@@ -289,10 +344,26 @@ function WikiBlock({ stash, spine }: { stash: StashNode; spine: StashSpine | nul
 export default function AppSidebar({ user, collapsed, onCmdkOpen }: AppSidebarProps) {
   const router = useRouter();
   const pathname = usePathname();
+  const userId = user?.id;
   const activeStashId = pathname.match(/^\/stashes\/([^/]+)/)?.[1] ?? null;
+  const activeTreeMatch = pathname.match(
+    /^\/stashes\/([^/]+)\/(sessions|folders|p|f|skills)(?:\/|$)/
+  );
+  const activeTreeStashId = activeTreeMatch?.[1] ?? null;
+  const activeTreeSection: SidebarSection | null =
+    activeTreeMatch?.[2] === "sessions"
+      ? "sessions"
+      : activeTreeMatch
+        ? "wiki"
+        : null;
   const [mine, setMine] = useState<Workspace[]>([]);
   const [shared, setShared] = useState<Workspace[]>([]);
-  const [openStashes, setOpenStashes] = useState<Record<string, boolean>>({});
+  const [openStashes, setOpenStashes] = useState<Record<string, boolean>>(() =>
+    readOpenMap(OPEN_STASHES_KEY)
+  );
+  const [openSections, setOpenSections] = useState<Record<string, boolean>>(() =>
+    readOpenMap(OPEN_SECTIONS_KEY)
+  );
   const [spines, setSpines] = useState<Record<string, StashSpine>>({});
 
   useEffect(() => {
@@ -301,31 +372,87 @@ export default function AppSidebar({ user, collapsed, onCmdkOpen }: AppSidebarPr
       .catch(() => {});
     listPublicWorkspaces()
       .then((r) => {
-        if (!user) return;
-        setShared((r.workspaces ?? []).filter((w) => w.creator_id !== user.id).slice(0, 6));
+        if (!userId) return;
+        setShared((r.workspaces ?? []).filter((w) => w.creator_id !== userId).slice(0, 6));
       })
       .catch(() => {});
-  }, [user?.id]);
+  }, [userId]);
+
+  const setOpenStash = useCallback((stashId: string, open: boolean) => {
+    setOpenStashes((current) => {
+      const next = { ...current };
+      if (open) {
+        next[stashId] = true;
+      } else {
+        delete next[stashId];
+      }
+      writeOpenMap(OPEN_STASHES_KEY, next);
+      return next;
+    });
+  }, []);
+
+  const setOpenSection = useCallback((
+    stashId: string,
+    section: SidebarSection,
+    open: boolean
+  ) => {
+    setOpenSections((current) => {
+      const next = { ...current };
+      const key = sectionKey(stashId, section);
+      if (open) {
+        next[key] = true;
+      } else {
+        delete next[key];
+      }
+      writeOpenMap(OPEN_SECTIONS_KEY, next);
+      return next;
+    });
+  }, []);
 
   useEffect(() => {
-    const m = pathname.match(/^\/stashes\/([^/]+)/);
-    if (m?.[1]) {
-      setOpenStashes((s) => ({ ...s, [m[1]]: true }));
-      if (!spines[m[1]]) {
-        getStashSpine(m[1])
-          .then((sp) => setSpines((all) => ({ ...all, [m[1]]: sp })))
-          .catch(() => {});
-      }
-    }
-  }, [pathname, spines]);
+    const openIds = Object.keys(openStashes).filter((stashId) => openStashes[stashId]);
+    if (activeTreeStashId) openIds.push(activeTreeStashId);
 
-  function handleOpen(stashId: string) {
-    setOpenStashes((s) => ({ ...s, [stashId]: true }));
-    if (!spines[stashId]) {
-      getStashSpine(stashId)
-        .then((sp) => setSpines((all) => ({ ...all, [stashId]: sp })))
-        .catch(() => {});
-    }
+    Array.from(new Set(openIds))
+      .filter((stashId) => !spines[stashId])
+      .forEach((stashId) => {
+        getStashSpine(stashId)
+          .then((sp) => setSpines((all) => ({ ...all, [stashId]: sp })))
+          .catch(() => {});
+      });
+  }, [activeTreeStashId, openStashes, spines]);
+
+  function getOpenSections(stashId: string): Record<SidebarSection, boolean> {
+    return {
+      sessions:
+        !!openSections[sectionKey(stashId, "sessions")] ||
+        (activeTreeStashId === stashId && activeTreeSection === "sessions"),
+      wiki:
+        !!openSections[sectionKey(stashId, "wiki")] ||
+        (activeTreeStashId === stashId && activeTreeSection === "wiki"),
+    };
+  }
+
+  function isStashOpen(stashId: string): boolean {
+    return !!openStashes[stashId] || activeTreeStashId === stashId;
+  }
+
+  function handleStashOpenChange(stashId: string, open: boolean) {
+    if (open && activeTreeStashId === stashId && !openStashes[stashId]) return;
+    setOpenStash(stashId, open);
+  }
+
+  function handleSectionOpenChange(
+    stashId: string,
+    section: SidebarSection,
+    open: boolean
+  ) {
+    const isRouteOpen =
+      activeTreeStashId === stashId &&
+      activeTreeSection === section &&
+      !openSections[sectionKey(stashId, section)];
+    if (open && isRouteOpen) return;
+    setOpenSection(stashId, section, open);
   }
 
   const targetStashId = activeStashId ?? mine[0]?.id ?? null;
@@ -410,8 +537,12 @@ export default function AppSidebar({ user, collapsed, onCmdkOpen }: AppSidebarPr
                 key={s.id}
                 stash={{ ...s, shared: true }}
                 spine={spines[s.id] ?? null}
-                defaultOpen={!!openStashes[s.id]}
-                onOpen={() => handleOpen(s.id)}
+                open={isStashOpen(s.id)}
+                onOpenChange={(open) => handleStashOpenChange(s.id, open)}
+                openSections={getOpenSections(s.id)}
+                onSectionOpenChange={(section, open) =>
+                  handleSectionOpenChange(s.id, section, open)
+                }
                 pathname={pathname}
               />
             ))}
@@ -437,8 +568,12 @@ export default function AppSidebar({ user, collapsed, onCmdkOpen }: AppSidebarPr
             key={s.id}
             stash={s}
             spine={spines[s.id] ?? null}
-            defaultOpen={!!openStashes[s.id]}
-            onOpen={() => handleOpen(s.id)}
+            open={isStashOpen(s.id)}
+            onOpenChange={(open) => handleStashOpenChange(s.id, open)}
+            openSections={getOpenSections(s.id)}
+            onSectionOpenChange={(section, open) =>
+              handleSectionOpenChange(s.id, section, open)
+            }
             pathname={pathname}
           />
         ))}
