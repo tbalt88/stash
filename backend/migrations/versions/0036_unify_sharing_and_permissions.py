@@ -65,13 +65,16 @@ def upgrade() -> None:
     step("1c. backfill sessions from history_events")
     # Backfill from history_events — one sessions row per (workspace_id, session_id)
     # that has any events. Idempotent via ON CONFLICT.
+    #
+    # NOTE: Postgres has no built-in MIN(uuid) aggregate, so we pull the
+    # earliest event's created_by via ARRAY_AGG ordered by created_at.
     op.execute("""
         INSERT INTO sessions (workspace_id, session_id, agent_name, started_at, finished_at, created_by)
         SELECT workspace_id, session_id,
                COALESCE(MAX(agent_name), ''),
                MIN(created_at),
                MAX(created_at),
-               MIN(created_by)
+               (ARRAY_AGG(created_by ORDER BY created_at) FILTER (WHERE created_by IS NOT NULL))[1]
         FROM history_events
         WHERE workspace_id IS NOT NULL AND session_id IS NOT NULL
         GROUP BY workspace_id, session_id
