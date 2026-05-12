@@ -61,6 +61,14 @@ const workspace = {
   member_count: 1,
 };
 
+const sharedWorkspace = {
+  ...workspace,
+  id: "ws-2",
+  name: "Shared Stash",
+  creator_id: "user-2",
+  invite_code: "shared",
+};
+
 const emptySpine = {
   sessions: [],
   wiki: {
@@ -100,6 +108,30 @@ describe("AppSidebar tree expansion", () => {
     expect(detailsFor("Sessions")).not.toHaveAttribute("open");
     expect(detailsFor("Wiki")).not.toHaveAttribute("open");
     expect(getStashSpine).not.toHaveBeenCalled();
+  });
+
+  it("splits owned and shared memberships without reading the public catalog", async () => {
+    vi.mocked(listMyWorkspaces).mockResolvedValue({
+      workspaces: [workspace, sharedWorkspace],
+    });
+
+    render(<AppSidebar user={user} collapsed={false} onCmdkOpen={vi.fn()} />);
+
+    await screen.findByText("Shared Stash");
+    await screen.findByText("Demo Stash");
+
+    const sidebarText = document.body.textContent ?? "";
+    expect(sidebarText.indexOf("SHARED WITH ME")).toBeLessThan(
+      sidebarText.indexOf("Shared Stash")
+    );
+    expect(sidebarText.indexOf("Shared Stash")).toBeLessThan(
+      sidebarText.indexOf("MY STASHES")
+    );
+    expect(sidebarText.indexOf("MY STASHES")).toBeLessThan(
+      sidebarText.indexOf("Demo Stash")
+    );
+    expect(screen.getAllByText("Shared Stash")).toHaveLength(1);
+    expect(listPublicWorkspaces).not.toHaveBeenCalled();
   });
 
   it("restores explicit expanded state from localStorage", async () => {

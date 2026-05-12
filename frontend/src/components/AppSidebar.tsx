@@ -7,7 +7,6 @@ import {
   getFolderContents,
   getStashSpine,
   listMyWorkspaces,
-  listPublicWorkspaces,
   type FolderContents,
   type StashSpine,
   type WikiFile,
@@ -388,13 +387,13 @@ export default function AppSidebar({ user, collapsed, onCmdkOpen }: AppSidebarPr
   const [spines, setSpines] = useState<Record<string, StashSpine>>({});
 
   useEffect(() => {
+    if (!userId) return;
+
     listMyWorkspaces()
-      .then((r) => setMine(r.workspaces ?? []))
-      .catch(() => {});
-    listPublicWorkspaces()
       .then((r) => {
-        if (!userId) return;
-        setShared((r.workspaces ?? []).filter((w) => w.creator_id !== userId).slice(0, 6));
+        const workspaces = r.workspaces ?? [];
+        setMine(workspaces.filter((w) => w.creator_id === userId));
+        setShared(workspaces.filter((w) => w.creator_id !== userId));
       })
       .catch(() => {});
   }, [userId]);
@@ -476,12 +475,12 @@ export default function AppSidebar({ user, collapsed, onCmdkOpen }: AppSidebarPr
     setOpenSection(stashId, section, open);
   }
 
-  const targetStashId = activeStashId ?? mine[0]?.id ?? null;
+  const targetStashId = activeStashId ?? mine[0]?.id ?? shared[0]?.id ?? null;
 
   function addSomethingToStash() {
     const params = new URLSearchParams(window.location.search);
     const currentStashId = params.get("ws") ?? params.get("workspaceId");
-    const stashId = activeStashId ?? currentStashId ?? mine[0]?.id ?? null;
+    const stashId = activeStashId ?? currentStashId ?? mine[0]?.id ?? shared[0]?.id ?? null;
     if (!stashId) return;
     router.push(`/memory?ws=${encodeURIComponent(stashId)}&add=stash`);
   }
