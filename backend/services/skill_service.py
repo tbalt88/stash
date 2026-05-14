@@ -1,9 +1,9 @@
 """Skill service — skills are wiki folders containing a SKILL.md file.
 
 Detection rule: any folder whose immediate children include a page named
-``SKILL.md``. Skills are a *view* over the wiki tree; reads/writes still go
-through the wiki API. The view is what the new sidebar, stash home, and the
-Ask agent's tool surface.
+``SKILL.md``. Skills are derived from the wiki tree; reads/writes still go
+through the wiki API. The derived shape feeds the sidebar and the Ask agent's
+tool surface.
 """
 
 from __future__ import annotations

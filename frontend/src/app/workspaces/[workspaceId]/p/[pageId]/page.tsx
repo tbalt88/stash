@@ -98,7 +98,7 @@ export default function StashPageView() {
   const confirmSharedEdit = useCallback(() => {
     if (containingStashes.length === 0) return true;
     if (confirmedSharedEdit.current) return true;
-    const names = containingStashes.map((workspace) => workspace.title).join(", ");
+    const names = containingStashes.map((stash) => stash.title).join(", ");
     const ok = window.confirm(
       `This page is included in ${containingStashes.length} Stash${
         containingStashes.length === 1 ? "" : "es"
@@ -168,13 +168,13 @@ export default function StashPageView() {
             {containingStashes.length > 0 && (
               <div className="flex flex-wrap items-center gap-1.5">
                 <span className="text-[11px] uppercase tracking-wider text-muted">In stashes</span>
-                {containingStashes.map((workspace) => (
+                {containingStashes.map((stash) => (
                   <a
-                    key={workspace.id}
-                    href={`/stashes/${workspace.slug}`}
+                    key={stash.id}
+                    href={`/stashes/${stash.slug}`}
                     className="rounded-md border border-border-subtle px-2 py-0.5 text-[11px] text-foreground hover:border-brand hover:text-brand"
                   >
-                    {workspace.title}
+                    {stash.title}
                   </a>
                 ))}
               </div>
