@@ -485,7 +485,7 @@ function TableEditorPageInner() {
         {/* Pages / Tables tab bar */}
         <div className="flex items-center gap-0 px-4 border-b border-border bg-surface flex-shrink-0">
           <button
-            onClick={() => router.push("/wiki")}
+            onClick={() => router.push(wsId ? `/workspaces/${wsId}` : "/")}
             className="px-4 py-2.5 text-sm font-medium transition-colors text-dim hover:text-foreground"
           >
             Pages
@@ -532,7 +532,7 @@ function TableEditorPageInner() {
               <button
                 onClick={() =>
                   shareModal.open({
-                    stashId: wsId,
+                    workspaceId: wsId,
                     initial: [{ object_type: "table", object_id: table.id, label_override: table.name }],
                   })
                 }
@@ -801,4 +801,3 @@ function TableEditorPageInner() {
     </AppShell>
   );
 }
-

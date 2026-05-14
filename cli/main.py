@@ -6,7 +6,6 @@ import json
 import sys
 import textwrap
 from pathlib import Path
-from urllib.parse import urlparse
 
 import questionary
 import typer
@@ -28,9 +27,12 @@ from .config import (
     set_streaming,
     stored_base_url,
 )
-from .formatting import console, output_json, print_members, print_rooms, print_user
+from .formatting import console, output_json, print_members, print_user, print_workspaces
 
-app = typer.Typer(name="stash", help="Stash CLI — workspaces, wiki pages, tables, history.")
+app = typer.Typer(
+    name="stash",
+    help="Stash CLI — workspaces, Product Stashes, wiki pages, tables, history.",
+)
 
 
 def _client() -> StashClient:
@@ -48,7 +50,7 @@ def _resolve_workspace() -> str:
         return manifest["workspace_id"]
 
     with _client() as c:
-        mine = c.list_workspaces(mine=True)
+        mine = c.list_workspaces()
     if not mine:
         console.print("[red]No workspaces found. Run [bold]stash connect[/bold] first.[/red]")
         raise typer.Exit(1)
@@ -409,7 +411,7 @@ def _ask_codex_network_access() -> bool:
     workspace-write sandbox."""
     console.print(
         "For stash to work on codex specifically, we need to let bash ",
-        "commands make network requests so that we can upload chat ",
+        "commands make network requests so that we can upload session ",
         "transcripts to the remote server.",
     )
     answer = questionary.confirm(
@@ -558,219 +560,34 @@ def whoami(as_json: bool = typer.Option(False, "--json")):
 # Workspaces
 # ===========================================================================
 
-ws_app = typer.Typer(help="Workspace management. (Deprecated alias for 'stash stash'.)")
+ws_app = typer.Typer(help="Stash Workspace management.")
 app.add_typer(ws_app, name="workspaces")
-
-stash_app = typer.Typer(help="Stash management — the canonical 'shared bundle' unit.")
-app.add_typer(stash_app, name="stash")
-
-
-@stash_app.command("list")
-def stash_list(
-    mine: bool = typer.Option(False, "--mine"), as_json: bool = typer.Option(False, "--json")
-):
-    """List stashes."""
-    with _client() as c:
-        try:
-            data = c.list_workspaces(mine=mine)
-        except StashError as e:
-            _err(e)
-    if _use_json(as_json):
-        output_json(data)
-    else:
-        print_rooms(data, title="My Stashes" if mine else "Public Stashes")
-
-
-@stash_app.command("create")
-def stash_create(
-    name: str = typer.Argument(...),
-    description: str = typer.Option(""),
-    public: bool = typer.Option(False, "--public"),
-    as_json: bool = typer.Option(False, "--json"),
-):
-    """Create stash."""
-    with _client() as c:
-        try:
-            data = c.create_workspace(name, description=description, is_public=public)
-        except StashError as e:
-            _err(e)
-    if _use_json(as_json):
-        output_json(data)
-    else:
-        console.print(
-            f"[green]Created '{data['name']}'[/green]  ID: {data['id']}  Invite: {data['invite_code']}"
-        )
-
-
-@stash_app.command("join")
-def stash_join(
-    invite_code: str = typer.Argument(...), as_json: bool = typer.Option(False, "--json")
-):
-    """Join stash by invite code."""
-    with _client() as c:
-        try:
-            data = c.join_workspace(invite_code)
-        except StashError as e:
-            _err(e)
-    if _use_json(as_json):
-        output_json(data)
-    else:
-        console.print(f"[green]Joined '{data.get('name')}'[/green]")
-
-
-@stash_app.command("info")
-def stash_info(stash_id: str = typer.Argument(...), as_json: bool = typer.Option(False, "--json")):
-    """Show stash details."""
-    with _client() as c:
-        try:
-            data = c.get_workspace(stash_id)
-        except StashError as e:
-            _err(e)
-    if _use_json(as_json):
-        output_json(data)
-    else:
-        console.print(
-            f"[bold]{data['name']}[/bold]  Members: {data.get('member_count', '?')}  Public: {data['is_public']}"
-        )
-        console.print(f"ID: {data['id']}  Invite: {data['invite_code']}")
-
-
-@stash_app.command("members")
-def stash_members(
-    stash_id: str = typer.Argument(...), as_json: bool = typer.Option(False, "--json")
-):
-    """List stash members."""
-    with _client() as c:
-        try:
-            data = c.workspace_members(stash_id)
-        except StashError as e:
-            _err(e)
-    if _use_json(as_json):
-        output_json(data)
-    else:
-        print_members(data)
-
-
-@stash_app.command("fork")
-def stash_fork(
-    stash_id: str = typer.Argument(...),
-    name: str = typer.Option("", "--name"),
-):
-    """Fork a public stash."""
-    _do_fork(stash_id, suggested_name=name)
-
-
-@stash_app.command("leave")
-def stash_leave(stash_id: str = typer.Argument(...)):
-    """Leave a stash."""
-    with _client() as c:
-        try:
-            c.leave_workspace(stash_id)
-        except StashError as e:
-            _err(e)
-    console.print("[green]Left stash.[/green]")
-
-
-handoff_app = typer.Typer(help="Stash handoff: agent-written orientation doc for a stash.")
-app.add_typer(handoff_app, name="handoff")
-
-
-def _print_handoff(data: dict) -> None:
-    body = (data or {}).get("body_markdown") or ""
-    if not body:
-        reason = (data or {}).get("reason") or "never_generated"
-        console.print(
-            f"[dim]Handoff not available ({reason}). "
-            "Run `stash handoff refresh` to (re)generate.[/dim]"
-        )
-        raise typer.Exit(code=1)
-    console.print(body)
-    meta_parts = []
-    if data.get("generated_at"):
-        meta_parts.append(f"updated {data['generated_at']}")
-    if data.get("model"):
-        meta_parts.append(data["model"])
-    if data.get("turns_used"):
-        meta_parts.append(f"{data['turns_used']} turn(s)")
-    if data.get("pinned_at"):
-        meta_parts.append("[yellow]pinned · auto-curation off[/yellow]")
-    if meta_parts:
-        console.print(f"\n[dim]{' · '.join(meta_parts)}[/dim]")
-
-
-@handoff_app.command("show")
-def handoff_show(
-    stash_id: str = typer.Argument(None),
-    as_json: bool = typer.Option(False, "--json"),
-):
-    """Print the current handoff for a stash.
-
-    Returns the body only when it is fresh or pinned. If the writer hasn't
-    generated one yet, or content has changed since the last run, you'll
-    see a 'not available' message — use `stash handoff refresh` to update.
-    """
-    ws = stash_id or _resolve_workspace()
-    with _client() as c:
-        try:
-            data = c.get_handoff(ws)
-        except StashError as e:
-            _err(e)
-    if _use_json(as_json):
-        output_json(data)
-        return
-    _print_handoff(data)
-
-
-@handoff_app.command("refresh")
-def handoff_refresh(
-    stash_id: str = typer.Argument(None),
-    as_json: bool = typer.Option(False, "--json"),
-):
-    """Regenerate the handoff and print the new body.
-
-    Blocks until the writer agent finishes (or another worker that's already
-    running finishes for us). Pinned handoffs are rejected — turn auto-curation
-    back on first.
-    """
-    ws = stash_id or _resolve_workspace()
-    with _client() as c:
-        try:
-            data = c.regenerate_handoff(ws)
-        except StashError as e:
-            _err(e)
-    if _use_json(as_json):
-        output_json(data)
-        return
-    _print_handoff(data)
 
 
 @ws_app.command("list")
-def ws_list(
-    mine: bool = typer.Option(False, "--mine"), as_json: bool = typer.Option(False, "--json")
-):
+def ws_list(as_json: bool = typer.Option(False, "--json")):
     """List workspaces."""
     with _client() as c:
         try:
-            data = c.list_workspaces(mine=mine)
+            data = c.list_workspaces()
         except StashError as e:
             _err(e)
     if _use_json(as_json):
         output_json(data)
     else:
-        print_rooms(data, title="My Workspaces" if mine else "Public Workspaces")
+        print_workspaces(data, title="Workspaces")
 
 
 @ws_app.command("create")
 def ws_create(
     name: str = typer.Argument(...),
     description: str = typer.Option(""),
-    public: bool = typer.Option(False, "--public"),
     as_json: bool = typer.Option(False, "--json"),
 ):
     """Create workspace."""
     with _client() as c:
         try:
-            data = c.create_workspace(name, description=description, is_public=public)
+            data = c.create_workspace(name, description=description)
         except StashError as e:
             _err(e)
     if _use_json(as_json):
@@ -807,7 +624,7 @@ def ws_info(workspace_id: str = typer.Argument(...), as_json: bool = typer.Optio
         output_json(data)
     else:
         console.print(
-            f"[bold]{data['name']}[/bold]  Members: {data.get('member_count', '?')}  Public: {data['is_public']}"
+            f"[bold]{data['name']}[/bold]  Members: {data.get('member_count', '?')}"
         )
         console.print(f"ID: {data['id']}  Invite: {data['invite_code']}")
 
@@ -846,9 +663,7 @@ def _web_app_url() -> str:
 @app.command("browse")
 def browse(
     query: str = typer.Argument("", help="Optional search query."),
-    sort: str = typer.Option("trending", "--sort", help="trending | newest | forks"),
-    category: str = typer.Option("", "--category"),
-    tag: str = typer.Option("", "--tag"),
+    sort: str = typer.Option("trending", "--sort", help="trending | newest | popular"),
     pick: bool = typer.Option(
         True, "--pick/--no-pick", help="Open an interactive picker (default) or print a flat list."
     ),
@@ -857,59 +672,58 @@ def browse(
     """Browse the public Stash catalog. Works from any directory — no workspace binding required."""
     with _client() as c:
         try:
-            data = c.list_catalog(query=query, category=category, tag=tag, sort=sort)
+            data = c.list_catalog(query=query, sort=sort)
         except StashError as e:
             _err(e)
 
-    workspaces = data.get("workspaces", [])
+    stashes = data.get("stashes", [])
     if as_json:
-        output_json(workspaces)
+        output_json(stashes)
         return
 
-    if not workspaces:
+    if not stashes:
         console.print("[yellow]No public Stashes match your filters.[/yellow]")
         return
 
     if not pick:
-        for w in workspaces:
-            owner = w.get("creator_display_name") or w.get("creator_name") or "unknown"
-            shape = (
-                f"{w['page_count']}p · {w['table_count']}t · "
-                f"{w['file_count']}f · {w['history_event_count']}h"
-            )
+        for stash in stashes:
+            owner = stash.get("owner_display_name") or stash.get("owner_name") or "unknown"
             console.print(
-                f"[bold]{w['name']}[/bold]  [dim]by {owner}[/dim]  ★{w['fork_count']}  {shape}"
+                f"[bold]{stash['title']}[/bold]  [dim]by {owner} in {stash['workspace_name']}[/dim]  "
+                f"{stash['item_count']} items · {stash['view_count']} views"
             )
-            if w.get("summary"):
-                console.print(f"  [dim]{w['summary']}[/dim]")
+            if stash.get("description"):
+                console.print(f"  [dim]{stash['description']}[/dim]")
         return
 
     choices = []
-    for w in workspaces:
-        owner = w.get("creator_display_name") or w.get("creator_name") or "unknown"
-        label = f"{w['name']:<32} by {owner:<14} ★{w['fork_count']:<4} ({w['page_count']}p, {w['table_count']}t)"
-        choices.append(questionary.Choice(label, value=w))
+    for stash in stashes:
+        owner = stash.get("owner_display_name") or stash.get("owner_name") or "unknown"
+        label = (
+            f"{stash['title']:<32} by {owner:<14} "
+            f"({stash['item_count']} items, {stash['view_count']} views)"
+        )
+        choices.append(questionary.Choice(label, value=stash))
     choices.append(questionary.Choice("(quit)", value=None))
 
     picked = questionary.select("Pick a Stash:", choices=choices).ask()
     if not picked:
         return
 
-    summary = picked.get("summary") or picked.get("description") or "(no description)"
+    summary = picked.get("description") or "(no description)"
     console.print(
         Panel(
             Text.assemble(
-                (picked["name"] + "\n", "bold"),
+                (picked["title"] + "\n", "bold"),
                 (summary + "\n\n", ""),
-                (f"by {picked.get('creator_display_name') or picked['creator_name']}  ", "dim"),
+                (f"by {picked.get('owner_display_name') or picked['owner_name']}  ", "dim"),
                 (
-                    f"★ {picked['fork_count']} forks · {picked['member_count']} members · "
-                    f"{picked['page_count']} pages · {picked['table_count']} tables · "
-                    f"{picked['file_count']} files",
+                    f"{picked['item_count']} items · {picked['view_count']} views · "
+                    f"{picked['workspace_name']}",
                     "dim",
                 ),
             ),
-            title="Stash",
+            title="Product Stash",
             border_style="cyan",
         )
     )
@@ -918,7 +732,7 @@ def browse(
         "What now?",
         choices=[
             questionary.Choice("Open in browser", value="open"),
-            questionary.Choice("Fork into a new private Stash", value="fork"),
+            questionary.Choice("Add to current workspace", value="add"),
             questionary.Choice("Print share URL", value="url"),
             questionary.Choice("Cancel", value=None),
         ],
@@ -926,7 +740,7 @@ def browse(
     if not action:
         return
 
-    url = f"{_web_app_url()}/s/{picked['id']}"
+    url = f"{_web_app_url()}/stashes/{picked['slug']}"
     if action == "open":
         import webbrowser
 
@@ -934,55 +748,20 @@ def browse(
         console.print(f"[green]Opened[/green] {url}")
     elif action == "url":
         console.print(url)
-    elif action == "fork":
-        _do_fork(picked["id"], suggested_name=f"{picked['name']} (fork)")
-
-
-def _do_fork(workspace_id: str, suggested_name: str = "") -> None:
-    name = questionary.text("Name for the fork:", default=suggested_name).ask()
-    if name is None:
-        return
-    with _client() as c:
-        try:
-            new_ws = c.fork_workspace(workspace_id, name=name.strip())
-        except StashError as e:
-            _err(e)
-    console.print(f"[green]Forked into '{new_ws['name']}'[/green]  ID: {new_ws['id']}")
-    console.print(f"  Open it: [cyan]{_web_app_url()}/workspaces/{new_ws['id']}[/cyan]")
-
-    bind = questionary.confirm("Bind this repo (.stash) to the new fork?", default=False).ask()
-    if bind:
-        repo_root = Path.cwd()
-        manifest_path = repo_root / MANIFEST_FILE
-        existing = json.loads(manifest_path.read_text()) if manifest_path.is_file() else {}
-        existing["workspace_id"] = str(new_ws["id"])
-        manifest_path.write_text(json.dumps(existing, indent=2) + "\n")
-        console.print(f"  Wrote [cyan]{MANIFEST_FILE}[/cyan] → {new_ws['id']}")
-
-
-def _parse_workspace_id(url_or_id: str) -> str:
-    value = url_or_id.strip().rstrip("/")
-    parsed = urlparse(value)
-    parts = [part for part in parsed.path.split("/") if part]
-    for marker in ("s", "workspaces"):
-        if marker in parts:
-            marker_index = parts.index(marker)
-            if marker_index + 1 < len(parts):
-                return parts[marker_index + 1]
-    return value
-
-
-@app.command("fork")
-def fork(
-    workspace_id: str = typer.Argument(..., help="ID or URL of the public Stash to fork."),
-    name: str = typer.Option("", "--name", help="Name for the new private Stash."),
-):
-    """Fork a public Stash into a new private Stash you own."""
-    _do_fork(_parse_workspace_id(workspace_id), suggested_name=name)
+    elif action == "add":
+        workspace_id = _resolve_workspace()
+        with _client() as c:
+            try:
+                c.add_external_stash(picked["slug"], workspace_id)
+            except StashError as e:
+                _err(e)
+        console.print(
+            f"[green]Added[/green] {picked['title']} to workspace {workspace_id}"
+        )
 
 
 # ===========================================================================
-# Share — publish a session artifact as a public View
+# Share — publish a session artifact as a public Product Stash
 # ===========================================================================
 
 
@@ -1117,8 +896,8 @@ def share_session(
 ):
     """Share a session as a public artifact with a shareable link.
 
-    Publishes a curated summary (the question + finding), the full conversation
-    transcript, and any attached files as a single public View.
+    Publishes a focused summary (the question + finding), the full conversation
+    transcript, and any attached files as a single public Product Stash.
     """
     _require_auth()
     ws = workspace_id or _resolve_workspace()
@@ -1182,7 +961,7 @@ def share_session(
             c.create_page(ws, f"Subagent: {sa_label}", content=sa_md, folder_id=folder["id"])
             console.print(f"  [dim]Included subagent: {sa_label}[/dim]")
 
-        view_items: list[dict] = [
+        stash_items: list[dict] = [
             {"object_type": "folder", "object_id": folder["id"], "position": 0},
         ]
 
@@ -1193,11 +972,11 @@ def share_session(
                 console.print(f"[yellow]Skipping {fp} (not found)[/yellow]")
                 continue
             uploaded = c.upload_ws_file(ws, str(p))
-            view_items.append(
+            stash_items.append(
                 {
                     "object_type": "file",
                     "object_id": uploaded["id"],
-                    "position": len(view_items),
+                    "position": len(stash_items),
                     "label_override": p.name,
                 }
             )
@@ -1226,14 +1005,14 @@ def share_session(
                 if e.status_code != 409:
                     raise
 
-        # Create the public View — atomically publishes the underlying items
+        # Create the public Product Stash and publish the underlying items
         # so the anonymous URL works immediately.
-        bundle = c.create_shared_view(
+        bundle = c.publish_stash(
             ws,
             title=page_title,
             description="Shared session artifact",
             ensure="public",
-            items=view_items,
+            items=stash_items,
         )
 
     public_url = bundle["url"]
@@ -1327,10 +1106,12 @@ def upload(
     path: str = typer.Argument(..., help="Directory or file to upload."),
     name: str = typer.Option("", "--name", "-n", help="Name for the uploaded folder."),
     workspace_id: str = typer.Option(None, "--ws"),
-    public: bool = typer.Option(True, "--public/--private", help="Publish a shareable View."),
+    public: bool = typer.Option(
+        True, "--public/--private", help="Publish a shareable Product Stash."
+    ),
     as_json: bool = typer.Option(False, "--json"),
 ):
-    """Upload local files into workspace pages and publish them as a View."""
+    """Upload local files into workspace pages and publish them as a Product Stash."""
     _require_auth()
     target = Path(path)
     if not target.exists():
@@ -1349,7 +1130,7 @@ def upload(
     with _client() as c:
         root_folder = c.create_folder(ws, root_name)
         folder_cache: dict[tuple[str, str], str] = {}
-        view_items: list[dict] = [
+        stash_items: list[dict] = [
             {"object_type": "folder", "object_id": root_folder["id"], "position": 0},
         ]
 
@@ -1378,96 +1159,109 @@ def upload(
                 content=_markdown_snippet(uploaded),
                 folder_id=folder_id,
             )
-            view_items.append(
+            stash_items.append(
                 {
                     "object_type": "file",
                     "object_id": uploaded["id"],
-                    "position": len(view_items),
+                    "position": len(stash_items),
                     "label_override": str(relative_path),
                 }
             )
             console.print(f"  [dim]File: {relative_path}[/dim]")
 
-        view = c.create_view(
-            ws,
-            title=root_name,
-            description=f"Uploaded from {target.name}",
-            is_public=public,
-            items=view_items,
-        )
+        if public:
+            bundle = c.publish_stash(
+                ws,
+                title=root_name,
+                description=f"Uploaded from {target.name}",
+                ensure="public",
+                items=stash_items,
+            )
+            stash = bundle["stash"]
+        else:
+            stash = c.create_stash(
+                ws,
+                title=root_name,
+                description=f"Uploaded from {target.name}",
+                is_public=False,
+                items=stash_items,
+            )
 
-    result = {"folder": root_folder, "view": view}
+    result = {"folder": root_folder, "stash": stash}
     if _use_json(as_json):
         output_json(result)
         return
     if public:
-        public_url = f"{_web_app_url()}/v/{view['slug']}"
+        public_url = f"{_web_app_url()}/stashes/{stash['slug']}"
         console.print(f"\n[green bold]Uploaded![/green bold]  {public_url}")
         return
     console.print(
-        f"\n[green bold]Uploaded![/green bold]  Folder: {root_folder['id']}  View: {view['id']}"
+        f"\n[green bold]Uploaded![/green bold]  Folder: {root_folder['id']}  Stash: {stash['id']}"
     )
 
 
-def _parse_view_slug(url_or_slug: str) -> str:
-    """Extract a View slug from a full URL or bare slug."""
+def _parse_stash_slug(url_or_slug: str) -> str:
+    """Extract a Product Stash slug from a full URL or bare slug."""
     url_or_slug = url_or_slug.strip().rstrip("/")
-    if "/v/" in url_or_slug:
-        return url_or_slug.split("/v/")[-1]
+    if "/stashes/" in url_or_slug:
+        return url_or_slug.split("/stashes/")[-1]
     return url_or_slug
 
 
-@app.command("view")
-def view_artifact(
-    url: str = typer.Argument(..., help="Stash View URL or slug."),
+@app.command("read")
+def read_stash(
+    url: str = typer.Argument(..., help="Product Stash URL or slug."),
 ):
-    """Read a shared Stash artifact and print its contents."""
-    slug = _parse_view_slug(url)
+    """Read a public Product Stash and print its contents."""
+    slug = _parse_stash_slug(url)
     with _client() as c:
-        text = c.get_view_text(slug)
+        text = c.get_stash_text(slug)
     console.print(text)
 
 
 # ===========================================================================
-# Views (curated subsets of a workspace, publishable as their own URL)
+# Product Stashes (publishable subsets of a workspace)
 # ===========================================================================
 
-views_app = typer.Typer(help="Views — publish a curated subset of a Stash as its own public URL.")
-app.add_typer(views_app, name="views")
+stashes_app = typer.Typer(
+    help="Product Stashes — publish a shareable subset of a Stash Workspace."
+)
+app.add_typer(stashes_app, name="stashes")
 
 
-@views_app.command("list")
-def views_list(
+@stashes_app.command("list")
+def stashes_list(
     workspace_id: str = typer.Argument(None, help="Workspace ID; falls back to .stash."),
     as_json: bool = typer.Option(False, "--json"),
 ):
-    """List Views in a workspace."""
+    """List Product Stashes in a workspace."""
     ws_id = workspace_id or _resolve_workspace()
     with _client() as c:
         try:
-            data = c.list_views(ws_id)
+            data = c.list_stashes(ws_id)
         except StashError as e:
             _err(e)
     if _use_json(as_json):
         output_json(data)
         return
     if not data:
-        console.print("[dim]No Views in this workspace.[/dim]")
+        console.print("[dim]No Product Stashes in this workspace.[/dim]")
         return
     for v in data:
         flag = "[green]public[/green]" if v["is_public"] else "[dim]private[/dim]"
         console.print(
-            f"[bold]{v['title']}[/bold]  {flag}  /v/{v['slug']}  "
+            f"[bold]{v['title']}[/bold]  {flag}  /stashes/{v['slug']}  "
             f"[dim]({len(v['items'])} items, viewed {v['view_count']}x)[/dim]"
         )
 
 
-@views_app.command("create")
-def views_create(
-    title: str = typer.Argument(..., help="View title."),
+@stashes_app.command("create")
+def stashes_create(
+    title: str = typer.Argument(..., help="Product Stash title."),
     workspace_id: str = typer.Option("", "--workspace", help="Workspace ID; falls back to .stash."),
     description: str = typer.Option("", "--description"),
     public: bool = typer.Option(False, "--public", help="Publish immediately."),
+    discover: bool = typer.Option(False, "--discover", help="List the public Product Stash in Discover."),
     items_json: str = typer.Option(
         "[]",
         "--items",
@@ -1475,70 +1269,120 @@ def views_create(
     ),
     as_json: bool = typer.Option(False, "--json"),
 ):
-    """Create a View. Pass --items as JSON to attach resources up front."""
+    """Create a Product Stash. Pass --items as JSON to attach resources up front."""
+    if discover and not public:
+        console.print("[red]--discover requires --public.[/red]")
+        raise typer.Exit(1)
     ws_id = workspace_id or _resolve_workspace()
     items = json.loads(items_json)
     with _client() as c:
         try:
-            view = c.create_view(
-                ws_id, title=title, description=description, is_public=public, items=items
-            )
+            if public:
+                bundle = c.publish_stash(
+                    ws_id,
+                    title=title,
+                    description=description,
+                    ensure="public",
+                    discoverable=discover,
+                    items=items,
+                )
+                stash = bundle["stash"]
+            else:
+                stash = c.create_stash(
+                    ws_id,
+                    title=title,
+                    description=description,
+                    is_public=False,
+                    discoverable=False,
+                    items=items,
+                )
         except StashError as e:
             _err(e)
     if _use_json(as_json):
-        output_json(view)
+        output_json(stash)
         return
-    flag = "[green]published[/green]" if view["is_public"] else "[yellow]private[/yellow]"
-    console.print(f"[green]Created View[/green] '{view['title']}'  {flag}")
-    console.print(f"  ID: {view['id']}  Slug: {view['slug']}")
-    if view["is_public"]:
-        console.print(f"  Public URL: [cyan]{_web_app_url()}/v/{view['slug']}[/cyan]")
+    flag = "[green]published[/green]" if stash["is_public"] else "[yellow]private[/yellow]"
+    if stash.get("discoverable"):
+        flag = f"{flag} [cyan]discover[/cyan]"
+    console.print(f"[green]Created Product Stash[/green] '{stash['title']}'  {flag}")
+    console.print(f"  ID: {stash['id']}  Slug: {stash['slug']}")
+    if stash["is_public"]:
+        console.print(f"  Public URL: [cyan]{_web_app_url()}/stashes/{stash['slug']}[/cyan]")
 
 
-@views_app.command("publish")
-def views_publish(
-    view_id: str = typer.Argument(...),
-    unpublish: bool = typer.Option(False, "--unpublish", help="Make the View private again."),
+@stashes_app.command("publish")
+def stashes_publish(
+    stash_id: str = typer.Argument(...),
+    unpublish: bool = typer.Option(False, "--unpublish", help="Make the Product Stash private."),
+    discover: bool = typer.Option(False, "--discover", help="List the public Product Stash in Discover."),
 ):
-    """Toggle a View's public flag."""
+    """Toggle a Product Stash's public flag."""
+    if unpublish and discover:
+        console.print("[red]--discover cannot be used with --unpublish.[/red]")
+        raise typer.Exit(1)
     with _client() as c:
         try:
-            view = c.update_view(view_id, is_public=not unpublish)
+            stash = c.update_stash(
+                stash_id,
+                is_public=not unpublish,
+                discoverable=False if unpublish else discover,
+            )
         except StashError as e:
             _err(e)
-    if view["is_public"]:
+    if stash["is_public"]:
+        label = "Published to Discover" if stash.get("discoverable") else "Published"
         console.print(
-            f"[green]Published[/green] '{view['title']}' → "
-            f"[cyan]{_web_app_url()}/v/{view['slug']}[/cyan]"
+            f"[green]{label}[/green] '{stash['title']}' -> "
+            f"[cyan]{_web_app_url()}/stashes/{stash['slug']}[/cyan]"
         )
     else:
-        console.print(f"[yellow]Unpublished[/yellow] '{view['title']}'")
+        console.print(f"[yellow]Unpublished[/yellow] '{stash['title']}'")
 
 
-@views_app.command("delete")
-def views_delete(view_id: str = typer.Argument(...)):
-    """Delete a View. The underlying resources are not touched."""
+@stashes_app.command("delete")
+def stashes_delete(stash_id: str = typer.Argument(...)):
+    """Delete a Product Stash. The underlying resources are not touched."""
     with _client() as c:
         try:
-            c.delete_view(view_id)
+            c.delete_stash(stash_id)
         except StashError as e:
             _err(e)
-    console.print(f"[green]Deleted View[/green] {view_id}")
+    console.print(f"[green]Deleted Product Stash[/green] {stash_id}")
 
 
-@views_app.command("fork")
-def views_fork(
-    slug: str = typer.Argument(..., help="Public slug of the View."),
-    name: str = typer.Option("", "--name"),
+@stashes_app.command("add-external")
+def stashes_add_external(
+    slug: str = typer.Argument(..., help="Public slug of the Product Stash."),
+    workspace_id: str = typer.Option("", "--workspace", help="Workspace ID; falls back to .stash."),
+    as_json: bool = typer.Option(False, "--json"),
 ):
-    """Fork a View's contents into a new private Stash you own."""
+    """Add a live external Product Stash to a workspace."""
+    ws_id = workspace_id or _resolve_workspace()
     with _client() as c:
         try:
-            new_ws = c.fork_view(slug, name=name)
+            stash = c.add_external_stash(slug, ws_id)
         except StashError as e:
             _err(e)
-    console.print(f"[green]Forked into '{new_ws['name']}'[/green]  ID: {new_ws['id']}")
-    console.print(f"  Open it: [cyan]{_web_app_url()}/workspaces/{new_ws['id']}[/cyan]")
+    if _use_json(as_json):
+        output_json(stash)
+        return
+    console.print(f"[green]Added external Stash[/green] '{stash['title']}'")
+    console.print(f"  Open it: [cyan]{_web_app_url()}/stashes/{stash['slug']}[/cyan]")
+
+
+@stashes_app.command("remove-external")
+def stashes_remove_external(
+    stash_id: str = typer.Argument(..., help="Product Stash ID."),
+    workspace_id: str = typer.Option("", "--workspace", help="Workspace ID; falls back to .stash."),
+):
+    """Remove an external Product Stash from a workspace."""
+    ws_id = workspace_id or _resolve_workspace()
+    with _client() as c:
+        try:
+            c.remove_external_stash(ws_id, stash_id)
+        except StashError as e:
+            _err(e)
+    console.print(f"[green]Removed external Stash[/green] {stash_id}")
 
 
 # ===========================================================================
@@ -2258,7 +2102,7 @@ def hist_share(
     """Share a session transcript as a public Stash link.
 
     Fetches the transcript, formats it as a readable page, publishes it
-    in a new View, and prints the shareable URL.
+    in a new Product Stash, and prints the shareable URL.
     """
     import gzip
 
@@ -2283,21 +2127,20 @@ def hist_share(
     # 2. Format into markdown
     md = _transcript_to_markdown(body)
 
-    # 3. Create folder + page + public view
+    # 3. Create folder + page + public Product Stash
     page_title = title or f"Session {session_id[:8]}"
     with _client() as c:
         folder = c.create_folder(ws, page_title)
         c.create_page(ws, page_title, content=md, folder_id=folder["id"])
-        view = c.create_view(
+        bundle = c.publish_stash(
             ws,
             title=page_title,
             description="Shared session transcript",
-            is_public=True,
+            ensure="public",
             items=[{"object_type": "folder", "object_id": folder["id"]}],
         )
 
-    public_url = f"{_web_app_url()}/v/{view['slug']}"
-    console.print(f"[green]Shared![/green]  {public_url}")
+    console.print(f"[green]Shared![/green]  {bundle['url']}")
 
 
 @hist_app.command("import")
@@ -3008,22 +2851,6 @@ def files_text(
 
 
 # ===========================================================================
-# Prompts — reusable stash agent prompts, printed to stdout
-# ===========================================================================
-
-prompts_app = typer.Typer(help="Print reusable stash agent prompts.")
-app.add_typer(prompts_app, name="prompts")
-
-
-@prompts_app.command("curate")
-def prompts_curate():
-    """Print the sleep-time wiki curation prompt to stdout."""
-    from stashai.plugin.sleep_prompt import SLEEP_PROMPT
-
-    print(SLEEP_PROMPT)
-
-
-# ===========================================================================
 # Connect wizard
 # ===========================================================================
 
@@ -3089,44 +2916,10 @@ def _require_auth() -> dict:
     return cfg
 
 
-def _handle_not_member(ws_id: str, client: StashClient) -> None:
+def _handle_not_member(ws_id: str) -> None:
     """Handle the case where .stash exists but the user isn't a member."""
-    try:
-        info = client.workspace_public_info(ws_id)
-        ws_name = info["name"]
-        member_count = info["member_count"]
-    except StashError:
-        ws_name = ws_id[:8] + "…"
-        member_count = "?"
-
-    console.print(
-        f"\n  This repo belongs to workspace [bold]{ws_name}[/bold] "
-        f"({member_count} member{'s' if member_count != 1 else ''})."
-    )
-    console.print("  You're not a member yet.\n")
-
-    existing = client.get_my_join_request(ws_id)
-    if existing and existing.get("status") == "pending":
-        console.print(
-            "  [yellow]You already have a pending request.[/yellow] "
-            "The workspace owner has been notified."
-        )
-        return
-    if existing and existing.get("status") == "approved":
-        console.print("  [green]✓[/green] Your request was approved! " "Streaming is now active.")
-        return
-
-    try:
-        client.create_join_request(ws_id)
-        console.print(
-            "  [green]✓[/green] Request sent! The workspace owner will be notified by email.\n"
-            "  You'll be able to stream once your request is approved."
-        )
-    except StashError as e:
-        if e.status_code == 409:
-            console.print("  [green]✓[/green] You're already a member of this workspace!")
-        else:
-            console.print(f"  [red]Could not send join request: {e.detail}[/red]")
+    console.print(f"\n  This repo is connected to workspace [bold]{ws_id[:8]}…[/bold].")
+    console.print("  You're not a member. Ask a workspace admin for an invite link.")
 
 
 def _auto_connect_repo(repo_root: Path, cfg: dict) -> None:
@@ -3146,12 +2939,12 @@ def _auto_connect_repo(repo_root: Path, cfg: dict) -> None:
                 return
             except StashError as e:
                 if e.status_code in (403, 404):
-                    _handle_not_member(ws_id, c)
+                    _handle_not_member(ws_id)
                     return
                 raise
 
         repo_name = repo_root.name
-        my_workspaces = c.list_workspaces(mine=True)
+        my_workspaces = c.list_workspaces()
         matched = next((ws for ws in my_workspaces if ws["name"] == repo_name), None)
         if matched:
             console.print(f"  [green]✓[/green] Using workspace [bold]{matched['name']}[/bold]")
@@ -3209,7 +3002,7 @@ Common reads (all support `--json`):
 
 Common writes:
 - `stash share --title "..."` — share this session as a public artifact with a shareable link
-- `stash view <url>` — read a shared Stash artifact (use this for any joinstash.ai/v/ link)
+- `stash read <url>` — read a public Product Stash URL
 """
     claude_md.write_text(existing.rstrip() + "\n" + block)
     console.print("  Appended Stash context to [cyan]CLAUDE.md[/cyan]")
@@ -3487,21 +3280,11 @@ def start_cmd():
             c.get_workspace(workspace_id)
         except StashError as e:
             if e.status_code in (403, 404):
-                req = c.get_my_join_request(workspace_id)
-                if req and req.get("status") == "approved":
-                    console.print("  [green]✓[/green] Your request to join was approved!")
-                elif req and req.get("status") == "pending":
-                    console.print(
-                        "  [yellow]Your join request is still pending.[/yellow] "
-                        "You'll be able to stream once approved."
-                    )
-                    return
-                else:
-                    console.print(
-                        "  [yellow]You're not a member of this workspace.[/yellow] "
-                        "Run [cyan]stash join[/cyan] to request access."
-                    )
-                    return
+                console.print(
+                    "  [yellow]You're not a member of this workspace.[/yellow] "
+                    "Ask a workspace admin for an invite link."
+                )
+                return
             else:
                 raise
 
@@ -3745,7 +3528,7 @@ PLUGIN_DATA_DIRS = {
 }
 
 
-def _render_settings_header(cfg: dict, central: dict) -> None:
+def _render_settings_header(cfg: dict) -> None:
     """Print the read-only portion of the settings page."""
     console.clear()
     console.print("[bold]Stash settings[/bold]\n")
@@ -3760,15 +3543,6 @@ def _render_settings_header(cfg: dict, central: dict) -> None:
     row(f"{'User:':<14}", cfg.get("username") or "(not logged in)")
     row(f"{'Workspace:':<14}", workspace_label, highlight=False)
     row(f"{'Store:':<14}", cfg.get("default_store") or "(none)")
-
-    last_curate_at = central.get("last_curate_at")
-    if last_curate_at:
-        import datetime as _dt
-
-        ts = _dt.datetime.fromtimestamp(float(last_curate_at)).isoformat(timespec="seconds")
-        row(f"{'Last curate:':<14}", ts)
-    else:
-        row(f"{'Last curate:':<14}", "(never)")
 
     enabled = load_enabled_agents()
     detected = _detected_agents()
@@ -3787,7 +3561,6 @@ def _render_settings_header(cfg: dict, central: dict) -> None:
 def settings_cmd(as_json: bool = typer.Option(False, "--json")):
     """Interactive settings page. Pass --json for a read-only snapshot."""
     cfg = load_config()
-    central = _read_central_config()
 
     display_cfg = dict(cfg)
     if display_cfg.get("api_key"):
@@ -3797,8 +3570,6 @@ def settings_cmd(as_json: bool = typer.Option(False, "--json")):
         output_json(
             {
                 "config": display_cfg,
-                "auto_curate": bool(central.get("auto_curate", True)),
-                "last_curate_at": central.get("last_curate_at"),
                 "enabled_agents": load_enabled_agents(),
                 "plugins_installed": [name for name, d in PLUGIN_DATA_DIRS.items() if d.exists()],
             }
@@ -3807,10 +3578,8 @@ def settings_cmd(as_json: bool = typer.Option(False, "--json")):
 
     while True:
         cfg = load_config()
-        central = _read_central_config()
-        _render_settings_header(cfg, central)
+        _render_settings_header(cfg)
 
-        auto_curate = bool(central.get("auto_curate", True))
         base_url = cfg.get("base_url", "")
         enabled = load_enabled_agents()
         detected = _detected_agents()
@@ -3818,7 +3587,6 @@ def settings_cmd(as_json: bool = typer.Option(False, "--json")):
 
         rows = [
             ("Streaming", enabled_label, "enabled_agents"),
-            ("Auto-curate", "on" if auto_curate else "off", "auto_curate"),
             ("Endpoint", base_url, "base_url"),
         ]
         label_w = max(len(label) for label, _, _ in rows)
@@ -3853,8 +3621,6 @@ def settings_cmd(as_json: bool = typer.Option(False, "--json")):
             if selected is not None:
                 save_enabled_agents(selected)
                 _install_all_hooks(selected)
-        elif picked == "auto_curate":
-            _write_central_config({"auto_curate": not auto_curate})
         elif picked == "base_url":
             new_url = questionary.text("Endpoint base URL", default=base_url).ask()
             if new_url:
@@ -3934,28 +3700,6 @@ def disconnect_cmd():
     console.print(f"  [green]✓[/green] Removed [cyan]{MANIFEST_FILE}[/cyan] — repo disconnected.")
 
 
-def _read_central_config() -> dict:
-    from .config import USER_CONFIG_FILE
-
-    if not USER_CONFIG_FILE.exists():
-        return {}
-    try:
-        return json.loads(USER_CONFIG_FILE.read_text())
-    except Exception:
-        return {}
-
-
-def _write_central_config(updates: dict) -> None:
-    from .config import USER_CONFIG_FILE
-
-    existing = _read_central_config()
-    existing.update(updates)
-    USER_CONFIG_FILE.parent.mkdir(parents=True, exist_ok=True)
-    tmp = USER_CONFIG_FILE.with_suffix(USER_CONFIG_FILE.suffix + ".tmp")
-    tmp.write_text(json.dumps(existing, indent=2) + "\n")
-    tmp.replace(USER_CONFIG_FILE)
-
-
 # ===========================================================================
 # Config
 # ===========================================================================
@@ -3992,7 +3736,7 @@ def config_cmd(
 
 @app.command("share-object")
 def share_object_cmd(
-    object_type: str = typer.Argument(..., help="workspace|folder|page|table|file|history|view"),
+    object_type: str = typer.Argument(..., help="workspace|folder|page|session|table|file|history|stash"),
     object_id: str = typer.Argument(..., help="UUID of the object"),
     ensure: str = typer.Option(
         "link", "--ensure", help="Raise visibility to at least this level: ''|'link'|'public'"
@@ -4007,11 +3751,11 @@ def share_object_cmd(
 
 @app.command("visibility")
 def visibility_cmd(
-    object_type: str = typer.Argument(..., help="workspace|folder|page|table|file|history|view"),
+    object_type: str = typer.Argument(..., help="workspace|folder|page|session|table|file|history|stash"),
     object_id: str = typer.Argument(..., help="UUID of the object"),
     level: str = typer.Argument(..., help="inherit|private|link|public"),
 ):
-    """Set visibility on any object."""
+    """Set privacy for an object. Pages, folders, and sessions are backed by privacy tags."""
     cfg = load_config()
     c = StashClient(cfg["base_url"], cfg.get("api_key", ""))
     c.set_object_visibility(object_type, object_id, level)

@@ -36,9 +36,6 @@ Everything is a plain `stash` CLI subcommand — no slash commands or skills:
 | `stash settings` | Interactive settings page (streaming, scope, endpoint, …) |
 | `stash disconnect` | Pause event streaming across every installed plugin |
 
-At session end (Codex `Stop`) the plugin spawns `codex exec …` headless with
-a shared curation prompt. Toggle with `auto_curate` in `~/.stash/config.json`.
-
 ## Launching: use the `stash` profile
 
 `config.toml.snippet` registers a `[profiles.stash]` block. Launch Codex with
@@ -62,7 +59,7 @@ approval behavior.
    `on_stop.py` session summary captures turn-level stats even without
    per-tool hooks.
 2. **Windows.** Codex hook support is disabled on Windows in current builds.
-3. **No SessionEnd event.** We clear state + trigger curation in `Stop` instead.
+3. **No SessionEnd event.** Codex only exposes `Stop`, so the plugin uploads the assistant message and transcript there.
 
 ## What streams
 

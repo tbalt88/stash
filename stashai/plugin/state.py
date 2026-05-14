@@ -1,20 +1,13 @@
-"""Per-plugin persistent state plus shared curate-gating helpers.
+"""Per-plugin persistent state.
 
 Per-plugin state (session_id) lives under each agent's `data_dir`.
-Auto-curate toggling and the cross-agent cooldown live in the central CLI
-config at `~/.stash/config.json` so one toggle controls every installed plugin.
 """
 
 from __future__ import annotations
 
 import json
 import os
-import time
 from pathlib import Path
-
-CURATE_COOLDOWN_SECONDS = 24 * 60 * 60
-
-CENTRAL_CONFIG_PATH = Path.home() / ".stash" / "config.json"
 
 _DEFAULT_STATS = {"tool_count": 0, "tools_used": [], "files_touched": []}
 
@@ -97,42 +90,3 @@ def reset_stats(data_dir: Path) -> None:
 def read_stats(state: dict) -> dict:
     """Pull stats out of an already-loaded state dict. Used by stream_session_end."""
     return _load_stats(state)
-
-
-# ---------------------------------------------------------------------------
-# Central config helpers (auto_curate flag, streaming kill switch, cooldown)
-# ---------------------------------------------------------------------------
-
-def _read_central() -> dict:
-    return _read_json(CENTRAL_CONFIG_PATH, {})
-
-
-def _write_central(updates: dict) -> None:
-    existing = _read_central()
-    existing.update(updates)
-    _write_json(CENTRAL_CONFIG_PATH, existing)
-
-
-def auto_curate_enabled() -> bool:
-    """Read the central `auto_curate` flag. Defaults to True when unset."""
-    raw = _read_central().get("auto_curate", True)
-    if isinstance(raw, bool):
-        return raw
-    return str(raw).strip().lower() in ("1", "true", "yes", "on")
-
-
-def set_auto_curate(enabled: bool) -> None:
-    _write_central({"auto_curate": bool(enabled)})
-
-
-def curate_cooldown_active() -> bool:
-    last = _read_central().get("last_curate_at", 0) or 0
-    try:
-        last_f = float(last)
-    except Exception:
-        return False
-    return (time.time() - last_f) < CURATE_COOLDOWN_SECONDS
-
-
-def record_curate_run() -> None:
-    _write_central({"last_curate_at": time.time()})

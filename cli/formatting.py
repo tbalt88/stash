@@ -37,24 +37,20 @@ def print_messages(messages: list[dict]) -> None:
         console.print(format_message(msg))
 
 
-def print_rooms(rooms: list[dict], title: str = "Rooms") -> None:
-    """Print a table of rooms."""
-    if not rooms:
-        console.print("[dim]No rooms found.[/dim]")
+def print_workspaces(workspaces: list[dict], title: str = "Workspaces") -> None:
+    """Print a table of workspaces."""
+    if not workspaces:
+        console.print("[dim]No workspaces found.[/dim]")
         return
     table = Table(title=title)
     table.add_column("Name", style="bold")
     table.add_column("ID", style="dim")
-    table.add_column("Type")
     table.add_column("Members")
-    table.add_column("Public")
-    for r in rooms:
+    for workspace in workspaces:
         table.add_row(
-            r.get("name", ""),
-            str(r.get("id", ""))[:8],
-            r.get("type", "chat"),
-            str(r.get("member_count", "?")),
-            "yes" if r.get("is_public") else "no",
+            workspace.get("name", ""),
+            str(workspace.get("id", ""))[:8],
+            str(workspace.get("member_count", "?")),
         )
     console.print(table)
 
@@ -74,7 +70,7 @@ def print_user(user: dict, title: str = "Profile") -> None:
 
 
 def print_members(members: list[dict]) -> None:
-    """Print room members table."""
+    """Print workspace members table."""
     if not members:
         console.print("[dim]No members.[/dim]")
         return

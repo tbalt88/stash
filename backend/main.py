@@ -19,7 +19,6 @@ from .routers import (
     files,
     memory,
     permissions,
-    public,
     publish,
     sessions,
     skill,
@@ -27,8 +26,8 @@ from .routers import (
     tables,
     transcripts,
     users,
-    views,
     wiki,
+    workspace_knowledge,
     workspaces,
 )
 from .services.row_validation import RowValidationError
@@ -37,9 +36,6 @@ from .workers import (
     embedding_reconciler,
     session_summarizer,
     viz_precompute,
-)
-from .workers import (
-    handoff_writer as handoff_writer_worker,
 )
 
 logger = logging.getLogger("stash")
@@ -52,13 +48,11 @@ async def lifespan(app: FastAPI):
     reconciler_task = asyncio.create_task(embedding_reconciler.run())
     viz_task = asyncio.create_task(viz_precompute.run())
     summarizer_task = asyncio.create_task(session_summarizer.run())
-    writer_task = asyncio.create_task(handoff_writer_worker.run())
     tasks = (
         dispatcher_task,
         reconciler_task,
         viz_task,
         summarizer_task,
-        writer_task,
     )
     try:
         yield
@@ -104,10 +98,10 @@ app.add_middleware(
 )
 app.include_router(users.router)
 app.include_router(workspaces.router)
-app.include_router(stashes.router)
+app.include_router(workspace_knowledge.router)
 app.include_router(discover.router)
-app.include_router(views.ws_router)
-app.include_router(views.public_router)
+app.include_router(stashes.ws_router)
+app.include_router(stashes.public_router)
 app.include_router(wiki.router)
 app.include_router(memory.ws_router)
 app.include_router(tables.ws_router)
@@ -117,12 +111,8 @@ app.include_router(aggregate.router)
 app.include_router(skill.router)
 app.include_router(admin.router)
 app.include_router(permissions.router)
-app.include_router(public.router)
-app.include_router(public.llms_router)
 app.include_router(sessions.router)
 app.include_router(publish.router)
-app.include_router(stashes.ws_router)
-app.include_router(stashes.public_router)
 
 if settings.AUTH0_ENABLED:
     from backend.managed.auth0 import router as auth0_router

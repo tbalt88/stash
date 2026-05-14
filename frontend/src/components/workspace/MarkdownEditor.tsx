@@ -30,6 +30,7 @@ interface MarkdownEditorProps {
   folderPath?: string[];
   file: Page;
   onSave: (content: string) => void;
+  confirmSave?: () => boolean;
   onSaveStatusChange?: (status: SaveStatus) => void;
   onRename?: (name: string) => void;
   /** Every page in the workspace, used to seed `[[` autocomplete. */
@@ -44,6 +45,7 @@ export default function MarkdownEditor({
   folderPath = [],
   file,
   onSave,
+  confirmSave,
   onSaveStatusChange,
   onRename,
   pageIndex = [],
@@ -185,6 +187,7 @@ export default function MarkdownEditor({
       setDirty(true);
       if (saveTimer.current) clearTimeout(saveTimer.current);
       saveTimer.current = setTimeout(() => {
+        if (confirmSave && !confirmSave()) return;
         setSaving(true);
         lastSaved.current = md;
         onSave(md);
@@ -222,13 +225,14 @@ export default function MarkdownEditor({
         if (editor) {
           const md = serializeMarkdown(editor.getJSON(), lastSaved.current);
           if (md !== lastSaved.current) {
+            if (confirmSave && !confirmSave()) return;
             lastSaved.current = md;
             onSave(md);
           }
         }
       }
     };
-  }, [editor, onSave]);
+  }, [confirmSave, editor, onSave]);
 
   // Ctrl/Cmd+S → flush immediately
   useEffect(() => {
@@ -241,6 +245,7 @@ export default function MarkdownEditor({
           saveTimer.current = null;
         }
         const md = serializeMarkdown(editor.getJSON(), lastSaved.current);
+        if (confirmSave && !confirmSave()) return;
         lastSaved.current = md;
         onSave(md);
         setDirty(false);
@@ -248,7 +253,7 @@ export default function MarkdownEditor({
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [editor, onSave]);
+  }, [confirmSave, editor, onSave]);
 
   const [title, setTitle] = useState(file.name);
   const titleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -331,8 +336,8 @@ function parseInlineMarkdown(text: string): JSONNode[] {
     }
 
     if (match[2] !== undefined) {
-      // Legacy `[[...]]` from old imports — pass through as plain text.
-      // New content uses markdown links with id URLs instead.
+      // Bracket refs stay plain in this markdown fallback. The editor
+      // extension handles resolved wiki links.
       nodes.push({ type: "text", text: match[0] });
     } else if (match[3] !== undefined) {
       // [![alt](src)](href) — linked image. Render as the image (TipTap's

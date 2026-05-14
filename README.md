@@ -3,10 +3,10 @@
   <a href="https://joinstash.ai"><img src="docs/assets/logo.svg" alt="Stash" width="320" /></a>
 </p>
 
-<h3 align="center">Your team's AI work, compounding.</h3>
+<h3 align="center">Sessions, wiki, and Product Stashes for agent work.</h3>
 
 <p align="center">
-  Stash is a CLI to search over your team's coding agent sessions. <br> It captures every coding-agent run across your team and turns <br> it into a shared, evolving asset every agent can build on.
+  Stash is a workspace for coding-agent sessions, wiki pages, and publishable Product Stashes. <br> It captures every coding-agent run across your team and makes <br> the important work easy to search, organize, and share.
 </p>
 
 
@@ -36,8 +36,8 @@
 ## How it works
 
 - Stash installs a hook for your coding agents that automatically uploads session transcripts to a shared store.
-- Then, it exposes a CLI that allows you and your teammates to query this shared store.
-- It automatically builds a [Karpathy-style wiki](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f) on top of the set of session transcripts to make it easier for your coding agents to query its contents.
+- It exposes a CLI and MCP server that let humans and agents query sessions, write wiki pages, and create Product Stashes.
+- Product Stashes bundle wiki pages and sessions into shareable links. You can publish them publicly, list them in Discover, or add external Stashes to your workspace.
 
 ## Why shared beats individual
 
@@ -54,7 +54,7 @@ With Stash, every agent on the repo has context about every session created from
 >
 > — Andrej Karpathy, *LLM Knowledge Bases*
 
-**Stash is that product. For teams of coding agents working on the same repo.** Your agents' streamed sessions are the raw data. The wiki is curated automatically by our sleep agent. Everything lands in one workspace your whole team can query. AI usage becomes a shared, evolving asset, not individual effort.
+**Stash is that product. For teams of coding agents working on the same repo.** Your agents' streamed sessions are the raw data. The wiki is where humans and agents write durable pages. Product Stashes are the publishable bundles you share with collaborators or add back into a workspace. AI usage becomes a shared, searchable asset, not individual effort.
 
 ## Quick Start
 
@@ -109,14 +109,14 @@ Set `EMBEDDING_PROVIDER` to use a third-party embedding provider (otherwise we'l
 
 Stash is built for engineering teams working in private repos.
 
-- **No LLM calls from the server.** Curation and search run inside your agent (Claude Code, Cursor, etc.) using the keys it already has. The Stash backend itself makes no model calls.
+- **No LLM calls from the server.** Search runs inside your agent (Claude Code, Cursor, etc.) using the keys it already has. The Stash backend itself makes no model calls.
 - **Permissioned workspaces.** Only invited members can access a workspace. Public visibility is per-resource.
 - **Transcripts are opt-in.** If you don't want to share your agent trasncripts, you can give your agent shared *read* access to the workspace's memory without uploading any of your own session data.
   
 ## FAQ
 
 **What LLMs does Stash use?**
-None on the server. Your coding agent is responsible for curation of the knowledge base that gets built on top of uploaded transcripts. There's a hook that's debounced to run at most once every 24 hours which asks your coding agent to look through the knowledge base and add new information, remove duplicates, etc. 
+None on the server. Agents can use the CLI and MCP server to search sessions, write wiki pages, and create Product Stashes, but there is no background wiki-writing agent in v0.
 
 **Can I use this without Claude Code?**
 Yes. You can use the CLI with anything, and Stash has native plugins for Cursor, Codex, Opencode, Gemini CLI, and more.

@@ -103,19 +103,17 @@ class StashClient:
 
     # --- Workspaces ---
 
-    def create_workspace(self, name: str, description: str = "", is_public: bool = False) -> dict:
+    def create_workspace(self, name: str, description: str = "") -> dict:
         return self._post(
             "/api/v1/workspaces",
             json={
                 "name": name,
                 "description": description,
-                "is_public": is_public,
             },
         )
 
-    def list_workspaces(self, mine: bool = False) -> list:
-        path = "/api/v1/workspaces/mine" if mine else "/api/v1/workspaces"
-        return self._list(path, "workspaces")
+    def list_workspaces(self) -> list:
+        return self._list("/api/v1/workspaces/mine", "workspaces")
 
     def get_workspace(self, workspace_id: str) -> dict:
         return self._get(f"/api/v1/workspaces/{workspace_id}")
@@ -129,131 +127,85 @@ class StashClient:
     def workspace_members(self, workspace_id: str) -> list:
         return self._get(f"/api/v1/workspaces/{workspace_id}/members")
 
-    # --- Handoff ---
-
-    def get_handoff(self, stash_id: str) -> dict:
-        return self._get(f"/api/v1/stashes/{stash_id}/handoff")
-
-    def regenerate_handoff(self, stash_id: str) -> dict:
-        return self._post(f"/api/v1/stashes/{stash_id}/handoff/regenerate")
-
-    def edit_handoff(self, stash_id: str, body_markdown: str) -> dict:
-        return self._patch(
-            f"/api/v1/stashes/{stash_id}/handoff",
-            json={"body_markdown": body_markdown},
-        )
-
-    def unpin_handoff(self, stash_id: str) -> dict:
-        return self._post(f"/api/v1/stashes/{stash_id}/handoff/unpin")
-
-    def workspace_public_info(self, workspace_id: str) -> dict:
-        return self._get(f"/api/v1/workspaces/{workspace_id}/public-info")
-
-    def create_join_request(self, workspace_id: str) -> dict:
-        return self._post(f"/api/v1/workspaces/{workspace_id}/join-requests")
-
-    def get_my_join_request(self, workspace_id: str) -> dict | None:
-        try:
-            return self._get(f"/api/v1/workspaces/{workspace_id}/join-requests/mine")
-        except StashError as e:
-            if e.status_code == 404:
-                return None
-            raise
-
     # --- Discover (public catalog, no auth required) ---
 
     def list_catalog(
         self,
         query: str = "",
-        category: str = "",
-        tag: str = "",
         sort: str = "trending",
-        cursor: str = "",
     ) -> dict:
         params: dict = {"sort": sort}
         if query:
             params["q"] = query
-        if category:
-            params["category"] = category
-        if tag:
-            params["tag"] = tag
-        if cursor:
-            params["cursor"] = cursor
-        return self._get("/api/v1/discover/workspaces", **params)
+        return self._get("/api/v1/discover/stashes", **params)
 
-    def get_public_workspace(self, workspace_id: str) -> dict:
-        return self._get(f"/api/v1/discover/workspaces/{workspace_id}")
+    # --- Product Stashes (publishable subsets) ---
 
-    def fork_workspace(self, workspace_id: str, name: str = "") -> dict:
-        body: dict = {}
-        if name:
-            body["name"] = name
-        return self._post(f"/api/v1/workspaces/{workspace_id}/fork", json=body)
+    def list_stashes(self, workspace_id: str) -> list:
+        return self._list(f"/api/v1/workspaces/{workspace_id}/stashes", "stashes")
 
-    # --- Views (curated subsets) ---
-
-    def list_views(self, workspace_id: str) -> list:
-        return self._list(f"/api/v1/workspaces/{workspace_id}/views", "views")
-
-    def create_view(
+    def create_stash(
         self,
         workspace_id: str,
         title: str,
         description: str = "",
         is_public: bool = False,
+        discoverable: bool = False,
         items: list | None = None,
     ) -> dict:
         return self._post(
-            f"/api/v1/workspaces/{workspace_id}/views",
+            f"/api/v1/workspaces/{workspace_id}/stashes",
             json={
                 "title": title,
                 "description": description,
                 "is_public": is_public,
+                "discoverable": discoverable,
                 "items": items or [],
             },
         )
 
-    def create_shared_view(
+    def publish_stash(
         self,
         workspace_id: str,
         title: str,
         description: str = "",
         ensure: str = "public",
+        discoverable: bool = False,
         items: list | None = None,
     ) -> dict:
-        """Create a View and publish the underlying items in one atomic call.
-
-        Use this instead of create_view() when sharing — the basic endpoint
-        marks the View public but leaves items as 'inherit', so anonymous
-        viewers 404 on the resulting URL."""
+        """Create a Product Stash and publish its underlying items in one atomic call."""
         return self._post(
-            f"/api/v1/workspaces/{workspace_id}/views/share-bundle?ensure={ensure}",
+            f"/api/v1/workspaces/{workspace_id}/stashes/publish?ensure={ensure}",
             json={
                 "title": title,
                 "description": description,
                 "is_public": ensure == "public",
+                "discoverable": discoverable,
                 "items": items or [],
             },
         )
 
-    def update_view(self, view_id: str, **fields) -> dict:
-        return self._patch(f"/api/v1/views/{view_id}", json=fields)
+    def update_stash(self, stash_id: str, **fields) -> dict:
+        return self._patch(f"/api/v1/stashes/{stash_id}", json=fields)
 
-    def delete_view(self, view_id: str) -> None:
-        self._delete(f"/api/v1/views/{view_id}")
+    def delete_stash(self, stash_id: str) -> None:
+        self._delete(f"/api/v1/stashes/{stash_id}")
 
-    def get_public_view(self, slug: str) -> dict:
-        return self._get(f"/api/v1/views/{slug}")
+    def add_external_stash(self, slug: str, workspace_id: str) -> dict:
+        return self._post(
+            f"/api/v1/stashes/{slug}/add-to-workspace",
+            json={"workspace_id": workspace_id},
+        )
 
-    def get_view_text(self, slug: str) -> str:
-        resp = self._request("GET", f"/api/v1/views/{slug}", params={"format": "text"})
+    def remove_external_stash(self, workspace_id: str, stash_id: str) -> None:
+        self._delete(f"/api/v1/workspaces/{workspace_id}/external-stashes/{stash_id}")
+
+    def get_public_stash(self, slug: str) -> dict:
+        return self._get(f"/api/v1/stashes/{slug}")
+
+    def get_stash_text(self, slug: str) -> str:
+        resp = self._request("GET", f"/api/v1/stashes/{slug}", params={"format": "text"})
         return resp.text
-
-    def fork_view(self, slug: str, name: str = "") -> dict:
-        body: dict = {}
-        if name:
-            body["name"] = name
-        return self._post(f"/api/v1/views/{slug}/fork", json=body)
 
     # --- Magic-link invite tokens ---
 
@@ -294,9 +246,6 @@ class StashClient:
 
     def all_pages(self) -> list:
         return self._list("/api/v1/me/pages", "pages")
-
-    def all_decks(self) -> list:
-        return self._list("/api/v1/me/decks", "decks")
 
     # --- Folders (workspace-scoped, nestable) ---
 
@@ -492,57 +441,6 @@ class StashClient:
     def get_ws_file_text(self, workspace_id: str, file_id: str) -> dict:
         return self._get(f"/api/v1/workspaces/{workspace_id}/files/{file_id}/text")
 
-    # --- Decks ---
-
-    def create_deck(
-        self,
-        workspace_id: str,
-        name: str,
-        description: str = "",
-        html_content: str = "",
-        deck_type: str = "freeform",
-    ) -> dict:
-        return self._post(
-            f"/api/v1/workspaces/{workspace_id}/decks",
-            json={
-                "name": name,
-                "description": description,
-                "html_content": html_content,
-                "deck_type": deck_type,
-            },
-        )
-
-    def list_decks(self, workspace_id: str) -> list:
-        return self._list(f"/api/v1/workspaces/{workspace_id}/decks", "decks")
-
-    def get_deck(self, workspace_id: str, deck_id: str) -> dict:
-        return self._get(f"/api/v1/workspaces/{workspace_id}/decks/{deck_id}")
-
-    def update_deck(self, workspace_id: str, deck_id: str, **kwargs) -> dict:
-        return self._patch(f"/api/v1/workspaces/{workspace_id}/decks/{deck_id}", json=kwargs)
-
-    def delete_deck(self, workspace_id: str, deck_id: str) -> None:
-        self._delete(f"/api/v1/workspaces/{workspace_id}/decks/{deck_id}")
-
-    # --- Deck Share Links ---
-
-    def create_deck_share(self, workspace_id: str, deck_id: str, **kwargs) -> dict:
-        return self._post(f"/api/v1/workspaces/{workspace_id}/decks/{deck_id}/shares", json=kwargs)
-
-    def list_deck_shares(self, workspace_id: str, deck_id: str) -> list:
-        return self._list(f"/api/v1/workspaces/{workspace_id}/decks/{deck_id}/shares", "shares")
-
-    def update_deck_share(self, workspace_id: str, deck_id: str, share_id: str, **kwargs) -> dict:
-        return self._put(
-            f"/api/v1/workspaces/{workspace_id}/decks/{deck_id}/shares/{share_id}",
-            json=kwargs,
-        )
-
-    def get_share_analytics(self, workspace_id: str, deck_id: str, share_id: str) -> dict:
-        return self._get(
-            f"/api/v1/workspaces/{workspace_id}/decks/{deck_id}/shares/{share_id}/analytics"
-        )
-
     # --- Webhooks ---
 
     def set_webhook(self, workspace_id: str, url: str, secret: str | None = None) -> dict:
@@ -632,7 +530,7 @@ class StashClient:
         base = f"/api/v1/workspaces/{workspace_id}/tables" if workspace_id else "/api/v1/tables"
         return self._request("DELETE", f"{base}/{table_id}/columns/{column_id}").json()
 
-    # ── Unified sharing API (object_type: workspace|folder|page|table|file|history|view) ──
+    # ── Unified sharing API (object_type: workspace|folder|page|table|file|history|stash) ──
 
     def get_object_permissions(self, object_type: str, object_id: str) -> dict:
         return self._get(f"/api/v1/objects/{object_type}/{object_id}/permissions")

@@ -56,7 +56,6 @@ def get_config() -> dict:
         "api_key": api_key,
         "agent_name": cli.get("username", ""),
         "workspace_id": (manifest or {}).get("workspace_id", ""),
-        "auto_curate": os.environ.get("STASH_AUTO_CURATE", "false"),  # off by default for Cursor
         "client": "cursor",
     }
 

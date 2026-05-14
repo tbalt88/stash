@@ -520,7 +520,7 @@ details[open] > summary .chev {
   accent-color: #F97316;
 }
 
-/* Tables in notebook pages (GitHub-flavored pipe tables). */
+/* Tables in wiki pages (GitHub-flavored pipe tables). */
 .ProseMirror table.wiki-table,
 .ProseMirror table {
   border-collapse: collapse;
@@ -569,9 +569,9 @@ details[open] > summary .chev {
   color: var(--link-hover, #EA580C);
 }
 
-/* Wiki internal links — agent-curated memory refs, violet dashed.
+/* Wiki internal links — shared memory refs, violet dashed.
    Orange is reserved for CTAs/nav/external links; violet signals a
-   pointer into the agent/notebook memory graph. */
+   pointer into the workspace memory graph. */
 .ProseMirror span.wiki-link-internal {
   color: #8B5CF6;
   text-decoration: underline dashed rgba(139, 92, 246, 0.45);

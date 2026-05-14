@@ -1,18 +1,11 @@
 #!/usr/bin/env python3
-"""SessionEnd: push the session_end event, then spawn `claude -p <SLEEP_PROMPT>`
-headless to curate the wiki.
-
-Curation is gated by the central `auto_curate` flag, the shared 24h cooldown
-in `~/.stash/config.json`, and the STASH_SKIP_AUTO_CURATE=1 recursion
-guard (set before spawn so the curate session doesn't re-trigger itself).
-"""
-
-from config import DATA_DIR, get_client, get_config, get_stdin_data, is_configured
-from stashai.plugin.hooks import stream_session_end
-from stashai.plugin.state import load_state, save_state
+"""SessionEnd: push the session_end event."""
 
 from adapt import adapt_stop
-from stashai.plugin.curate_spawn import spawn_curation
+from config import DATA_DIR, get_client, get_config, get_stdin_data, is_configured
+
+from stashai.plugin.hooks import stream_session_end
+from stashai.plugin.state import load_state, save_state
 
 
 def main():
@@ -28,9 +21,6 @@ def main():
             stream_session_end(client, cfg, state, event)
     except Exception:
         pass
-
-    if cfg.get("workspace_id"):
-        spawn_curation("claude", ["-p"])
 
     state["session_id"] = ""
     save_state(DATA_DIR, state)

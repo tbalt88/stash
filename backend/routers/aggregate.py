@@ -1,4 +1,4 @@
-"""Aggregate router: cross-workspace views for the authenticated user."""
+"""Aggregate router: cross-workspace indexes for the authenticated user."""
 
 from datetime import datetime
 from uuid import UUID

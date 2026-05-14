@@ -60,7 +60,6 @@ def get_config() -> dict:
             "api_key": api_key,
             "agent_name": cli.get("username", ""),
             "workspace_id": (manifest or {}).get("workspace_id", ""),
-            "auto_curate": os.environ.get("CLAUDE_PLUGIN_USER_CONFIG_auto_curate", "true"),
             "client": "claude_code",
         }
 
@@ -69,7 +68,6 @@ def get_config() -> dict:
         "api_key": api_key,
         "agent_name": agent_name,
         "workspace_id": os.environ.get("CLAUDE_PLUGIN_USER_CONFIG_workspace_id", ""),
-        "auto_curate": os.environ.get("CLAUDE_PLUGIN_USER_CONFIG_auto_curate", "true"),
         "client": "claude_code",
     }
 

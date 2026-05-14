@@ -64,6 +64,28 @@ async def _make_page(pool, workspace_id, created_by, folder_id=None, name="page"
     return row["id"]
 
 
+async def _make_session(pool, workspace_id, created_by, session_id="session-1"):
+    row = await pool.fetchrow(
+        "INSERT INTO sessions (workspace_id, session_id, agent_name, created_by) "
+        "VALUES ($1, $2, 'codex', $3) RETURNING id",
+        workspace_id,
+        session_id,
+        created_by,
+    )
+    return row["id"]
+
+
+async def _make_table(pool, workspace_id, created_by, name="table"):
+    row = await pool.fetchrow(
+        "INSERT INTO tables (workspace_id, name, created_by) "
+        "VALUES ($1, $2, $3) RETURNING id",
+        workspace_id,
+        name,
+        created_by,
+    )
+    return row["id"]
+
+
 @pytest.mark.asyncio
 async def test_owner_has_access(pool):
     user_id = await _make_user(pool)
@@ -168,6 +190,100 @@ async def test_private_visibility_denies_member(pool):
     assert not await permission_service.check_access(
         "folder", folder_id, member_id, workspace_id=ws_id
     )
+
+
+@pytest.mark.asyncio
+async def test_private_tag_keeps_creator_access(pool):
+    owner_id = await _make_user(pool)
+    member_id = await _make_user(pool)
+    ws_id = await _make_workspace(pool, owner_id)
+    await pool.execute(
+        "INSERT INTO workspace_members (workspace_id, user_id, role) VALUES ($1, $2, 'editor')",
+        ws_id,
+        member_id,
+    )
+    page_id = await _make_page(pool, ws_id, owner_id)
+
+    await permission_service.set_privacy_visibility("page", page_id, "private", owner_id)
+
+    assert await permission_service.check_access("page", page_id, owner_id, workspace_id=ws_id)
+    assert not await permission_service.check_access("page", page_id, member_id, workspace_id=ws_id)
+
+
+@pytest.mark.asyncio
+async def test_session_privacy_tag_limits_workspace_members(pool):
+    owner_id = await _make_user(pool)
+    member_id = await _make_user(pool)
+    ws_id = await _make_workspace(pool, owner_id)
+    await pool.execute(
+        "INSERT INTO workspace_members (workspace_id, user_id, role) VALUES ($1, $2, 'editor')",
+        ws_id,
+        member_id,
+    )
+    session_row_id = await _make_session(pool, ws_id, owner_id)
+
+    await permission_service.set_privacy_visibility("session", session_row_id, "private", owner_id)
+
+    assert await permission_service.check_access(
+        "session", session_row_id, owner_id, workspace_id=ws_id
+    )
+    assert not await permission_service.check_access(
+        "session", session_row_id, member_id, workspace_id=ws_id
+    )
+
+
+@pytest.mark.asyncio
+async def test_table_visibility_uses_privacy_tags(pool):
+    owner_id = await _make_user(pool)
+    member_id = await _make_user(pool)
+    ws_id = await _make_workspace(pool, owner_id)
+    await pool.execute(
+        "INSERT INTO workspace_members (workspace_id, user_id, role) VALUES ($1, $2, 'editor')",
+        ws_id,
+        member_id,
+    )
+    table_id = await _make_table(pool, ws_id, owner_id)
+
+    await permission_service.set_visibility("table", table_id, "private")
+
+    tag = await pool.fetchrow(
+        "SELECT pt.access FROM privacy_tags pt "
+        "JOIN privacy_tag_objects pto ON pto.tag_id = pt.id "
+        "WHERE pto.object_type = 'table' AND pto.object_id = $1",
+        table_id,
+    )
+
+    assert tag["access"] == "members"
+    assert not await permission_service.check_access(
+        "table", table_id, member_id, workspace_id=ws_id
+    )
+
+
+@pytest.mark.asyncio
+async def test_history_share_uses_privacy_tag_members(pool):
+    owner_id = await _make_user(pool)
+    reader_id = await _make_user(pool)
+    ws_id = await _make_workspace(pool, owner_id)
+    event_id = await pool.fetchval(
+        "INSERT INTO history_events (workspace_id, created_by, agent_name, event_type, content) "
+        "VALUES ($1, $2, 'agent', 'message', 'hello') RETURNING id",
+        ws_id,
+        owner_id,
+    )
+
+    await permission_service.set_visibility("history", event_id, "private")
+    await permission_service.add_share("history", event_id, reader_id, "read", owner_id)
+
+    tag_member = await pool.fetchrow(
+        "SELECT ptm.permission FROM privacy_tag_members ptm "
+        "JOIN privacy_tag_objects pto ON pto.tag_id = ptm.tag_id "
+        "WHERE pto.object_type = 'history' AND pto.object_id = $1 AND ptm.user_id = $2",
+        event_id,
+        reader_id,
+    )
+
+    assert tag_member["permission"] == "read"
+    assert await permission_service.check_access("history", event_id, reader_id)
 
 
 @pytest.mark.asyncio

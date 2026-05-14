@@ -101,8 +101,8 @@ function SessionActions({ session }: { session: SessionSummary }) {
     try {
       const result = await materializeSession(session.workspace_id, session.session_id);
       shareModal.open({
-        stashId: session.workspace_id,
-        stashName: session.workspace_name ?? undefined,
+        workspaceId: session.workspace_id,
+        workspaceName: session.workspace_name ?? undefined,
         initial: [
           {
             object_type: "page",

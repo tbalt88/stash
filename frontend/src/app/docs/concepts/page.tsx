@@ -5,7 +5,7 @@ const CONCEPTS: { name: string; badge: string; badgeColor: string; desc: React.R
     name: "Workspace",
     badge: "Container",
     badgeColor: "bg-blue-500/10 text-blue-500",
-    desc: "Top-level permissioned container. Members share all resources — wiki pages, history, tables, files. Invite others with a short code. Set visibility to public or private.",
+    desc: "Top-level permissioned container. Members share all resources: wiki pages, history, tables, files, and Product Stashes. Invite others with a short code.",
   },
   {
     name: "History",
@@ -22,7 +22,6 @@ const CONCEPTS: { name: string; badge: string; badgeColor: string; desc: React.R
         Wiki-style markdown pages organized in nested folders, scoped to a workspace. Supports{" "}
         <Code>{"[[Page Name]]"}</Code> and <Code>{"[[folder/Page]]"}</Code> wiki links with
         backlinks, page graph visualization, and semantic search. Rich-text editor with autosave.
-        The curation tool writes here when invoked.
       </>
     ),
   },
@@ -42,13 +41,7 @@ const CONCEPTS: { name: string; badge: string; badgeColor: string; desc: React.R
     name: "Search",
     badge: "Cross-cutting",
     badgeColor: "bg-muted/20 text-muted",
-    desc: "Universal cross-resource AI search. Ask a natural language question and get a synthesized answer across wiki pages, tables, history, and files. Supports workspace scoping and resource type filtering.",
-  },
-  {
-    name: "Curation",
-    badge: "Tool",
-    badgeColor: "bg-amber-500/10 text-amber-600",
-    desc: "Automated process that reads workspace data (history, wiki, tables) and calls Claude to organize it into categorized wiki pages — merging duplicates, creating backlinks, and organizing folders. Runs automatically after agent sessions (with a 24-hour cooldown) or on demand via the /curate slash command in supported agents.",
+    desc: "Universal cross-resource AI search. Ask a natural language question and get a synthesized answer across wiki pages, tables, history, files, and Stashes. Supports workspace scoping and resource type filtering.",
   },
 ];
 

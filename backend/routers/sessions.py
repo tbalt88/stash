@@ -9,16 +9,40 @@ frontend /history page can ship a Share button without involving the CLI.
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
+from pydantic import BaseModel, Field
 
 from ..auth import get_current_user
 from ..database import get_pool
-from ..services import wiki_service, workspace_service
+from ..services import session_service, storage_service, wiki_service, workspace_service
 
 router = APIRouter(prefix="/api/v1", tags=["sessions"])
 
 # Stable name for the auto-created folder that holds materialized sessions.
 SESSIONS_FOLDER_NAME = "Sessions"
+
+
+class SessionUpsertRequest(BaseModel):
+    session_id: str = Field(..., min_length=1, max_length=128)
+    agent_name: str = Field("", max_length=64)
+    cwd: str | None = Field(None, max_length=1024)
+    files_touched: list[str] = Field(default_factory=list)
+
+
+def _session_response(row: dict) -> dict:
+    return {
+        "id": str(row["id"]),
+        "workspace_id": str(row["workspace_id"]),
+        "session_id": row["session_id"],
+        "agent_name": row.get("agent_name") or "",
+        "cwd": row.get("cwd"),
+        "summary": row.get("summary"),
+        "summary_status": row.get("summary_status"),
+        "files_touched": row.get("files_touched") or [],
+        "started_at": row.get("started_at"),
+        "finished_at": row.get("finished_at"),
+        "created_by": str(row["created_by"]) if row.get("created_by") else None,
+    }
 
 
 @router.get("/me/sessions")
@@ -69,6 +93,69 @@ async def list_my_sessions(
         *args,
     )
     return {"sessions": [dict(r) for r in rows]}
+
+
+@router.post("/workspaces/{workspace_id}/sessions", status_code=201)
+async def upsert_workspace_session(
+    workspace_id: UUID,
+    req: SessionUpsertRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    if not await workspace_service.is_member(workspace_id, current_user["id"]):
+        raise HTTPException(status_code=403, detail="Not a workspace member")
+
+    row = await session_service.upsert_session(
+        workspace_id=workspace_id,
+        session_id=req.session_id,
+        agent_name=req.agent_name,
+        cwd=req.cwd,
+        created_by=current_user["id"],
+    )
+    if req.files_touched:
+        await session_service.set_files_touched(row["id"], req.files_touched)
+        row = await session_service.get_session_by_id(row["id"])
+    return _session_response(row)
+
+
+@router.post("/workspaces/{workspace_id}/sessions/{session_row_id}/artifacts", status_code=201)
+async def upload_session_artifact(
+    workspace_id: UUID,
+    session_row_id: UUID,
+    file: UploadFile = File(...),
+    file_path: str = Form(...),
+    current_user: dict = Depends(get_current_user),
+):
+    if not await workspace_service.is_member(workspace_id, current_user["id"]):
+        raise HTTPException(status_code=403, detail="Not a workspace member")
+
+    session = await session_service.get_session_by_id(session_row_id)
+    if not session or session["workspace_id"] != workspace_id:
+        raise HTTPException(status_code=404, detail="Session not found")
+    if not storage_service.is_configured():
+        raise HTTPException(status_code=503, detail="File storage is not configured")
+
+    content = await file.read()
+    max_artifact_size = 1 * 1024 * 1024
+    if len(content) > max_artifact_size:
+        raise HTTPException(status_code=413, detail="Artifact too large (max 1 MB)")
+
+    storage_key = await storage_service.upload_file(
+        str(workspace_id),
+        file.filename or file_path.split("/")[-1],
+        content,
+        file.content_type or "application/octet-stream",
+    )
+    pool = get_pool()
+    row = await pool.fetchrow(
+        "INSERT INTO session_artifacts (session_id, file_path, storage_key, size_bytes) "
+        "VALUES ($1, $2, $3, $4) "
+        "RETURNING id, file_path, size_bytes, created_at",
+        session_row_id,
+        file_path,
+        storage_key,
+        len(content),
+    )
+    return dict(row)
 
 
 async def _find_or_create_sessions_folder(workspace_id: UUID, user_id: UUID) -> dict:

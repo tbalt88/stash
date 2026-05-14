@@ -12,7 +12,7 @@ import {
 import type { WorkspaceMember } from "../lib/types";
 
 interface MembersModalProps {
-  stashId: string;
+  workspaceId: string;
   open: boolean;
   onClose: () => void;
 }
@@ -31,7 +31,7 @@ function colorFor(name: string) {
   return PALETTE[h % PALETTE.length];
 }
 
-export default function MembersModal({ stashId, open, onClose }: MembersModalProps) {
+export default function MembersModal({ workspaceId, open, onClose }: MembersModalProps) {
   const [members, setMembers] = useState<WorkspaceMember[]>([]);
   const [meId, setMeId] = useState<string | null>(null);
   const [username, setUsername] = useState("");
@@ -44,9 +44,9 @@ export default function MembersModal({ stashId, open, onClose }: MembersModalPro
     setMsg("");
     setInviteLink("");
     setUsername("");
-    getWorkspaceMembers(stashId).then(setMembers).catch(() => {});
+    getWorkspaceMembers(workspaceId).then(setMembers).catch(() => {});
     getMe().then((u) => setMeId(u.id)).catch(() => {});
-  }, [open, stashId]);
+  }, [open, workspaceId]);
 
   if (!open) return null;
 
@@ -55,8 +55,8 @@ export default function MembersModal({ stashId, open, onClose }: MembersModalPro
 
   async function changeRole(userId: string, role: "owner" | "editor" | "viewer") {
     try {
-      await setWorkspaceMemberRole(stashId, userId, role);
-      setMembers(await getWorkspaceMembers(stashId));
+      await setWorkspaceMemberRole(workspaceId, userId, role);
+      setMembers(await getWorkspaceMembers(workspaceId));
       setMsg("Role updated.");
     } catch (e) {
       setMsg((e as Error).message || "Failed");
@@ -64,10 +64,10 @@ export default function MembersModal({ stashId, open, onClose }: MembersModalPro
   }
 
   async function kick(userId: string) {
-    if (!confirm("Remove this member from the stash?")) return;
+    if (!confirm("Remove this member from the workspace?")) return;
     try {
-      await kickWorkspaceMember(stashId, userId);
-      setMembers(await getWorkspaceMembers(stashId));
+      await kickWorkspaceMember(workspaceId, userId);
+      setMembers(await getWorkspaceMembers(workspaceId));
     } catch (e) {
       setMsg((e as Error).message || "Failed");
     }
@@ -79,13 +79,13 @@ export default function MembersModal({ stashId, open, onClose }: MembersModalPro
     setBusy(true);
     setMsg("");
     try {
-      await apiFetch(`/api/v1/workspaces/${stashId}/members`, {
+      await apiFetch(`/api/v1/workspaces/${workspaceId}/members`, {
         method: "POST",
         body: JSON.stringify({ username: username.trim() }),
       });
       setUsername("");
       setMsg("Added.");
-      setMembers(await getWorkspaceMembers(stashId));
+      setMembers(await getWorkspaceMembers(workspaceId));
     } catch (err) {
       setMsg((err as Error).message || "Failed");
     }
@@ -95,7 +95,7 @@ export default function MembersModal({ stashId, open, onClose }: MembersModalPro
   async function generateLink() {
     setBusy(true);
     try {
-      const res = await createInviteToken(stashId, 5, 7);
+      const res = await createInviteToken(workspaceId, 5, 7);
       setInviteLink(
         `${window.location.origin}/join/${res.token}`
       );
@@ -146,7 +146,7 @@ export default function MembersModal({ stashId, open, onClose }: MembersModalPro
                   {canAdmin && !isMe && m.role !== "owner" && (
                     <button
                       onClick={() => kick(m.user_id)}
-                      title="Remove from stash"
+                      title="Remove from workspace"
                       className="text-[12px] text-muted hover:text-red-400"
                     >
                       ✕

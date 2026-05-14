@@ -1,7 +1,7 @@
 """Wiki service: folders (nested) + pages, scoped to a workspace.
 
-Replaces the old notebook_service. The hierarchy is now Workspace -> Folder*
--> Page; folders nest via parent_folder_id. Wiki links resolve workspace-wide;
+The hierarchy is Workspace -> Folder* -> Page; folders nest via
+parent_folder_id. Wiki links resolve workspace-wide;
 plain `[[page]]` is first-match by name and `[[a/b/page]]` walks an explicit
 folder path.
 """
@@ -16,7 +16,6 @@ from uuid import UUID
 import asyncpg
 
 from ..database import get_pool
-from . import handoff_writer
 
 logger = logging.getLogger(__name__)
 
@@ -261,7 +260,6 @@ async def create_page(
     if content_type == "markdown" and content:
         asyncio.create_task(_update_page_links(page["id"], workspace_id, content))
     asyncio.create_task(_resolve_dangling_links(workspace_id, name, page["id"]))
-    handoff_writer.mark_stale_bg(workspace_id)
     return page
 
 
@@ -413,7 +411,6 @@ async def update_page(
                     asyncio.create_task(
                         _update_page_links(page["id"], workspace_id, page["content_markdown"])
                     )
-            handoff_writer.mark_stale_bg(workspace_id)
             return page
 
         if expected_hash is None:
@@ -462,7 +459,6 @@ async def delete_page(page_id: UUID, workspace_id: UUID) -> bool:
         page_id,
         workspace_id,
     )
-    handoff_writer.mark_stale_bg(workspace_id)
     return result == "DELETE 1"
 
 

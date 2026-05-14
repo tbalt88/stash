@@ -1,9 +1,4 @@
-"""Wiki router: workspace-scoped folders (nested) and pages.
-
-Replaces the old notebook router. Folders sit directly under the workspace,
-nest via parent_folder_id, and pages live either at the workspace root or
-inside a folder.
-"""
+"""Wiki router: workspace-scoped folders (nested) and pages."""
 
 from uuid import UUID
 
@@ -427,7 +422,9 @@ async def set_folder_visibility(
     ):
         raise HTTPException(status_code=403, detail="Not allowed to share this folder")
     await _check_ws_owns_folder(workspace_id, folder_id)
-    await permission_service.set_visibility("folder", folder_id, req.visibility)
+    await permission_service.set_privacy_visibility(
+        "folder", folder_id, req.visibility, current_user["id"]
+    )
     return {"status": "ok", "visibility": req.visibility}
 
 

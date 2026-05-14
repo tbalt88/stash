@@ -2,16 +2,16 @@
 
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
-import { semanticSearchPages, type StashSidebar } from "../lib/api";
+import { semanticSearchPages, type WorkspaceSidebar } from "../lib/api";
 import {
-  getCachedStashSidebar,
-  readCachedStashSidebar,
+  getCachedWorkspaceSidebar,
+  readCachedWorkspaceSidebar,
 } from "../lib/stashNavigationCache";
 
 interface CommandPaletteProps {
   open: boolean;
   onClose: () => void;
-  stashId: string | null;
+  workspaceId: string | null;
 }
 
 interface Result {
@@ -21,10 +21,10 @@ interface Result {
   detail?: string;
 }
 
-export default function CommandPalette({ open, onClose, stashId }: CommandPaletteProps) {
+export default function CommandPalette({ open, onClose, workspaceId }: CommandPaletteProps) {
   const [query, setQuery] = useState("");
-  const [spine, setSpine] = useState<StashSidebar | null>(() =>
-    stashId ? readCachedStashSidebar(stashId) : null
+  const [spine, setSpine] = useState<WorkspaceSidebar | null>(() =>
+    workspaceId ? readCachedWorkspaceSidebar(workspaceId) : null
   );
   const [results, setResults] = useState<Result[]>([]);
   const [selected, setSelected] = useState(0);
@@ -36,18 +36,18 @@ export default function CommandPalette({ open, onClose, stashId }: CommandPalett
     setResults([]);
     setSelected(0);
     inputRef.current?.focus();
-    const cached = stashId ? readCachedStashSidebar(stashId) : null;
+    const cached = workspaceId ? readCachedWorkspaceSidebar(workspaceId) : null;
     if (cached) {
       setSpine(cached);
       return;
     }
     setSpine(null);
-    if (stashId) {
-      getCachedStashSidebar(stashId)
+    if (workspaceId) {
+      getCachedWorkspaceSidebar(workspaceId)
         .then(setSpine)
         .catch(() => {});
     }
-  }, [open, stashId]);
+  }, [open, workspaceId]);
 
   useEffect(() => {
     if (!open || !query.trim()) {
@@ -58,13 +58,13 @@ export default function CommandPalette({ open, onClose, stashId }: CommandPalett
 
     // Local spine fuzzy match (instant)
     const local: Result[] = [];
-    if (spine && stashId) {
+    if (spine && workspaceId) {
       spine.wiki.pages.forEach((p) => {
         if (p.name.toLowerCase().includes(q))
           local.push({
             kind: "page",
             label: p.name.replace(/\.md$/, ""),
-            href: `/stashes/${stashId}/p/${p.id}`,
+            href: `/workspaces/${workspaceId}/p/${p.id}`,
             detail: "Page",
           });
       });
@@ -73,7 +73,7 @@ export default function CommandPalette({ open, onClose, stashId }: CommandPalett
           local.push({
             kind: "session",
             label: `#${s.session_id}`,
-            href: `/stashes/${stashId}/sessions/${encodeURIComponent(s.session_id)}`,
+            href: `/workspaces/${workspaceId}/sessions/${encodeURIComponent(s.session_id)}`,
             detail: s.agent_name,
           });
       });
@@ -82,7 +82,7 @@ export default function CommandPalette({ open, onClose, stashId }: CommandPalett
           local.push({
             kind: "folder",
             label: f.name,
-            href: `/stashes/${stashId}/folders/${f.id}`,
+            href: `/workspaces/${workspaceId}/folders/${f.id}`,
             detail: `${f.page_count} pages · ${f.file_count} files`,
           });
       });
@@ -92,8 +92,8 @@ export default function CommandPalette({ open, onClose, stashId }: CommandPalett
             kind: "file",
             label: f.name,
             href: f.linked_table_id
-              ? `/tables/${f.linked_table_id}?workspaceId=${stashId}`
-              : `/stashes/${stashId}/f/${f.id}`,
+              ? `/tables/${f.linked_table_id}?workspaceId=${workspaceId}`
+              : `/workspaces/${workspaceId}/f/${f.id}`,
             detail: f.content_type,
           });
       });
@@ -102,14 +102,14 @@ export default function CommandPalette({ open, onClose, stashId }: CommandPalett
     setSelected(0);
 
     // Remote debounce (250ms): semantic page search
-    if (!stashId) return;
+    if (!workspaceId) return;
     const timer = setTimeout(async () => {
       try {
-        const pages = await semanticSearchPages(stashId, query, 6);
+        const pages = await semanticSearchPages(workspaceId, query, 6);
         const remote: Result[] = pages.map((p) => ({
           kind: "page" as const,
           label: p.name.replace(/\.md$/, ""),
-          href: `/stashes/${stashId}/p/${p.id}`,
+          href: `/workspaces/${workspaceId}/p/${p.id}`,
           detail: "Wiki page",
         }));
         setResults((prev) => {
@@ -121,7 +121,7 @@ export default function CommandPalette({ open, onClose, stashId }: CommandPalett
       }
     }, 250);
     return () => clearTimeout(timer);
-  }, [query, open, spine, stashId]);
+  }, [query, open, spine, workspaceId]);
 
   useEffect(() => {
     if (!open) return;

@@ -82,7 +82,6 @@ async def get_or_create_user_from_auth0(
         name=ws_name,
         description="",
         creator_id=user["id"],
-        is_public=False,
     )
 
     if email:

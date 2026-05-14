@@ -10,7 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from ..auth import get_current_user
 from ..config import settings
 from ..models import PublishRequest, PublishResponse
-from ..services import permission_service, view_service, wiki_service, workspace_service
+from ..services import permission_service, stash_service, wiki_service, workspace_service
 
 router = APIRouter(prefix="/api/v1", tags=["publish"])
 
@@ -48,7 +48,7 @@ async def publish(
 
     await permission_service.set_visibility("page", page["id"], req.audience)
 
-    view = await view_service.find_or_create_share_link_view(
+    stash = await stash_service.find_or_create_share_link_stash(
         workspace_id=req.workspace_id,
         owner_id=current_user["id"],
         object_type="page",
@@ -61,7 +61,7 @@ async def publish(
         folder_id=target_folder["id"],
         workspace_id=req.workspace_id,
         visibility=req.audience,
-        url=f"{base}/v/{view['slug']}",
-        view_id=view["id"],
-        view_slug=view["slug"],
+        url=f"{base}/stashes/{stash['slug']}",
+        stash_id=stash["id"],
+        stash_slug=stash["slug"],
     )

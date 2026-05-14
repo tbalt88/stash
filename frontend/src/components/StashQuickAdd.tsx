@@ -5,7 +5,7 @@ import { createPage, ensureHopperFolder, uploadFile } from "../lib/api";
 import type { User } from "../lib/types";
 
 interface StashQuickAddProps {
-  stashId: string;
+  workspaceId: string;
   user: User;
   onAdded?: () => void;
 }
@@ -14,7 +14,7 @@ type Status = "idle" | "saving" | "saved" | "error";
 
 const URL_RE = /^https?:\/\/\S+$/i;
 
-export default function StashQuickAdd({ stashId, user: _user, onAdded }: StashQuickAddProps) {
+export default function StashQuickAdd({ workspaceId, user: _user, onAdded }: StashQuickAddProps) {
   const [value, setValue] = useState("");
   const [status, setStatus] = useState<Status>("idle");
   const [dragActive, setDragActive] = useState(false);
@@ -35,13 +35,13 @@ export default function StashQuickAdd({ stashId, user: _user, onAdded }: StashQu
 
     setStatus("saving");
     try {
-      const hopperId = await ensureHopperFolder(stashId);
+      const hopperId = await ensureHopperFolder(workspaceId);
       const isUrl = URL_RE.test(text);
       const title = isUrl
         ? text.replace(/^https?:\/\//, "").slice(0, 80)
         : text.split("\n")[0].slice(0, 80) || "Note";
       const body = isUrl ? `<${text}>` : text;
-      await createPage(stashId, title, hopperId, body);
+      await createPage(workspaceId, title, hopperId, body);
     } catch {
       setStatus("error");
       flashHint("Couldn't save — try again", 2500);
@@ -61,9 +61,9 @@ export default function StashQuickAdd({ stashId, user: _user, onAdded }: StashQu
     setStatus("saving");
     flashHint(list.length === 1 ? `Uploading ${list[0].name}…` : `Uploading ${list.length} files…`, 8000);
     try {
-      const hopperId = await ensureHopperFolder(stashId);
+      const hopperId = await ensureHopperFolder(workspaceId);
       for (const f of list) {
-        await uploadFile(stashId, f, hopperId);
+        await uploadFile(workspaceId, f, hopperId);
       }
     } catch {
       setStatus("error");
@@ -115,7 +115,7 @@ export default function StashQuickAdd({ stashId, user: _user, onAdded }: StashQu
 
   const statusText =
     hint ||
-    (status === "saved" ? "Added to stash" : "");
+    (status === "saved" ? "Added to wiki" : "");
   const statusTone =
     status === "error"
       ? "text-red-500"

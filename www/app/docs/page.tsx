@@ -17,13 +17,10 @@ export default function DocsOverview() {
 
       <H3>How Stash Works</H3>
       <P>
-        Stash auto-uploads coding
-        agent transcripts to a shared store, indexes them,
-        and then makes those transcripts accessible to every other coding agent using the repo.
-
-        Every research result, file, and message lands in a shared workspace. Stash
-        organizes this information into a categorized wiki, with backlinks, summaries, and semantic search
-        so contributor to your repo can find and build on what others have learned.
+        Stash auto-uploads coding agent transcripts to a shared store, indexes them,
+        and makes those transcripts accessible to every other coding agent using the repo.
+        Durable knowledge lives in the workspace wiki, and Product Stashes let you
+        publish useful combinations of sessions, pages, and files.
       </P>
 
       <H3>Example: Don&apos;t Duplicate Work</H3>

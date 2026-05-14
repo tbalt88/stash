@@ -1,19 +1,17 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 
-import { APP_URL, fetchCatalog, type CatalogCard } from "../../lib/discover";
+import { APP_URL, fetchCatalog, type PublicStashCard } from "../../lib/discover";
 
 export const metadata: Metadata = {
   title: "Discover Stashes · Stash",
   description:
-    "Browse curated public Stashes — shared agent memory, notebooks, tables, and chats from teams building in the open.",
+    "Browse public Product Stashes — shared sessions, wiki pages, tables, and files from teams building in the open.",
 };
 
 type SearchParams = {
   q?: string;
-  category?: string;
-  tag?: string;
-  sort?: "trending" | "newest" | "forks";
+  sort?: "trending" | "newest" | "popular";
 };
 
 export default async function DiscoverPage({
@@ -23,7 +21,7 @@ export default async function DiscoverPage({
 }) {
   const params = await searchParams;
   const sort = params.sort ?? "trending";
-  const { workspaces } = await fetchCatalog({ ...params, sort });
+  const { stashes } = await fetchCatalog({ ...params, sort });
 
   return (
     <main className="min-h-screen bg-background text-foreground">
@@ -35,25 +33,24 @@ export default async function DiscoverPage({
           Discover
         </p>
         <h1 className="mt-5 text-balance font-display text-[clamp(36px,4.6vw,56px)] font-black leading-[1.02] tracking-[-0.035em] text-ink">
-          Curated public Stashes from teams<br />
+          Public Product Stashes from teams<br />
           <span className="text-brand">building in the open.</span>
         </h1>
         <p className="mt-6 max-w-[640px] text-[17px] leading-[1.6] text-foreground">
-          Browse notebooks, tables, files, and chat history from public Stashes
-          selected for the catalog. Open one to read it without signing in.
-          Fork it to make a copy you can edit.
+          Browse sessions, wiki pages, tables, and files from public Product
+          Stashes. Open one to read it without signing in.
         </p>
 
         <SortBar current={sort} query={params.q} />
       </section>
 
       <section className="mx-auto max-w-[1200px] px-7 pb-24">
-        {workspaces.length === 0 ? (
+        {stashes.length === 0 ? (
           <EmptyState />
         ) : (
           <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
-            {workspaces.map((w) => (
-              <Card key={w.id} ws={w} />
+            {stashes.map((stash) => (
+              <Card key={stash.id} stash={stash} />
             ))}
           </div>
         )}
@@ -98,7 +95,7 @@ function SortBar({ current, query }: { current: string; query?: string }) {
   const tabs = [
     { key: "trending", label: "Trending" },
     { key: "newest", label: "Newest" },
-    { key: "forks", label: "Most forked" },
+    { key: "popular", label: "Most viewed" },
   ];
   return (
     <div className="mt-10 flex flex-wrap items-center gap-2 border-b border-border-subtle pb-2">
@@ -121,76 +118,49 @@ function SortBar({ current, query }: { current: string; query?: string }) {
   );
 }
 
-function Card({ ws }: { ws: CatalogCard }) {
-  const owner = ws.creator_display_name || ws.creator_name;
-  const updated = relativeTime(ws.updated_at);
-  const shape = [
-    ws.page_count && `${ws.page_count} page${ws.page_count === 1 ? "" : "s"}`,
-    ws.table_count && `${ws.table_count} table${ws.table_count === 1 ? "" : "s"}`,
-    ws.file_count && `${ws.file_count} file${ws.file_count === 1 ? "" : "s"}`,
-  ]
-    .filter(Boolean)
-    .join(" · ");
+function Card({ stash }: { stash: PublicStashCard }) {
+  const owner = stash.owner_display_name || stash.owner_name;
+  const updated = relativeTime(stash.updated_at);
 
   return (
     <Link
-      href={`${APP_URL}/s/${ws.id}`}
+      href={`${APP_URL}/stashes/${stash.slug}`}
       className="group flex flex-col rounded-xl border border-border-subtle bg-raised/40 p-5 transition hover:border-ink"
     >
-      <Cover ws={ws} />
+      <Cover stash={stash} />
       <div className="mt-4 flex items-start justify-between gap-3">
         <h3 className="font-display text-[18px] font-bold leading-tight text-ink group-hover:text-brand">
-          {ws.name}
+          {stash.title}
         </h3>
-        {ws.featured ? (
-          <span className="rounded-md border border-brand/40 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wider text-brand">
-            Featured
-          </span>
-        ) : null}
       </div>
       <p className="mt-2 line-clamp-2 text-[14px] leading-[1.5] text-dim">
-        {ws.summary || ws.description || "No description yet."}
+        {stash.description || "No description yet."}
       </p>
-      {shape ? (
-        <p className="mt-3 font-mono text-[11px] uppercase tracking-wider text-muted">
-          {shape}
-        </p>
-      ) : null}
+      <p className="mt-3 font-mono text-[11px] uppercase tracking-wider text-muted">
+        {stash.item_count} item{stash.item_count === 1 ? "" : "s"} /{" "}
+        {stash.view_count} view{stash.view_count === 1 ? "" : "s"}
+      </p>
       <div className="mt-auto flex items-center justify-between pt-4 text-[12px] text-dim">
         <span>by {owner}</span>
         <span className="flex items-center gap-3">
-          <span title="Forks">★ {ws.fork_count}</span>
-          <span title="Members">{ws.member_count} member{ws.member_count === 1 ? "" : "s"}</span>
+          <span>{stash.workspace_name}</span>
           <span>{updated}</span>
         </span>
       </div>
-      {ws.tags?.length ? (
-        <div className="mt-3 flex flex-wrap gap-1.5">
-          {ws.tags.slice(0, 3).map((t) => (
-            <span
-              key={t}
-              className="rounded-md border border-border-subtle px-2 py-0.5 font-mono text-[10px] text-muted"
-            >
-              {t}
-            </span>
-          ))}
-        </div>
-      ) : null}
     </Link>
   );
 }
 
-function Cover({ ws }: { ws: CatalogCard }) {
-  if (ws.cover_image_url) {
+function Cover({ stash }: { stash: PublicStashCard }) {
+  if (stash.cover_image_url) {
     return (
       <div
         className="h-28 w-full rounded-lg bg-cover bg-center"
-        style={{ backgroundImage: `url(${ws.cover_image_url})` }}
+        style={{ backgroundImage: `url(${stash.cover_image_url})` }}
       />
     );
   }
-  // Deterministic gradient seeded by id so cards stay stable across renders.
-  const hue = hashHue(ws.id);
+  const hue = hashHue(stash.id);
   const bg = `linear-gradient(135deg, hsl(${hue} 70% 60% / 0.9), hsl(${(hue + 60) % 360} 70% 50% / 0.7))`;
   return <div className="h-28 w-full rounded-lg" style={{ background: bg }} />;
 }
@@ -199,7 +169,7 @@ function EmptyState() {
   return (
     <div className="rounded-xl border border-dashed border-border-subtle bg-raised/30 p-12 text-center">
       <p className="font-display text-[20px] font-bold text-ink">
-        No curated public Stashes yet.
+        No public Product Stashes yet.
       </p>
       <p className="mt-2 text-[14px] text-dim">
         Public Stashes appear here after they are selected for Discover.

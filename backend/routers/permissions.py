@@ -1,9 +1,4 @@
-"""Unified permissions router: one endpoint surface for every shareable object.
-
-Sits at /api/v1/objects/{object_type}/{object_id} and gives the share sheet a
-single API to talk to regardless of whether it's sharing a workspace, a
-folder, a single page, a table, a file, a history event, or a View itself.
-"""
+"""Privacy tag endpoints for shareable workspace content."""
 
 from uuid import UUID
 
@@ -19,14 +14,15 @@ from ..models import (
     ShareRequest,
     ShareResponse,
 )
-from ..services import permission_service, view_service, workspace_service
+from ..services import permission_service, stash_service
 
 router = APIRouter(prefix="/api/v1/objects", tags=["permissions"])
 
 
-# Object types the share sheet can operate on. 'view' is included so that a
-# View's curation can be co-edited via object_shares.
-_SHAREABLE = {"workspace", "folder", "page", "table", "file", "history", "view"}
+# Object types whose privacy is governed by tags.
+_PRIVACY_TAG_TYPES = {"folder", "page", "session", "table", "file", "history"}
+_SHAREABLE = {"folder", "page", "session", "table", "file", "history", "stash"}
+_DIRECT_SHARE_TYPES = {"folder", "page", "session", "table", "file", "history"}
 
 
 async def _require_can_share(object_type: str, object_id: UUID, user_id: UUID) -> None:
@@ -41,16 +37,10 @@ async def _require_can_share(object_type: str, object_id: UUID, user_id: UUID) -
     if workspace_id is None:
         raise HTTPException(status_code=404, detail="Object not found")
 
-    if object_type == "view":
-        if await view_service.user_can_manage(object_id, user_id):
+    if object_type == "stash":
+        if await stash_service.user_can_manage(object_id, user_id):
             return
-        raise HTTPException(status_code=403, detail="Not allowed to manage this view")
-
-    if object_type == "workspace":
-        role = await workspace_service.get_member_role(workspace_id, user_id)
-        if role not in workspace_service.ROLES_CAN_READ:
-            raise HTTPException(status_code=403, detail="Only workspace members can share")
-        return
+        raise HTTPException(status_code=403, detail="Not allowed to manage this stash")
 
     can_read = await permission_service.check_access(
         object_type, object_id, user_id, workspace_id=workspace_id, require_write=False
@@ -66,6 +56,8 @@ async def get_permissions(
     current_user: dict = Depends(get_current_user),
 ):
     await _require_can_share(object_type, object_id, current_user["id"])
+    if object_type not in _PRIVACY_TAG_TYPES:
+        raise HTTPException(status_code=400, detail="Publish or add the Stash to share it")
     perms = await permission_service.get_permissions(object_type, object_id)
     return PermissionResponse(**perms)
 
@@ -78,7 +70,11 @@ async def set_visibility(
     current_user: dict = Depends(get_current_user),
 ):
     await _require_can_share(object_type, object_id, current_user["id"])
-    await permission_service.set_visibility(object_type, object_id, req.visibility)
+    if object_type not in _PRIVACY_TAG_TYPES:
+        raise HTTPException(status_code=400, detail="Publish or add the Stash to share it")
+    await permission_service.set_privacy_visibility(
+        object_type, object_id, req.visibility, current_user["id"]
+    )
     return {"status": "ok", "visibility": req.visibility}
 
 
@@ -90,6 +86,8 @@ async def add_share(
     current_user: dict = Depends(get_current_user),
 ):
     await _require_can_share(object_type, object_id, current_user["id"])
+    if object_type not in _DIRECT_SHARE_TYPES:
+        raise HTTPException(status_code=400, detail="Publish or add the Stash to share it")
     share = await permission_service.add_share(
         object_type, object_id, req.user_id, req.permission, current_user["id"]
     )
@@ -112,6 +110,8 @@ async def remove_share(
     current_user: dict = Depends(get_current_user),
 ):
     await _require_can_share(object_type, object_id, current_user["id"])
+    if object_type not in _DIRECT_SHARE_TYPES:
+        raise HTTPException(status_code=400, detail="Publish or add the Stash to share it")
     await permission_service.remove_share(object_type, object_id, user_id)
 
 
@@ -127,10 +127,10 @@ async def create_share_link(
 ):
     """Idempotently mint the URL for the share sheet's "Copy link" button.
 
-    For a workspace the URL is /s/{id}. For every other shareable object we
-    auto-create (or reuse) a one-item View pointing at it and return /v/{slug}.
-    The View is just the slugged shell — access is governed by the object's
-    own permissions, not by the View.
+    For shareable objects, this auto-creates (or reuses) a one-item Stash and
+    returns /stashes/{slug}.
+    The Product Stash is just the slugged shell — access is governed by the
+    object's own permissions, not by the Stash.
 
     `ensure=link|public`: raise the underlying object's visibility to at
     least the requested level before returning the URL. Without this, an
@@ -138,26 +138,22 @@ async def create_share_link(
     immediately 404s for anonymous viewers — easy to forget, hard to debug."""
     await _require_can_share(object_type, object_id, current_user["id"])
 
-    if ensure and object_type != "view":
+    if ensure and object_type != "stash":
         current_vis = await permission_service.get_visibility(object_type, object_id)
         if _VISIBILITY_RANK.get(current_vis, 0) < _VISIBILITY_RANK[ensure]:
             await permission_service.set_visibility(object_type, object_id, ensure)
 
     base = settings.PUBLIC_URL.rstrip("/")
 
-    if object_type == "workspace":
-        return ShareLinkResponse(url=f"{base}/s/{object_id}", kind="workspace")
-
-    if object_type == "view":
-        # Views already have their own /v/{slug} URL — return it directly
-        # rather than wrapping a View around a View.
-        view = await view_service.get_view(object_id)
-        if not view:
-            raise HTTPException(status_code=404, detail="View not found")
+    if object_type == "stash":
+        # Stashes already have their own public URL, so return it directly.
+        stash = await stash_service.get_stash(object_id)
+        if not stash:
+            raise HTTPException(status_code=404, detail="Stash not found")
         if ensure:
-            for item in view["items"]:
+            for item in stash["items"]:
                 await _require_can_share(item["object_type"], item["object_id"], current_user["id"])
-            for item in view["items"]:
+            for item in stash["items"]:
                 current_vis = await permission_service.get_visibility(
                     item["object_type"], item["object_id"]
                 )
@@ -166,25 +162,25 @@ async def create_share_link(
                         item["object_type"], item["object_id"], ensure
                     )
         return ShareLinkResponse(
-            url=f"{base}/v/{view['slug']}",
-            kind="view",
-            view_id=view["id"],
-            view_slug=view["slug"],
+            url=f"{base}/stashes/{stash['slug']}",
+            kind="stash",
+            stash_id=stash["id"],
+            stash_slug=stash["slug"],
         )
 
     workspace_id = await permission_service.resolve_workspace_id(object_type, object_id)
     if workspace_id is None:
         raise HTTPException(status_code=404, detail="Object not found")
 
-    view = await view_service.find_or_create_share_link_view(
+    stash = await stash_service.find_or_create_share_link_stash(
         workspace_id=workspace_id,
         owner_id=current_user["id"],
         object_type=object_type,
         object_id=object_id,
     )
     return ShareLinkResponse(
-        url=f"{base}/v/{view['slug']}",
-        kind="view",
-        view_id=view["id"],
-        view_slug=view["slug"],
+        url=f"{base}/stashes/{stash['slug']}",
+        kind="stash",
+        stash_id=stash["id"],
+        stash_slug=stash["slug"],
     )

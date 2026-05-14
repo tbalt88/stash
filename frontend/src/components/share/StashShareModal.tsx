@@ -2,14 +2,14 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  createSharedView,
-  deleteView,
-  getStashSidebar,
-  listViews,
-  materializeSession,
-  type StashSidebar,
-  type StashView,
-  type ViewItemSpec,
+  publishStash,
+  deleteStash,
+  getWorkspaceSidebar,
+  listStashes,
+  removeExternalStash,
+  type WorkspaceSidebar,
+  type WorkspaceStash,
+  type StashItemSpec,
 } from "../../lib/api";
 import { useShareModal } from "../../lib/shareModalContext";
 
@@ -32,6 +32,7 @@ interface SelectableRow {
 
 interface SessionRow {
   key: string;
+  object_id: string;
   session_id: string;
   label: string;
   sub: string;
@@ -50,28 +51,29 @@ function selectedCount(s: SelectedState): number {
 
 export default function StashShareModal() {
   const { state, close, bumpVersion } = useShareModal();
-  const { open, stashId, stashName, initial, tab: initialTab } = state;
+  const { open, workspaceId, workspaceName, initial, tab: initialTab } = state;
 
   const [tab, setTab] = useState<Tab>(initialTab ?? "new");
-  const [spine, setSpine] = useState<StashSidebar | null>(null);
-  const [views, setViews] = useState<StashView[]>([]);
+  const [spine, setSpine] = useState<WorkspaceSidebar | null>(null);
+  const [stashes, setStashes] = useState<WorkspaceStash[]>([]);
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<SelectedState>(EMPTY_SELECTED);
   const [title, setTitle] = useState("");
   const [visibility, setVisibility] = useState<Visibility>("link");
+  const [shareToDiscover, setShareToDiscover] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [copiedSlug, setCopiedSlug] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
-    if (!stashId) return;
-    const [spineResult, viewsResult] = await Promise.allSettled([
-      getStashSidebar(stashId),
-      listViews(stashId),
+    if (!workspaceId) return;
+    const [spineResult, stashesResult] = await Promise.allSettled([
+      getWorkspaceSidebar(workspaceId),
+      listStashes(workspaceId),
     ]);
     if (spineResult.status === "fulfilled") setSpine(spineResult.value);
-    if (viewsResult.status === "fulfilled") setViews(viewsResult.value);
-  }, [stashId]);
+    if (stashesResult.status === "fulfilled") setStashes(stashesResult.value);
+  }, [workspaceId]);
 
   useEffect(() => {
     if (!open) return;
@@ -80,6 +82,7 @@ export default function StashShareModal() {
     setError("");
     setTitle("");
     setVisibility("link");
+    setShareToDiscover(false);
     setCopiedSlug(null);
     setSelected(buildInitialSelection(initial));
     refresh();
@@ -172,11 +175,11 @@ export default function StashShareModal() {
   }, [total, selected]);
 
   const onSubmit = async () => {
-    if (!stashId || total === 0) return;
+    if (!workspaceId || total === 0) return;
     setSubmitting(true);
     setError("");
     try {
-      const items: ViewItemSpec[] = [];
+      const items: StashItemSpec[] = [];
       let pos = 0;
       for (const row of selected.rows.values()) {
         items.push({
@@ -185,25 +188,24 @@ export default function StashShareModal() {
           position: pos++,
         });
       }
-      // Sessions become pages via the same materialize flow the history page uses.
-      // Idempotent: re-materializing maps to the same wiki page.
       for (const sess of selected.sessions.values()) {
-        const m = await materializeSession(stashId, sess.session_id);
         items.push({
-          object_type: "page",
-          object_id: m.page.id,
+          object_type: "session",
+          object_id: sess.object_id,
           position: pos++,
           label_override: sess.label,
         });
       }
       const finalTitle = title.trim() || defaultTitle;
-      const result = await createSharedView(stashId, finalTitle, items, {
+      const result = await publishStash(workspaceId, finalTitle, items, {
         ensure: visibility,
+        discoverable: visibility === "public" && shareToDiscover,
       });
       await navigator.clipboard.writeText(result.url).catch(() => {});
-      setCopiedSlug(result.view.slug);
+      setCopiedSlug(result.stash.slug);
       setSelected(EMPTY_SELECTED);
       setTitle("");
+      setShareToDiscover(false);
       await refresh();
       bumpVersion();
       setTab("manage");
@@ -214,11 +216,18 @@ export default function StashShareModal() {
     }
   };
 
-  const onDelete = async (viewId: string) => {
-    if (!confirm("Revoke this share link? Anyone with the URL will get a 404.")) return;
+  const onDelete = async (stash: WorkspaceStash) => {
+    const message = stash.is_external
+      ? "Remove this external stash from the workspace?"
+      : "Delete this stash? Anyone with the public URL will get a 404.";
+    if (!confirm(message)) return;
     try {
-      await deleteView(viewId);
-      setViews((v) => v.filter((x) => x.id !== viewId));
+      if (stash.is_external && stash.added_to_workspace_id) {
+        await removeExternalStash(stash.added_to_workspace_id, stash.id);
+      } else {
+        await deleteStash(stash.id);
+      }
+      setStashes((v) => v.filter((x) => x.id !== stash.id));
       bumpVersion();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to revoke");
@@ -237,16 +246,16 @@ export default function StashShareModal() {
         <div className="flex items-center justify-between border-b border-border-subtle px-5 py-3">
           <div className="flex items-center gap-3">
             <h2 className="font-display text-[15px] font-semibold text-foreground">
-              Share {stashName || "stash"}
+              Create stash from {workspaceName || "workspace"}
             </h2>
             <div className="flex rounded-md border border-border bg-surface text-[12px]">
               <TabButton active={tab === "new"} onClick={() => setTab("new")}>
-                New share
+                New stash
               </TabButton>
               <TabButton
                 active={tab === "manage"}
                 onClick={() => setTab("manage")}
-                badge={views.length}
+                badge={stashes.length}
               >
                 Manage
               </TabButton>
@@ -274,7 +283,12 @@ export default function StashShareModal() {
             setTitle={setTitle}
             placeholderTitle={defaultTitle}
             visibility={visibility}
-            setVisibility={setVisibility}
+            setVisibility={(next) => {
+              setVisibility(next);
+              if (next === "link") setShareToDiscover(false);
+            }}
+            shareToDiscover={shareToDiscover}
+            setShareToDiscover={setShareToDiscover}
             submitting={submitting}
             onSubmit={onSubmit}
             total={total}
@@ -282,7 +296,7 @@ export default function StashShareModal() {
           />
         ) : (
           <ManageTab
-            views={views}
+            stashes={stashes}
             onDelete={onDelete}
             copiedSlug={copiedSlug}
             setCopiedSlug={setCopiedSlug}
@@ -347,6 +361,8 @@ function NewShareTab(props: {
   placeholderTitle: string;
   visibility: Visibility;
   setVisibility: (v: Visibility) => void;
+  shareToDiscover: boolean;
+  setShareToDiscover: (v: boolean) => void;
   submitting: boolean;
   onSubmit: () => void;
   total: number;
@@ -369,6 +385,8 @@ function NewShareTab(props: {
     placeholderTitle,
     visibility,
     setVisibility,
+    shareToDiscover,
+    setShareToDiscover,
     submitting,
     onSubmit,
     total,
@@ -487,7 +505,7 @@ function NewShareTab(props: {
         )}
         {filteredRows.length === 0 && filteredSessions.length === 0 && (
           <div className="py-8 text-center text-[12.5px] text-muted">
-            {search ? "No matches." : "This stash is empty."}
+            {search ? "No matches." : "This workspace is empty."}
           </div>
         )}
       </div>
@@ -499,7 +517,7 @@ function NewShareTab(props: {
             <input
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              placeholder={placeholderTitle || "Untitled share"}
+              placeholder={placeholderTitle || "Untitled stash"}
               className="rounded-md border border-border bg-surface px-2 py-1.5"
             />
           </label>
@@ -516,6 +534,23 @@ function NewShareTab(props: {
           </label>
         </div>
 
+        {visibility === "public" && (
+          <label className="mb-2 flex items-start gap-2 rounded-md border border-border-subtle bg-surface px-3 py-2 text-[12px]">
+            <input
+              type="checkbox"
+              checked={shareToDiscover}
+              onChange={(e) => setShareToDiscover(e.target.checked)}
+              className="mt-0.5"
+            />
+            <span className="min-w-0">
+              <span className="block font-medium text-foreground">Share to Discover</span>
+              <span className="block text-muted">
+                List this public Stash in the catalog for anyone to browse.
+              </span>
+            </span>
+          </label>
+        )}
+
         {error && (
           <div className="mb-2 rounded-md border border-red-300/40 bg-red-500/10 px-3 py-1.5 text-[12px] text-red-400">
             {error}
@@ -525,7 +560,7 @@ function NewShareTab(props: {
         <div className="flex items-center justify-between gap-2">
           <span className="text-[12px] text-muted">
             {total === 0
-              ? "Pick at least one thing to share."
+              ? "Pick at least one thing to include."
               : `${total} item${total === 1 ? "" : "s"} selected`}
           </span>
           <button
@@ -533,7 +568,7 @@ function NewShareTab(props: {
             disabled={submitting || total === 0}
             className="rounded-md bg-[var(--color-brand-600)] px-3 py-1.5 text-[13px] font-medium text-white hover:bg-[var(--color-brand-700)] disabled:opacity-40"
           >
-            {submitting ? "Creating…" : "Create share link"}
+            {submitting ? "Creating…" : "Create stash"}
           </button>
         </div>
       </div>
@@ -542,17 +577,17 @@ function NewShareTab(props: {
 }
 
 function ManageTab(props: {
-  views: StashView[];
-  onDelete: (viewId: string) => void;
+  stashes: WorkspaceStash[];
+  onDelete: (stash: WorkspaceStash) => void;
   copiedSlug: string | null;
   setCopiedSlug: (s: string | null) => void;
   error: string;
 }) {
-  const { views, onDelete, copiedSlug, setCopiedSlug, error } = props;
-  if (views.length === 0) {
+  const { stashes, onDelete, copiedSlug, setCopiedSlug, error } = props;
+  if (stashes.length === 0) {
     return (
       <div className="px-5 py-10 text-center text-[12.5px] text-muted">
-        No share links yet. Use the New share tab to create one.
+        No stashes yet. Use the New stash tab to create one.
       </div>
     );
   }
@@ -564,8 +599,8 @@ function ManageTab(props: {
         </div>
       )}
       <ul className="flex flex-col gap-2">
-        {views.map((v) => {
-          const url = absoluteUrl(`/v/${v.slug}`);
+        {stashes.map((v) => {
+          const url = absoluteUrl(`/stashes/${v.slug}`);
           const isCopied = copiedSlug === v.slug;
           return (
             <li
@@ -579,7 +614,9 @@ function ManageTab(props: {
                   </div>
                   <div className="mt-0.5 text-[11px] text-muted">
                     {v.items.length} item{v.items.length === 1 ? "" : "s"} ·{" "}
+                    {v.is_external ? "External" : "Native"} ·{" "}
                     {v.is_public ? "Public" : "Anyone with the link"} ·{" "}
+                    {v.discoverable ? "Discover · " : ""}
                     {v.view_count} view{v.view_count === 1 ? "" : "s"}
                   </div>
                   <a
@@ -603,10 +640,10 @@ function ManageTab(props: {
                     {isCopied ? "Copied" : "Copy"}
                   </button>
                   <button
-                    onClick={() => onDelete(v.id)}
+                    onClick={() => onDelete(v)}
                     className="rounded-md border border-border-subtle px-2 py-1 text-[11px] text-muted hover:border-red-400 hover:text-red-400"
                   >
-                    Revoke
+                    {v.is_external ? "Remove" : "Revoke"}
                   </button>
                 </div>
               </div>
@@ -717,7 +754,7 @@ function Row({
   );
 }
 
-function buildInitialSelection(initial: ViewItemSpec[] | undefined): SelectedState {
+function buildInitialSelection(initial: StashItemSpec[] | undefined): SelectedState {
   if (!initial?.length) return EMPTY_SELECTED;
   const rows = new Map<string, SelectableRow>();
   for (const item of initial) {
@@ -742,7 +779,7 @@ function buildInitialSelection(initial: ViewItemSpec[] | undefined): SelectedSta
   return { rows, sessions: new Map() };
 }
 
-function buildRows(spine: StashSidebar | null): SelectableRow[] {
+function buildRows(spine: WorkspaceSidebar | null): SelectableRow[] {
   if (!spine) return [];
   const folders = spine.wiki.folders.map<SelectableRow>((f) => ({
     key: `folder:${f.id}`,
@@ -769,7 +806,7 @@ function buildRows(spine: StashSidebar | null): SelectableRow[] {
   const tables: SelectableRow[] = [];
   for (const f of spine.wiki.files) {
     // CSV-backed files double as tables — surface them as "Tables" so the
-    // user shares the structured view rather than the raw blob.
+    // user shares the structured Stash rather than the raw blob.
     if (f.linked_table_id) {
       tables.push({
         key: `table:${f.linked_table_id}`,
@@ -793,14 +830,17 @@ function buildRows(spine: StashSidebar | null): SelectableRow[] {
   return [...folders, ...pages, ...files, ...tables];
 }
 
-function buildSessions(spine: StashSidebar | null): SessionRow[] {
+function buildSessions(spine: WorkspaceSidebar | null): SessionRow[] {
   if (!spine) return [];
-  return spine.sessions.map((s) => ({
-    key: `session:${s.session_id}`,
-    session_id: s.session_id,
-    label: s.title || `#${s.session_id.slice(0, 12)}`,
-    sub: s.agent_name,
-  }));
+  return spine.sessions
+    .filter((s) => s.id)
+    .map((s) => ({
+      key: `session:${s.id}`,
+      object_id: s.id as string,
+      session_id: s.session_id,
+      label: s.title || `#${s.session_id.slice(0, 12)}`,
+      sub: s.agent_name,
+    }));
 }
 
 function filterByLabel<T extends { label: string; sub: string }>(

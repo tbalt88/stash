@@ -87,5 +87,5 @@ support `--json`:
 stash history query --ws <id> --limit 20 --json
 stash history search "<query>" --ws <id> --json
 stash whoami --json
-stash workspaces list --mine --json
+stash workspaces list --json
 ```

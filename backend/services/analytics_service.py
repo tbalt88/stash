@@ -333,7 +333,7 @@ async def compute_knowledge_density(
 ) -> tuple[list[dict], int]:
     """Compute the full top-50 cluster list for a user and return (clusters, signature).
 
-    Single-pass stem aggregation across notebook pages, table rows, and history
+    Single-pass stem aggregation across wiki pages, table rows, and history
     events. Label prettification is done in Python from one bulk word-frequency
     query — no per-stem LATERAL subqueries."""
     pool = get_pool()
@@ -427,7 +427,7 @@ async def compute_knowledge_density(
     top_stems = sorted(term_counts.items(), key=lambda x: x[1]["tfidf"], reverse=True)[:50]
     top_stem_set = {stem for stem, _ in top_stems}
 
-    # Pretty labels: one bulk query over notebook pages (the most user-readable
+    # Pretty labels: one bulk query over wiki pages (the most user-readable
     # source) maps top stems → their most frequent original word. ts_lexize
     # returns the same stems Postgres tsvector produced, so the join is exact.
     word_rows = await pool.fetch(

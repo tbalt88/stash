@@ -261,14 +261,14 @@ class StashClient:
             raise StashError(resp.status_code, resp.text)
         return resp.json()
 
-    # --- Stashes ---
+    # --- Sessions ---
 
-    def create_stash(
+    def create_session(
         self, workspace_id: str, session_id: str, agent_name: str,
         cwd: str | None = None, files_touched: list[str] | None = None,
     ) -> dict:
         return self._post(
-            f"/api/v1/workspaces/{workspace_id}/stashes",
+            f"/api/v1/workspaces/{workspace_id}/sessions",
             json={
                 "session_id": session_id,
                 "agent_name": agent_name,
@@ -278,34 +278,16 @@ class StashClient:
         )
 
     def upload_session_artifact(
-        self, session_id: str, file_path: str, content: bytes,
+        self, workspace_id: str, session_row_id: str, file_path: str, content: bytes,
     ) -> dict:
-        """Upload a file the agent touched during a session. `session_id`
-        is the sessions.id UUID returned by create_stash (the legacy name
-        for what's now a session-share)."""
+        """Upload a file the agent touched during a session."""
         resp = self._http.request(
             "POST",
-            f"/api/v1/stashes/{session_id}/artifacts",
+            f"/api/v1/workspaces/{workspace_id}/sessions/{session_row_id}/artifacts",
             headers=self._headers(),
             data={"file_path": file_path},
             files={"file": (file_path.split("/")[-1], content, "application/octet-stream")},
             timeout=httpx.Timeout(30.0, connect=5.0),
-        )
-        if not resp.is_success:
-            raise StashError(resp.status_code, resp.text)
-        return resp.json()
-
-    # Backward-compat alias for any external SDK callers.
-    upload_stash_artifact = upload_session_artifact
-
-    def update_stash(self, stash_id: str, **fields) -> dict:
-        body = {k: v for k, v in fields.items() if v is not None}
-        resp = self._http.request(
-            "PATCH",
-            f"/api/v1/stashes/{stash_id}",
-            headers={**self._headers(), "Content-Type": "application/json"},
-            json=body,
-            timeout=httpx.Timeout(10.0, connect=5.0),
         )
         if not resp.is_success:
             raise StashError(resp.status_code, resp.text)

@@ -9,10 +9,10 @@ const PILLARS = [
     description: "Agents push data in automatically — sessions, files, and structured data.",
   },
   {
-    label: "Curate",
+    label: "Organize",
     color: "bg-green-500/8 border-green-500/20 text-green-600",
     dot: "bg-green-500",
-    description: "The curate tool organizes everything into a wiki with categories and backlinks.",
+    description: "Humans and agents turn useful outputs into wiki pages with folders and backlinks.",
   },
   {
     label: "Connect",
@@ -35,7 +35,7 @@ export default function DocsOverview() {
       <Title>Stash Documentation</Title>
       <Subtitle>
         A collaborative memory platform for teams of AI agents. Agents push in their work automatically.
-        The curate tool organizes it into a shared, searchable knowledge base.
+        Teams turn the useful parts into a shared, searchable knowledge base.
       </Subtitle>
 
       <Callout type="tip">
@@ -50,13 +50,12 @@ export default function DocsOverview() {
       <P>
         Stash sits between your coding agents and the knowledge they generate. Every agent session
         streams automatically. Every research result, file, and message lands in a shared workspace.
-        The curate tool organizes it into a categorized wiki —
-        with backlinks, summaries, and semantic search — so any agent on your team can find and
-        build on what others have learned.
+        Durable knowledge lives in the wiki, and Product Stashes publish useful combinations of
+        sessions, pages, and files so any agent on your team can build on what others learned.
       </P>
       <P>
-        You don&apos;t use Stash directly. Your agents do. You configure workspaces and agent names,
-        then watch the wiki grow.
+        Humans and agents both use Stash. You configure workspaces and agent names, then build
+        shared context from sessions, wiki pages, and Product Stashes.
       </P>
 
       <H3>Three modes of use</H3>

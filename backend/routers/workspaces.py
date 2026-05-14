@@ -11,19 +11,14 @@ from ..models import (
     InviteTokenCreateResponse,
     InviteTokenListResponse,
     InviteTokenSummary,
-    JoinRequestListResponse,
-    JoinRequestResponse,
     RedeemInviteAuthedRequest,
     WorkspaceCreateRequest,
-    WorkspaceForkRequest,
     WorkspaceListResponse,
     WorkspaceMember,
-    WorkspacePublicInfo,
     WorkspaceResponse,
     WorkspaceUpdateRequest,
 )
-from ..services import invite_token_service, join_request_service, workspace_service
-from ..services.email_service import send_join_approved_email, send_join_request_email
+from ..services import invite_token_service, workspace_service
 
 router = APIRouter(prefix="/api/v1/workspaces", tags=["workspaces"])
 
@@ -32,13 +27,10 @@ async def _serialize_workspace_for_viewer(
     workspace: dict, viewer_id: UUID | None
 ) -> WorkspaceResponse:
     is_member = bool(viewer_id and await workspace_service.is_member(workspace["id"], viewer_id))
-    is_public = bool(workspace.get("is_public"))
-    if not is_public and not is_member:
+    if not is_member:
         raise HTTPException(status_code=404, detail="Workspace not found")
 
     data = dict(workspace)
-    if not is_member:
-        data["invite_code"] = ""
     return WorkspaceResponse(**data)
 
 
@@ -51,17 +43,8 @@ async def create_workspace(
         name=req.name,
         description=req.description,
         creator_id=current_user["id"],
-        is_public=req.is_public,
     )
     return WorkspaceResponse(**ws)
-
-
-@router.get("", response_model=WorkspaceListResponse)
-async def list_workspaces(current_user: dict | None = Depends(get_current_user_optional)):
-    workspaces = await workspace_service.list_public_workspaces()
-    viewer_id = current_user["id"] if current_user else None
-    serialized = [await _serialize_workspace_for_viewer(w, viewer_id) for w in workspaces]
-    return WorkspaceListResponse(workspaces=serialized)
 
 
 @router.get("/mine", response_model=WorkspaceListResponse)
@@ -105,24 +88,13 @@ async def update_workspace(
     role = await workspace_service.get_member_role(workspace_id, current_user["id"])
     if role not in workspace_service.ROLES_CAN_WRITE:
         raise HTTPException(status_code=403, detail="Editors and owners can update workspace")
-    if (
-        req.is_public is not None or req.discoverable is not None
-    ) and role not in workspace_service.ROLES_ADMIN:
-        raise HTTPException(
-            status_code=403, detail="Only the workspace owner can change visibility"
-        )
     ws = await workspace_service.update_workspace(
         workspace_id,
         name=req.name,
         description=req.description,
-        summary=req.summary,
-        tags=req.tags,
-        category=req.category,
         cover_image_url=req.cover_image_url,
         icon_url=req.icon_url,
         color_gradient=req.color_gradient,
-        is_public=req.is_public,
-        discoverable=req.discoverable,
     )
     if not ws:
         raise HTTPException(status_code=404, detail="Workspace not found")
@@ -137,23 +109,6 @@ async def delete_workspace(
     deleted = await workspace_service.delete_workspace(workspace_id, current_user["id"])
     if not deleted:
         raise HTTPException(status_code=403, detail="Only workspace owner can delete")
-
-
-@router.post("/{workspace_id}/fork", response_model=WorkspaceResponse, status_code=201)
-async def fork_workspace(
-    workspace_id: UUID,
-    req: WorkspaceForkRequest,
-    current_user: dict = Depends(get_current_user),
-):
-    """Fork a public workspace into a new private workspace owned by the caller."""
-    new_ws = await workspace_service.fork_workspace(
-        source_id=workspace_id,
-        forker_id=current_user["id"],
-        name=req.name,
-    )
-    if not new_ws:
-        raise HTTPException(status_code=404, detail="Workspace not found or not public")
-    return WorkspaceResponse(**new_ws)
 
 
 @router.post("/join/{invite_code}", response_model=WorkspaceResponse)
@@ -258,102 +213,6 @@ async def set_member_role(
             detail="Couldn't set role — either not owner, invalid role, or last owner",
         )
     return {"status": "ok", "role": req.role}
-
-
-# ---------------------------------------------------------------------------
-# Join requests
-# ---------------------------------------------------------------------------
-
-
-@router.get("/{workspace_id}/public-info", response_model=WorkspacePublicInfo)
-async def get_workspace_public_info(workspace_id: UUID):
-    info = await join_request_service.get_workspace_public_info(workspace_id)
-    if not info:
-        raise HTTPException(status_code=404, detail="Workspace not found")
-    return WorkspacePublicInfo(**info)
-
-
-@router.post("/{workspace_id}/join-requests", response_model=JoinRequestResponse, status_code=201)
-async def create_join_request(
-    workspace_id: UUID,
-    current_user: dict = Depends(get_current_user),
-):
-    ws = await workspace_service.get_workspace(workspace_id)
-    if not ws:
-        raise HTTPException(status_code=404, detail="Workspace not found")
-    try:
-        req = await join_request_service.create_request(workspace_id, current_user["id"])
-    except ValueError as e:
-        if str(e) == "already_member":
-            raise HTTPException(status_code=409, detail="Already a workspace member")
-        raise HTTPException(status_code=400, detail="Could not create join request")
-
-    requester_name = current_user.get("display_name") or current_user["name"]
-    admin_emails = await join_request_service.get_admin_emails(workspace_id)
-    send_join_request_email(admin_emails, requester_name, ws["name"], str(workspace_id))
-
-    return JoinRequestResponse(**req)
-
-
-@router.get("/{workspace_id}/join-requests", response_model=JoinRequestListResponse)
-async def list_join_requests(
-    workspace_id: UUID,
-    current_user: dict = Depends(get_current_user),
-):
-    role = await workspace_service.get_member_role(workspace_id, current_user["id"])
-    if role not in workspace_service.ROLES_ADMIN:
-        raise HTTPException(status_code=403, detail="Only the owner can view join requests")
-    pending = await join_request_service.list_pending(workspace_id)
-    return JoinRequestListResponse(requests=[JoinRequestResponse(**r) for r in pending])
-
-
-@router.post(
-    "/{workspace_id}/join-requests/{request_id}/approve", response_model=JoinRequestResponse
-)
-async def approve_join_request(
-    workspace_id: UUID,
-    request_id: UUID,
-    current_user: dict = Depends(get_current_user),
-):
-    role = await workspace_service.get_member_role(workspace_id, current_user["id"])
-    if role not in workspace_service.ROLES_ADMIN:
-        raise HTTPException(status_code=403, detail="Only the owner can approve join requests")
-    result = await join_request_service.approve_request(request_id, current_user["id"])
-    if not result:
-        raise HTTPException(status_code=404, detail="Join request not found or already resolved")
-
-    ws = await workspace_service.get_workspace(workspace_id)
-    user_email = await join_request_service.get_user_email(result["user_id"])
-    if user_email and ws:
-        send_join_approved_email(user_email, ws["name"])
-
-    return JoinRequestResponse(**result)
-
-
-@router.post("/{workspace_id}/join-requests/{request_id}/deny", response_model=JoinRequestResponse)
-async def deny_join_request(
-    workspace_id: UUID,
-    request_id: UUID,
-    current_user: dict = Depends(get_current_user),
-):
-    role = await workspace_service.get_member_role(workspace_id, current_user["id"])
-    if role not in workspace_service.ROLES_ADMIN:
-        raise HTTPException(status_code=403, detail="Only the owner can deny join requests")
-    result = await join_request_service.deny_request(request_id, current_user["id"])
-    if not result:
-        raise HTTPException(status_code=404, detail="Join request not found or already resolved")
-    return JoinRequestResponse(**result)
-
-
-@router.get("/{workspace_id}/join-requests/mine", response_model=JoinRequestResponse)
-async def get_my_join_request(
-    workspace_id: UUID,
-    current_user: dict = Depends(get_current_user),
-):
-    req = await join_request_service.get_user_request_status(workspace_id, current_user["id"])
-    if not req:
-        raise HTTPException(status_code=404, detail="No join request found")
-    return JoinRequestResponse(**req)
 
 
 # ---------------------------------------------------------------------------

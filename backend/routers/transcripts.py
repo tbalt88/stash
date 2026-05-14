@@ -81,7 +81,7 @@ async def upload_transcript(
 
 
 def _event_role(event_type: str | None) -> str | None:
-    """user/assistant projection for the chat viewer.
+    """user/assistant projection for the session viewer.
 
     tool_use events fold into 'assistant' so the timeline shows tool calls
     inline with assistant turns instead of dropping them silently."""
@@ -93,7 +93,7 @@ def _event_role(event_type: str | None) -> str | None:
 
 
 def _events_to_viewer_shape(events: list[dict]) -> list[dict]:
-    """Project history_events rows into the shape the chat viewer renders.
+    """Project history_events rows into the shape the session viewer renders.
     One dict per turn; downstream renderers don't need to know about row
     columns, just role + content + timing."""
     out: list[dict] = []

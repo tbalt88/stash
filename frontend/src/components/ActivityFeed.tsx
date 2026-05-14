@@ -29,10 +29,10 @@ function colorFor(name: string) {
 function targetHref(event: ActivityEvent): string | null {
   if (!event.stash_id) return null;
   if (event.kind === "session.uploaded") {
-    return `/stashes/${event.stash_id}/sessions/${encodeURIComponent(event.target_id)}`;
+    return `/workspaces/${event.stash_id}/sessions/${encodeURIComponent(event.target_id)}`;
   }
-  if (event.kind === "page.updated") return `/stashes/${event.stash_id}/p/${event.target_id}`;
-  if (event.kind === "file.uploaded") return `/stashes/${event.stash_id}/f/${event.target_id}`;
+  if (event.kind === "page.updated") return `/workspaces/${event.stash_id}/p/${event.target_id}`;
+  if (event.kind === "file.uploaded") return `/workspaces/${event.stash_id}/f/${event.target_id}`;
   return null;
 }
 
@@ -108,7 +108,7 @@ export default function ActivityFeed({
                   {" "}
                   <span className="text-muted">in</span>{" "}
                   <Link
-                    href={`/stashes/${event.stash_id}`}
+                    href={`/workspaces/${event.stash_id}`}
                     className="font-medium text-foreground hover:text-[var(--color-brand-700)]"
                   >
                     {event.stash_name}

@@ -40,7 +40,6 @@ async def register_user(
         name=ws_name,
         description="",
         creator_id=user["id"],
-        is_public=False,
     )
     return user, api_key
 

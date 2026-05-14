@@ -5,7 +5,6 @@ import {
   HistoryEventWithContext,
   History,
   HistoryWithWorkspace,
-  JoinRequest,
   Folder,
   Page,
   PageGraph,
@@ -20,7 +19,6 @@ import {
   TableWithWorkspace,
   Workspace,
   WorkspaceMember,
-  WorkspacePublicInfo,
   ActivityTimeline,
   KnowledgeDensity,
   EmbeddingProjection,
@@ -176,23 +174,14 @@ export async function searchUsers(query: string): Promise<UserSearchResult[]> {
 
 // --- Workspaces ---
 
-export async function createWorkspace(
-  name: string,
-  description?: string,
-  isPublic?: boolean
-): Promise<Workspace> {
+export async function createWorkspace(name: string, description?: string): Promise<Workspace> {
   return apiFetch("/api/v1/workspaces", {
     method: "POST",
     body: JSON.stringify({
       name,
       description: description || "",
-      is_public: isPublic ?? false,
     }),
   });
-}
-
-export async function listPublicWorkspaces(): Promise<{ workspaces: Workspace[] }> {
-  return apiFetch("/api/v1/workspaces");
 }
 
 export async function listMyWorkspaces(): Promise<{ workspaces: Workspace[] }> {
@@ -238,8 +227,6 @@ export async function updateWorkspace(
     cover_image_url?: string | null;
     icon_url?: string | null;
     color_gradient?: string | null;
-    is_public?: boolean;
-    discoverable?: boolean;
   }
 ): Promise<Workspace> {
   return apiFetch(`/api/v1/workspaces/${workspaceId}`, {
@@ -250,16 +237,6 @@ export async function updateWorkspace(
 
 export async function deleteWorkspace(workspaceId: string): Promise<void> {
   await apiFetch(`/api/v1/workspaces/${workspaceId}`, { method: "DELETE" });
-}
-
-export async function forkWorkspace(
-  workspaceId: string,
-  name?: string
-): Promise<Workspace> {
-  return apiFetch(`/api/v1/workspaces/${workspaceId}/fork`, {
-    method: "POST",
-    body: JSON.stringify(name ? { name } : {}),
-  });
 }
 
 export async function kickWorkspaceMember(workspaceId: string, userId: string): Promise<void> {
@@ -277,84 +254,23 @@ export async function setWorkspaceMemberRole(
   });
 }
 
-// --- Join Requests ---
-
-export async function getWorkspacePublicInfo(workspaceId: string): Promise<WorkspacePublicInfo> {
-  return apiFetch(`/api/v1/workspaces/${workspaceId}/public-info`);
-}
-
-export async function createJoinRequest(workspaceId: string): Promise<JoinRequest> {
-  return apiFetch(`/api/v1/workspaces/${workspaceId}/join-requests`, { method: "POST" });
-}
-
-export async function listJoinRequests(workspaceId: string): Promise<{ requests: JoinRequest[] }> {
-  return apiFetch(`/api/v1/workspaces/${workspaceId}/join-requests`);
-}
-
-export async function approveJoinRequest(workspaceId: string, requestId: string): Promise<JoinRequest> {
-  return apiFetch(`/api/v1/workspaces/${workspaceId}/join-requests/${requestId}/approve`, { method: "POST" });
-}
-
-export async function denyJoinRequest(workspaceId: string, requestId: string): Promise<JoinRequest> {
-  return apiFetch(`/api/v1/workspaces/${workspaceId}/join-requests/${requestId}/deny`, { method: "POST" });
-}
-
-export async function getMyJoinRequest(workspaceId: string): Promise<JoinRequest> {
-  return apiFetch(`/api/v1/workspaces/${workspaceId}/join-requests/mine`);
-}
-
 // --- Discover (public catalog, no auth required) ---
 
-export interface CatalogCard {
+export interface PublicStashCard {
   id: string;
-  name: string;
-  summary: string | null;
+  slug: string;
+  title: string;
   description: string;
-  is_public: boolean;
-  tags: string[];
-  category: string | null;
   discoverable: boolean;
-  featured: boolean;
   cover_image_url: string | null;
-  creator_id: string;
-  creator_name: string;
-  creator_display_name: string | null;
-  member_count: number;
-  fork_count: number;
-  page_count: number;
-  table_count: number;
-  file_count: number;
-  history_event_count: number;
-  forked_from_workspace_id: string | null;
+  view_count: number;
+  owner_name: string;
+  owner_display_name: string | null;
+  workspace_id: string;
+  workspace_name: string;
+  item_count: number;
   created_at: string;
   updated_at: string;
-}
-
-export interface PublicWorkspaceDetail {
-  workspace: CatalogCard;
-  folders: {
-    id: string;
-    name: string;
-    parent_folder_id: string | null;
-    page_count: number;
-    updated_at: string;
-  }[];
-  root_pages: { id: string; name: string; updated_at: string }[];
-  tables: { id: string; name: string; row_count: number; updated_at: string }[];
-  files: { id: string; name: string; size_bytes: number; created_at: string }[];
-}
-
-export async function fetchPublicWorkspace(
-  workspaceId: string,
-  origin?: string
-): Promise<PublicWorkspaceDetail | null> {
-  const base = origin ?? "";
-  const res = await fetch(`${base}/api/v1/discover/workspaces/${workspaceId}`, {
-    next: { revalidate: 60 },
-  });
-  if (res.status === 404) return null;
-  if (!res.ok) throw new ApiError(res.status, `discover fetch failed: ${res.status}`);
-  return res.json();
 }
 
 // --- Wiki: folders (nested) and pages ---
@@ -901,6 +817,36 @@ export async function removeShare(
   );
 }
 
+export async function getObjectPermissions(
+  objectType: string,
+  objectId: string
+): Promise<ObjectPermission> {
+  return apiFetch(`/api/v1/objects/${objectType}/${objectId}/permissions`);
+}
+
+export async function setObjectVisibility(
+  objectType: string,
+  objectId: string,
+  visibility: "inherit" | "private" | "link" | "public"
+): Promise<void> {
+  await apiFetch(`/api/v1/objects/${objectType}/${objectId}/permissions`, {
+    method: "PATCH",
+    body: JSON.stringify({ visibility }),
+  });
+}
+
+export async function addObjectShare(
+  objectType: string,
+  objectId: string,
+  userId: string,
+  permission: "read" | "write" | "admin" = "read"
+): Promise<void> {
+  await apiFetch(`/api/v1/objects/${objectType}/${objectId}/shares`, {
+    method: "POST",
+    body: JSON.stringify({ user_id: userId, permission }),
+  });
+}
+
 // --- Files ---
 
 export async function uploadFile(
@@ -983,85 +929,18 @@ export async function materializeSession(
   });
 }
 
-// --- Views (curated bundles of items shareable as /v/{slug}) ---
+// --- Stashes (publishable bundles of pages, sessions, and files) ---
 
-export type CollectableObjectType = "folder" | "page" | "table" | "file" | "history";
+export type CollectableObjectType = "folder" | "page" | "table" | "file" | "history" | "session";
 
-export interface ViewItemSpec {
+export interface StashItemSpec {
   object_type: CollectableObjectType;
   object_id: string;
   position?: number;
   label_override?: string | null;
 }
 
-export interface CreatedView {
-  id: string;
-  workspace_id: string;
-  slug: string;
-  title: string;
-  description: string;
-  owner_id: string;
-  view_count: number;
-  items: ViewItemSpec[];
-  created_at: string;
-  updated_at: string;
-}
-
-export interface SharedViewResult {
-  view: CreatedView;
-  url: string;
-  view_id: string;
-  view_slug: string;
-}
-
-export async function createView(
-  workspaceId: string,
-  title: string,
-  items: ViewItemSpec[],
-  opts: { description?: string; is_public?: boolean } = {}
-): Promise<CreatedView> {
-  return apiFetch(`/api/v1/workspaces/${workspaceId}/views`, {
-    method: "POST",
-    body: JSON.stringify({
-      title,
-      description: opts.description ?? "",
-      is_public: opts.is_public ?? false,
-      cover_image_url: null,
-      items: items.map((it, i) => ({
-        object_type: it.object_type,
-        object_id: it.object_id,
-        position: it.position ?? i,
-        label_override: it.label_override ?? null,
-      })),
-    }),
-  });
-}
-
-export async function createSharedView(
-  workspaceId: string,
-  title: string,
-  items: ViewItemSpec[],
-  opts: { description?: string; ensure?: "link" | "public" } = {}
-): Promise<SharedViewResult> {
-  const ensure = opts.ensure ?? "link";
-  return apiFetch(`/api/v1/workspaces/${workspaceId}/views/share-bundle?ensure=${ensure}`, {
-    method: "POST",
-    body: JSON.stringify({
-      title,
-      description: opts.description ?? "",
-      is_public: ensure === "public",
-      cover_image_url: null,
-      items: items.map((it, i) => ({
-        object_type: it.object_type,
-        object_id: it.object_id,
-        position: it.position ?? i,
-        label_override: it.label_override ?? null,
-      })),
-    }),
-  });
-}
-
-export interface StashView {
+export interface CreatedStash {
   id: string;
   workspace_id: string;
   slug: string;
@@ -1069,22 +948,146 @@ export interface StashView {
   description: string;
   owner_id: string;
   is_public: boolean;
-  cover_image_url: string | null;
+  discoverable: boolean;
   view_count: number;
-  items: ViewItemSpec[];
+  items: StashItemSpec[];
+  is_external: boolean;
+  added_to_workspace_id: string | null;
   created_at: string;
   updated_at: string;
 }
 
-export async function listViews(workspaceId: string): Promise<StashView[]> {
-  const data = await apiFetch<{ views: StashView[] }>(
-    `/api/v1/workspaces/${workspaceId}/views`
-  );
-  return data.views;
+export interface PublishedStashResult {
+  stash: CreatedStash;
+  url: string;
+  stash_id: string;
+  stash_slug: string;
 }
 
-export async function deleteView(viewId: string): Promise<void> {
-  await apiFetch(`/api/v1/views/${viewId}`, { method: "DELETE" });
+export async function createStash(
+  workspaceId: string,
+  title: string,
+  items: StashItemSpec[],
+  opts: { description?: string } = {}
+): Promise<CreatedStash> {
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/stashes`, {
+    method: "POST",
+    body: JSON.stringify({
+      title,
+      description: opts.description ?? "",
+      is_public: false,
+      discoverable: false,
+      cover_image_url: null,
+      items: items.map((it, i) => ({
+        object_type: it.object_type,
+        object_id: it.object_id,
+        position: it.position ?? i,
+        label_override: it.label_override ?? null,
+      })),
+    }),
+  });
+}
+
+export async function publishStash(
+  workspaceId: string,
+  title: string,
+  items: StashItemSpec[],
+  opts: { description?: string; ensure?: "link" | "public"; discoverable?: boolean } = {}
+): Promise<PublishedStashResult> {
+  const ensure = opts.ensure ?? "link";
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/stashes/publish?ensure=${ensure}`, {
+    method: "POST",
+    body: JSON.stringify({
+      title,
+      description: opts.description ?? "",
+      is_public: ensure === "public",
+      discoverable: opts.discoverable ?? false,
+      cover_image_url: null,
+      items: items.map((it, i) => ({
+        object_type: it.object_type,
+        object_id: it.object_id,
+        position: it.position ?? i,
+        label_override: it.label_override ?? null,
+      })),
+    }),
+  });
+}
+
+export interface WorkspaceStash {
+  id: string;
+  workspace_id: string;
+  slug: string;
+  title: string;
+  description: string;
+  owner_id: string;
+  is_public: boolean;
+  discoverable: boolean;
+  cover_image_url: string | null;
+  view_count: number;
+  items: StashItemSpec[];
+  is_external: boolean;
+  added_to_workspace_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PublicStashItem {
+  object_type: CollectableObjectType;
+  object_id: string;
+  position: number;
+  label: string;
+  inline: Record<string, unknown>;
+}
+
+export interface PublicStashDetail {
+  stash: WorkspaceStash;
+  workspace_name: string;
+  items: PublicStashItem[];
+}
+
+export async function listStashes(workspaceId: string): Promise<WorkspaceStash[]> {
+  const data = await apiFetch<{ stashes: WorkspaceStash[] }>(
+    `/api/v1/workspaces/${workspaceId}/stashes`
+  );
+  return data.stashes;
+}
+
+export async function listObjectStashes(
+  workspaceId: string,
+  objectType: CollectableObjectType,
+  objectId: string
+): Promise<WorkspaceStash[]> {
+  const data = await apiFetch<{ stashes: WorkspaceStash[] }>(
+    `/api/v1/workspaces/${workspaceId}/stashes/objects/${objectType}/${objectId}`
+  );
+  return data.stashes;
+}
+
+export async function deleteStash(stashId: string): Promise<void> {
+  await apiFetch(`/api/v1/stashes/${stashId}`, { method: "DELETE" });
+}
+
+export async function getPublicStash(slug: string): Promise<PublicStashDetail> {
+  return apiFetch(`/api/v1/stashes/${slug}`);
+}
+
+export async function addExternalStash(
+  slug: string,
+  workspaceId: string
+): Promise<WorkspaceStash> {
+  return apiFetch(`/api/v1/stashes/${slug}/add-to-workspace`, {
+    method: "POST",
+    body: JSON.stringify({ workspace_id: workspaceId }),
+  });
+}
+
+export async function removeExternalStash(
+  workspaceId: string,
+  stashId: string
+): Promise<void> {
+  await apiFetch(`/api/v1/workspaces/${workspaceId}/external-stashes/${stashId}`, {
+    method: "DELETE",
+  });
 }
 
 // --- Workspace-wide page index (used by wiki-link autocomplete + click-resolve) ---
@@ -1224,12 +1227,12 @@ export interface SessionTranscript {
   download_url: string | null;
 }
 
-export async function getStashTranscript(
-  stashId: string,
+export async function getWorkspaceTranscript(
+  workspaceId: string,
   sessionId: string
 ): Promise<SessionTranscript> {
   return apiFetch(
-    `/api/v1/workspaces/${stashId}/transcripts/${encodeURIComponent(sessionId)}`
+    `/api/v1/workspaces/${workspaceId}/transcripts/${encodeURIComponent(sessionId)}`
   );
 }
 
@@ -1243,18 +1246,19 @@ export interface SessionEvent {
 }
 
 export async function getSessionEvents(
-  stashId: string,
+  workspaceId: string,
   sessionId: string
 ): Promise<SessionEvent[]> {
   const res = await apiFetch<{ events: SessionEvent[] }>(
-    `/api/v1/workspaces/${stashId}/transcripts/${encodeURIComponent(sessionId)}/events`
+    `/api/v1/workspaces/${workspaceId}/transcripts/${encodeURIComponent(sessionId)}/events`
   );
   return res.events;
 }
 
-// --- Stashes (canonical naming, aliases /api/v1/workspaces/* on the server) ---
+// --- Workspace overview, sessions, wiki, and skills ---
 
-export interface StashSpineSession {
+export interface WorkspaceSidebarSession {
+  id: string | null;
   session_id: string;
   title: string;
   agent_name: string;
@@ -1288,99 +1292,48 @@ export interface WikiFile {
   created_at: string;
   linked_table_id?: string | null;
 }
-export interface StashWiki {
+export interface WorkspaceWiki {
   folders: WikiFolder[];
   pages: WikiPage[];
   files: WikiFile[];
 }
-export interface StashHandoffMetadata {
-  present: boolean;
-  generated_at: string | null;
-  stale: boolean;
-  pinned_at: string | null;
-}
-export interface StashOverview {
-  handoff_metadata: StashHandoffMetadata;
-  sessions: StashSpineSession[];
-  wiki: StashWiki;
+export interface WorkspaceOverview {
+  sessions: WorkspaceSidebarSession[];
+  wiki: WorkspaceWiki;
 }
 
-export async function getStashOverview(stashId: string): Promise<StashOverview> {
-  return apiFetch(`/api/v1/stashes/${stashId}/overview`);
+export async function getWorkspaceOverview(workspaceId: string): Promise<WorkspaceOverview> {
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/overview`);
 }
 
-export interface StashSidebar {
-  sessions: StashSpineSession[];
-  wiki: StashWiki;
+export interface WorkspaceSidebar {
+  sessions: WorkspaceSidebarSession[];
+  wiki: WorkspaceWiki;
 }
 
-// In-memory store for the last ETag seen per stash, so navigating between
-// stashes hits the cached payload instead of refetching.
+// In-memory store for the last ETag seen per workspace, so navigating between
+// workspaces hits the cached payload instead of refetching.
 const _sidebarEtags: Record<string, string> = {};
-const _sidebarCache: Record<string, StashSidebar> = {};
+const _sidebarCache: Record<string, WorkspaceSidebar> = {};
 
-export async function getStashSidebar(stashId: string): Promise<StashSidebar> {
+export async function getWorkspaceSidebar(workspaceId: string): Promise<WorkspaceSidebar> {
   const token = getToken();
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   if (token) headers["Authorization"] = `Bearer ${token}`;
-  const cached = _sidebarEtags[stashId];
+  const cached = _sidebarEtags[workspaceId];
   if (cached) headers["If-None-Match"] = cached;
 
-  const res = await fetch(`${API_BASE}/api/v1/stashes/${stashId}/sidebar`, {
+  const res = await fetch(`${API_BASE}/api/v1/workspaces/${workspaceId}/sidebar`, {
     method: "GET",
     headers,
   });
-  if (res.status === 304 && _sidebarCache[stashId]) return _sidebarCache[stashId];
+  if (res.status === 304 && _sidebarCache[workspaceId]) return _sidebarCache[workspaceId];
   if (!res.ok) throw new ApiError(res.status, `sidebar fetch failed: ${res.status}`);
   const etag = res.headers.get("etag");
-  if (etag) _sidebarEtags[stashId] = etag;
-  const body = (await res.json()) as StashSidebar;
-  _sidebarCache[stashId] = body;
+  if (etag) _sidebarEtags[workspaceId] = etag;
+  const body = (await res.json()) as WorkspaceSidebar;
+  _sidebarCache[workspaceId] = body;
   return body;
-}
-
-export type StashHandoffReason =
-  | "fresh"
-  | "pinned"
-  | "stale"
-  | "never_generated"
-  | "failed";
-
-export interface StashHandoff {
-  present: boolean;
-  reason: StashHandoffReason;
-  body_markdown?: string;
-  generated_at?: string | null;
-  model?: string | null;
-  input_tokens?: number | null;
-  output_tokens?: number | null;
-  turns_used?: number | null;
-  tool_calls_used?: number | null;
-  pinned_at: string | null;
-  pinned_by?: string | null;
-  last_error: string | null;
-}
-
-export async function getStashHandoff(stashId: string): Promise<StashHandoff> {
-  return apiFetch(`/api/v1/stashes/${stashId}/handoff`);
-}
-
-export async function regenerateStashHandoff(stashId: string): Promise<StashHandoff> {
-  return apiFetch(`/api/v1/stashes/${stashId}/handoff/regenerate`, { method: "POST" });
-}
-
-export async function editStashHandoff(
-  stashId: string,
-  bodyMarkdown: string,
-): Promise<StashHandoff> {
-  return apiFetch(`/api/v1/stashes/${stashId}/handoff`, {
-    method: "PATCH",
-    body: JSON.stringify({ body_markdown: bodyMarkdown }),
-  });
-}
-
-export async function unpinStashHandoff(stashId: string): Promise<StashHandoff> {
-  return apiFetch(`/api/v1/stashes/${stashId}/handoff/unpin`, { method: "POST" });
 }
 
 export interface FolderBreadcrumb {
@@ -1409,20 +1362,3 @@ export async function getFolderContents(
     `/api/v1/workspaces/${workspaceId}/folders/${folderId}/contents`
   );
 }
-
-// Legacy skill detail endpoint — kept for backward compat with anything
-// still calling it (e.g. the soon-to-be-redirected /skills/[name] route).
-export interface StashSkillDetail {
-  folder_id: string;
-  name: string;
-  description: string;
-  when_to_use: string;
-  body: string;
-  files: { id: string; name: string; updated_at: string; content: string }[];
-  combined: string;
-}
-
-export async function getStashSkill(stashId: string, name: string): Promise<StashSkillDetail> {
-  return apiFetch(`/api/v1/stashes/${stashId}/skills/${encodeURIComponent(name)}`);
-}
-

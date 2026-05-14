@@ -1,18 +1,11 @@
 #!/usr/bin/env python3
-"""SessionEnd: push session_end, then spawn `cursor-agent -p <SLEEP_PROMPT>`
-headless to curate.
-
-`cursor-agent -p` has open reports of hanging — the shared spawn helper
-applies a 10-minute kill-on-overrun. Gated by the central `auto_curate`
-flag plus the shared 24h cooldown.
-"""
-
-from config import DATA_DIR, get_client, get_config, get_stdin_data, is_configured
-from stashai.plugin.hooks import finalize_session_stash, stream_session_end
-from stashai.plugin.state import load_state, save_state
+"""SessionEnd: push session_end."""
 
 from adapt import adapt_session_end
-from stashai.plugin.curate_spawn import spawn_curation
+from config import DATA_DIR, get_client, get_config, get_stdin_data, is_configured
+
+from stashai.plugin.hooks import finalize_session_upload, stream_session_end
+from stashai.plugin.state import load_state, save_state
 
 
 def main():
@@ -26,12 +19,9 @@ def main():
     try:
         with get_client() as client:
             stream_session_end(client, cfg, state, event)
-            finalize_session_stash(client, cfg, state, event, DATA_DIR)
+            finalize_session_upload(client, cfg, state, event, DATA_DIR)
     except Exception:
         pass
-
-    if cfg.get("workspace_id"):
-        spawn_curation("cursor-agent", ["-p"])
 
     state["session_id"] = ""
     save_state(DATA_DIR, state)

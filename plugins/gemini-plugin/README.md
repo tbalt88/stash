@@ -49,9 +49,6 @@ Everything is a plain `stash` CLI subcommand — no Gemini-specific slash comman
 | `stash settings` | Interactive settings page (streaming, scope, endpoint, …) |
 | `stash disconnect` | Pause event streaming across every installed plugin |
 
-At SessionEnd the plugin spawns `gemini -p …` headless with a shared curation
-prompt. Toggle with `auto_curate` in `~/.stash/config.json`.
-
 ## Known gaps
 
 - `BeforeTool` fires before tool args are final in some tool flavors — we only subscribe to `AfterTool` to avoid noise
@@ -65,5 +62,5 @@ shell out to the `stash` CLI — all commands support `--json`:
 stash history query --ws <id> --limit 20 --json
 stash history search "<query>" --ws <id> --json
 stash whoami --json
-stash workspace list --mine --json
+stash workspaces list --json
 ```

@@ -1,19 +1,19 @@
-# Stash — Shared Stashes, Skills, and Memory System
+# Stash — Workspaces, Skills, and Memory System
 
-## Concept: Stashes and Skills
+## Concept: Stash Workspaces and Skills
 
-A **stash** is a shared bundle a team works out of. Each stash maps to three
-folders matching how memory works for an agent:
+A **Stash Workspace** is a shared bundle a team works out of. Each workspace
+maps to three folders matching how memory works for an agent:
 
 - **Sessions** (episodic) — agent transcripts uploaded under
-  `/api/v1/stashes/{id}/transcripts`.
+  `/api/v1/workspaces/{id}/sessions`.
 - **Skills** (procedural) — wiki folders that contain a `SKILL.md`
   frontmatter file. See below.
 - **Drive** (semantic) — files + non-skill wiki pages.
 
-To give your agents a skill, **create a wiki folder** in a stash whose immediate
-children include a file named `SKILL.md`. The body of `SKILL.md` starts with
-YAML frontmatter:
+To give your agents a skill, **create a wiki folder** in a workspace whose
+immediate children include a file named `SKILL.md`. The body of `SKILL.md`
+starts with YAML frontmatter:
 
 ```yaml
 ---
@@ -29,12 +29,12 @@ The folder may contain any number of supporting `.md` files (`examples.md`,
 `checklist.md`, etc.) — they all become part of the skill payload. Stash
 exposes skills via:
 
-- `GET /api/v1/stashes/{id}/skills` — list skills in a stash
-- `GET /api/v1/stashes/{id}/skills/{name}` — full skill (SKILL.md + siblings)
+- `GET /api/v1/workspaces/{id}/skills` — list skills in a workspace
+- `GET /api/v1/workspaces/{id}/skills/{name}` — full skill (SKILL.md + siblings)
 - MCP: `stash_list_skills`, `stash_read_skill`
 
 This is the same skills convention Claude Code uses, so a skill authored in a
-stash works directly when dropped into any agent's `~/.claude/skills/` folder.
+workspace works directly when dropped into any agent's `~/.claude/skills/` folder.
 
 ## Overview
 Stash is the shared product surface for humans and agents.
@@ -45,7 +45,7 @@ It provides:
 - tables (typed columns, rows, CSV import/export, semantic row search)
 - structured history/memory events (with file attachments)
 - file uploads (S3-backed; PDF/image text extraction when available)
-- decks (standalone — see deck endpoints)
+- Product Stashes for publishing sets of pages, sessions, and files
 
 Design boundary:
 - Stash owns persistent shared state and plugin-based memory access
@@ -126,7 +126,7 @@ scope — pick or create a workspace first.
 | Files | `/api/v1/workspaces/{ws}/files` |
 | Memory / History | `/api/v1/workspaces/{ws}/memory/events` |
 | Transcripts | `/api/v1/workspaces/{ws}/transcripts` |
-| Aggregate (across the user's workspaces) | `/api/v1/me/{pages,tables,history-events,decks}` |
+| Aggregate (across the user's workspaces) | `/api/v1/me/{pages,tables,history-events}` |
 
 CRUD verbs are standard: `POST` to create, `GET` list/detail, `PATCH` update,
 `DELETE` remove. Semantic search hangs off the workspace
@@ -144,12 +144,12 @@ Use ordinary markdown links for everything:
 
 | Target | Shape |
 |---|---|
-| Another page in the same workspace | `[text](/wiki?ws=<ws>&page=<uuid>)` |
+| Another page in the same workspace | `[text](/workspaces/<ws>/p/<uuid>)` |
 | A file uploaded to the workspace | `[text](/api/v1/workspaces/<ws>/files/<uuid>/download)` |
 | External URL | `[text](https://…)` |
 
 The viewer renders all three with the same style; an `↗` glyph marks
-off-origin URLs. Internal `/wiki?…` and stash absolute URLs are
+off-origin URLs. Internal `/workspaces/<ws>/p/<uuid>` and stash absolute URLs are
 SPA-routed (same tab, no reload); externals open in a new tab.
 
 There is no `[[wiki-link]]` syntax. The TipTap editor offers an

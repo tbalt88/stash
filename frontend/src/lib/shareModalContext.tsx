@@ -9,12 +9,12 @@ import {
   type ReactNode,
 } from "react";
 
-import type { ViewItemSpec } from "./api";
+import type { StashItemSpec } from "./api";
 
 export interface ShareModalOpenOptions {
-  stashId: string;
-  stashName?: string;
-  initial?: ViewItemSpec[];
+  workspaceId: string;
+  workspaceName?: string;
+  initial?: StashItemSpec[];
   tab?: "new" | "manage";
 }
 
@@ -26,8 +26,8 @@ interface ShareModalContextValue {
   state: ShareModalState;
   open: (opts: ShareModalOpenOptions) => void;
   close: () => void;
-  // Bumped whenever a share link is minted or revoked. Consumers (like the
-  // stash home page) include it in deps to re-fetch their views list.
+  // Bumped whenever a share link is minted or revoked. Consumers include it
+  // in deps to re-fetch their Product Stashes list.
   version: number;
   bumpVersion: () => void;
 }
@@ -37,15 +37,15 @@ const ShareModalContext = createContext<ShareModalContextValue | null>(null);
 export function ShareModalProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<ShareModalState>({
     open: false,
-    stashId: "",
+    workspaceId: "",
   });
   const [version, setVersion] = useState(0);
 
   const open = useCallback((opts: ShareModalOpenOptions) => {
     setState({
       open: true,
-      stashId: opts.stashId,
-      stashName: opts.stashName,
+      workspaceId: opts.workspaceId,
+      workspaceName: opts.workspaceName,
       initial: opts.initial,
       tab: opts.tab ?? "new",
     });

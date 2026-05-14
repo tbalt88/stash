@@ -1,7 +1,7 @@
 /** Wiki-link autocomplete helpers.
  *
  * Links are stored in content_markdown as ordinary markdown links with
- * stable id URLs — `[name](/wiki?ws=...&page=<uuid>)`. This module
+ * stable id URLs — `[name](/workspaces/<ws>/p/<uuid>)`. This module
  * handles the authoring-side UX: ranking and labeling suggestions when
  * the user types `[[`. Suggestion paths use the folder chain so a link
  * to a sibling page reads as `Page` and a link across folders reads as
@@ -56,5 +56,5 @@ export function rankForAutocomplete(
 }
 
 export function pageHref(page: WorkspacePageEntry, workspaceId: string): string {
-  return `/wiki?ws=${workspaceId}&page=${page.id}`;
+  return `/workspaces/${workspaceId}/p/${page.id}`;
 }

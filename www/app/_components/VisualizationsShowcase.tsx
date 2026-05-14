@@ -21,7 +21,7 @@ const GRAPH_NODES: GraphNode[] = [
   { id: "embedding-models", x: 70, y: 150, degree: 3 },
   { id: "cost-per-1k", x: 100, y: 300, degree: 2 },
   { id: "eval-harness", x: 220, y: 310, degree: 2 },
-  { id: "sleep-time-curation", x: 500, y: 300, degree: 1 },
+  { id: "release-notes", x: 500, y: 300, degree: 1 },
   { id: "index-playbook", x: 510, y: 60, degree: 1 },
   { id: "filter-push-down", x: 520, y: 165, degree: 1 },
 ];
@@ -43,7 +43,7 @@ const GRAPH_EDGES: Array<[string, string]> = [
   ["chunking-strategy", "rerank-patterns"],
   ["chunking-strategy", "eval-harness"],
   ["rerank-patterns", "eval-harness"],
-  ["rerank-patterns", "sleep-time-curation"],
+  ["rerank-patterns", "release-notes"],
   ["recall-at-k", "eval-harness"],
   ["embedding-models", "cost-per-1k"],
 ];
@@ -193,7 +193,7 @@ export default function VisualizationsShowcase() {
             <EmbeddingProjection3D />
             <p className="mt-4 text-[13.5px] leading-[1.6] text-dim">
               <span className="text-ink">3D embedding projection.</span> History
-              events, notebooks, and tables projected with PCA. Clusters form
+              events, wiki pages, and tables projected with PCA. Clusters form
               around topics — not folders.
             </p>
           </div>

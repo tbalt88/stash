@@ -1,8 +1,7 @@
 # Stash Plugin for Cursor
 
 Streams Cursor sessions to an Stash workspace. Mirrors the Claude Code
-plugin's event coverage minus auto-curation (Cursor has no headless entry
-point).
+plugin's event coverage.
 
 ## Prerequisites
 
@@ -70,16 +69,8 @@ Everything is a plain `stash` CLI subcommand — no Cursor-specific slash comman
 | `stash settings` | Interactive settings page (streaming, scope, endpoint, …) |
 | `stash disconnect` | Pause event streaming across every installed plugin |
 
-At SessionEnd the plugin spawns `cursor-agent -p …` headless with a shared
-curation prompt. Because `cursor-agent -p` has open hang reports, the spawn
-helper kills the subprocess after 10 minutes. Toggle with `auto_curate` in
-`~/.stash/config.json`; Cursor curation may still be experimental depending
-on your upstream `cursor-agent` build.
-
 ## Known gaps vs Claude plugin
 
-- Cursor curation is best-effort — `cursor-agent -p` can hang; the helper
-  enforces a 10-minute kill-on-overrun
 - No prompt-time context injection — Cursor's `beforeSubmitPrompt` protocol
   has no context-injection key
 
@@ -92,5 +83,5 @@ shell out to the `stash` CLI. All commands support `--json`:
 stash history query --ws <id> --limit 20 --json
 stash history search "<query>" --ws <id> --json
 stash whoami --json
-stash workspace list --mine --json
+stash workspaces list --json
 ```

@@ -174,16 +174,16 @@ const HERO_FEED: FeedRow[] = [
   {
     role: "agent",
     name: "nova",
-    action: "curated",
+    action: "updated",
     target: "wiki · memory-leak-v2",
-    detail: "4 pages merged, 12 backlinks resolved on stash:sleep",
+    detail: "4 pages linked, 12 backlinks resolved from the session",
     time: "9m",
   },
   {
     role: "human",
     name: "ari",
     action: "commented",
-    target: "notebooks/api-gateway",
+    target: "wiki/api-gateway",
     detail: "keeping this open; will re-use the worker-pool pattern next week",
     time: "22m",
   },
@@ -568,7 +568,7 @@ function StreamViz() {
   );
 }
 
-function CurateViz() {
+function WikiViz() {
   return (
     <div className="flex flex-col gap-1.5">
       <div className="flex items-center justify-between rounded-md border border-border bg-background px-2 py-1.5 text-[11.5px] text-ink">
@@ -602,7 +602,7 @@ function CurateViz() {
 function SearchViz() {
   const sources: [string, string][] = [
     ["history/rex:14:02", "62%"],
-    ["notebooks/auth-patterns", "21%"],
+    ["wiki/auth-patterns", "21%"],
     ["files/gateway.py", "11%"],
   ];
   return (
@@ -634,16 +634,16 @@ function HowItWorks() {
     },
     {
       n: "02",
-      pill: "Curate",
-      title: "A curation agent turns noise into a wiki.",
-      body: "On SessionEnd, stash:sleep reads recent history and organizes it into notebooks with [[backlinks]] and a page graph. Sleep-time compute, not session time.",
-      viz: <CurateViz />,
+      pill: "Wiki",
+      title: "Teams shape the shared wiki.",
+      body: "Pages, files, and folders stay in the workspace wiki. Sessions remain searchable history, and useful outputs can be promoted into durable pages.",
+      viz: <WikiViz />,
     },
     {
       n: "03",
       pill: "Search",
       title: "Every agent queries the whole team's work.",
-      body: "stash search runs a cross-resource agentic loop over files, history, notebooks, tables, and chats. Your agent answers with sources, not hallucinations.",
+      body: "stash search runs a cross-resource agentic loop over files, history, wiki pages, tables, and Stashes. Your agent answers with sources, not hallucinations.",
       viz: <SearchViz />,
     },
   ];
@@ -653,7 +653,7 @@ function HowItWorks() {
         <div className="flex max-w-[880px] flex-col gap-4">
           <EyebrowDot>How it works</EyebrowDot>
           <h2 className="font-display text-[clamp(32px,4.2vw,52px)] font-bold leading-[1.05] tracking-[-0.03em] text-ink text-balance">
-            Stream. Curate. Search.
+            Sessions. Wiki. Search.
             <br />
             <span className="font-medium text-dim">The asset builds itself.</span>
           </h2>
@@ -691,7 +691,7 @@ function HowItWorks() {
 function SearchDemo() {
   const steps = [
     { t: "scanned team history", ms: "42ms" },
-    { t: "queried notebook graph", ms: "81ms" },
+    { t: "queried wiki graph", ms: "81ms" },
     { t: "pulled gateway.py blame", ms: "104ms" },
     { t: "reranked 8 sources", ms: "22ms" },
   ];
@@ -706,8 +706,8 @@ function SearchDemo() {
             Stash answers with receipts.
           </h2>
           <p className="max-w-[620px] text-[18px] leading-[1.55] text-dim">
-            stash search runs an agentic loop across files, history, notebooks,
-            tables, and chats. Every answer arrives with sources attached.
+            stash search runs an agentic loop across files, history, wiki pages,
+            tables, and Stashes. Every answer arrives with sources attached.
           </p>
         </div>
         <div
@@ -755,7 +755,7 @@ function SearchDemo() {
                 The change is safe because requests are authenticated and
                 per-tenant, not global.{" "}
                 <span className="font-mono text-[11.5px] text-brand">history/sam:tue-14:22</span>,{" "}
-                <span className="font-mono text-[11.5px] text-brand">notebooks/gateway-limits</span>
+                <span className="font-mono text-[11.5px] text-brand">wiki/gateway-limits</span>
               </p>
             </div>
           </div>
@@ -775,8 +775,8 @@ function Features() {
     },
     {
       i: "W",
-      h: "Wiki notebooks",
-      p: "Rich collaborative pages with [[backlinks]], page graph, and pgvector semantic search, curated by a sleep-time agent.",
+      h: "Wiki pages",
+      p: "Rich collaborative pages with [[backlinks]], page graph, and pgvector semantic search.",
       tags: ["backlinks", "graph", "semantic"],
     },
     {
@@ -793,15 +793,15 @@ function Features() {
     },
     {
       i: "R",
-      h: "Real-time rooms",
-      p: "Agents and humans chat side-by-side in workspace channels. Coordinate, hand off, and unblock each other, all in one place.",
-      tags: ["channels", "presence", "handoff"],
+      h: "Product Stashes",
+      p: "Publish sessions, pages, and files together as a polished link anyone can inspect.",
+      tags: ["publish", "sessions", "wiki"],
     },
     {
       i: "P",
-      h: "Shareable pages",
-      p: "Publish research, reports, and dashboards as HTML anyone with a link can view. No login walls between teams.",
-      tags: ["public", "embeds", "html"],
+      h: "HTML pages",
+      p: "Store agent-made reports, dashboards, and documents as first-class wiki pages.",
+      tags: ["html", "reports", "dashboards"],
     },
   ];
   return (

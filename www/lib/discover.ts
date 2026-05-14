@@ -1,41 +1,31 @@
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "https://api.joinstash.ai";
 export const APP_URL = process.env.MANAGED_APP_URL || "https://app.joinstash.ai";
 
-export type CatalogCard = {
+export type PublicStashCard = {
   id: string;
-  name: string;
-  summary: string | null;
+  slug: string;
+  title: string;
   description: string;
-  is_public: boolean;
-  tags: string[];
-  category: string | null;
   discoverable: boolean;
-  featured: boolean;
   cover_image_url: string | null;
-  creator_id: string;
-  creator_name: string;
-  creator_display_name: string | null;
-  member_count: number;
-  fork_count: number;
-  page_count: number;
-  table_count: number;
-  file_count: number;
-  history_event_count: number;
-  forked_from_workspace_id: string | null;
+  view_count: number;
+  owner_name: string;
+  owner_display_name: string | null;
+  workspace_id: string;
+  workspace_name: string;
+  item_count: number;
   created_at: string;
   updated_at: string;
 };
 
 export type CatalogPage = {
-  workspaces: CatalogCard[];
+  stashes: PublicStashCard[];
   next_cursor: string | null;
 };
 
 type Params = {
   q?: string;
-  category?: string;
-  tag?: string;
-  sort?: "trending" | "newest" | "forks";
+  sort?: "trending" | "newest" | "popular";
   cursor?: string;
 };
 
@@ -44,10 +34,10 @@ export async function fetchCatalog(params: Params = {}): Promise<CatalogPage> {
   for (const [k, v] of Object.entries(params)) {
     if (v) qs.set(k, v);
   }
-  const url = `${API_URL}/api/v1/discover/workspaces${qs.size ? `?${qs.toString()}` : ""}`;
+  const url = `${API_URL}/api/v1/discover/stashes${qs.size ? `?${qs.toString()}` : ""}`;
   const res = await fetch(url, { next: { revalidate: 60 } });
   if (!res.ok) {
-    return { workspaces: [], next_cursor: null };
+    return { stashes: [], next_cursor: null };
   }
   return res.json();
 }

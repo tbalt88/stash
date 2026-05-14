@@ -43,8 +43,6 @@ Common reads (all support `--json`):
 - `stash history query --limit 20` — latest events
 - `stash history agents` — who's been active
 - `stash notebooks list --all` — shared notebooks
-- `stash handoff show [STASH]` — read the handoff (agent-written orientation doc; read this first when picking up unfamiliar work)
-- `stash handoff refresh [STASH]` — regenerate the handoff and print the new body
 
 ### LLM configuration (server-side)
 
@@ -54,15 +52,14 @@ only uploads transcripts; new sessions land in `summary_status='need_summary'`
 and the summarizer worker claims them atomically.
 
 Two model tiers, configured in `backend/.env`:
-- `ANTHROPIC_API_KEY` — required for ask, the handoff writer, and the
-  session summarizer to actually run.
+- `ANTHROPIC_API_KEY` — required for ask and the session summarizer to run.
 - `ANTHROPIC_MODEL` — quality tier (default `claude-sonnet-4-6`). Used by
-  ask-the-stash and the handoff writer agent.
+  ask-the-stash.
 - `ANTHROPIC_FAST_MODEL` — fast tier (default `claude-haiku-4-5`). Used by
   the server-side session summarizer.
 
-Spend monitoring lives on per-row token counters
-(`stash_handoffs.input_tokens`, `sessions.summary_input_tokens`).
+Spend monitoring lives on per-row token counters such as
+`sessions.summary_input_tokens`.
 
 # CLAUDE.md — 12-rule template
 

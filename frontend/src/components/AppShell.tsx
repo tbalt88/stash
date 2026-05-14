@@ -3,7 +3,7 @@
 import { ReactNode, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import type { ViewItemSpec } from "../lib/api";
+import type { StashItemSpec } from "../lib/api";
 import { User, Workspace } from "../lib/types";
 import AppSidebar from "./AppSidebar";
 import CommandPalette from "./CommandPalette";
@@ -28,12 +28,12 @@ function readBool(key: string): boolean {
 // Pre-select the current page/folder/file/session when the Share button is
 // clicked from a detail route, so "share this" is one click instead of a hunt
 // through the picker.
-function inferShareInitial(pathname: string): ViewItemSpec[] | undefined {
-  const pageMatch = pathname.match(/^\/stashes\/[^/]+\/p\/([^/?#]+)/);
+function inferShareInitial(pathname: string): StashItemSpec[] | undefined {
+  const pageMatch = pathname.match(/^\/workspaces\/[^/]+\/p\/([^/?#]+)/);
   if (pageMatch) return [{ object_type: "page", object_id: pageMatch[1], position: 0 }];
-  const folderMatch = pathname.match(/^\/stashes\/[^/]+\/folders\/([^/?#]+)/);
+  const folderMatch = pathname.match(/^\/workspaces\/[^/]+\/folders\/([^/?#]+)/);
   if (folderMatch) return [{ object_type: "folder", object_id: folderMatch[1], position: 0 }];
-  const fileMatch = pathname.match(/^\/stashes\/[^/]+\/f\/([^/?#]+)/);
+  const fileMatch = pathname.match(/^\/workspaces\/[^/]+\/f\/([^/?#]+)/);
   if (fileMatch) return [{ object_type: "file", object_id: fileMatch[1], position: 0 }];
   return undefined;
 }
@@ -53,8 +53,8 @@ export default function AppShell({ user, onLogout, children }: AppShellProps) {
   const breadcrumbs = useBreadcrumbsValue();
   const shareModal = useShareModal();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [activeStashId, setActiveStashId] = useState<string | null>(null);
-  const [stashes, setStashes] = useState<Workspace[]>(
+  const [activeWorkspaceId, setActiveWorkspaceId] = useState<string | null>(null);
+  const [workspaces, setWorkspaces] = useState<Workspace[]>(
     () => readCachedWorkspaces(user.id)?.all ?? []
   );
   const [cmdkOpen, setCmdkOpen] = useState(false);
@@ -62,15 +62,13 @@ export default function AppShell({ user, onLogout, children }: AppShellProps) {
   useEffect(() => {
     setSidebarCollapsed(readBool(SIDEBAR_KEY));
     getCachedWorkspaces(user.id)
-      .then((r) => setStashes(r.all))
+      .then((r) => setWorkspaces(r.all))
       .catch(() => {});
   }, [user.id]);
 
   useEffect(() => {
-    const m =
-      pathname.match(/^\/stashes\/([^/]+)/) ||
-      pathname.match(/^\/workspaces\/([^/]+)/);
-    if (m?.[1]) setActiveStashId(m[1]);
+    const m = pathname.match(/^\/workspaces\/([^/]+)/);
+    if (m?.[1]) setActiveWorkspaceId(m[1]);
   }, [pathname]);
 
   useEffect(() => {
@@ -92,7 +90,7 @@ export default function AppShell({ user, onLogout, children }: AppShellProps) {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  const activeStash = stashes.find((s) => s.id === activeStashId);
+  const activeWorkspace = workspaces.find((s) => s.id === activeWorkspaceId);
   const initial = (user.display_name || user.name || "?")[0].toUpperCase();
 
   return (
@@ -114,22 +112,22 @@ export default function AppShell({ user, onLogout, children }: AppShellProps) {
           >
             <SidebarToggleIcon collapsed={sidebarCollapsed} />
           </button>
-          <Breadcrumb activeStash={activeStash} pageCrumbs={breadcrumbs} />
+          <Breadcrumb activeWorkspace={activeWorkspace} pageCrumbs={breadcrumbs} />
         </div>
 
         <div className="flex items-center gap-1">
-          {activeStashId && (
+          {activeWorkspaceId && (
             <button
               className="mr-1 rounded-md bg-[var(--color-brand-600)] px-2.5 py-1 text-[12.5px] font-medium text-white hover:bg-[var(--color-brand-700)]"
               onClick={() =>
                 shareModal.open({
-                  stashId: activeStashId,
-                  stashName: activeStash?.name,
+                  workspaceId: activeWorkspaceId,
+                  workspaceName: activeWorkspace?.name,
                   initial: inferShareInitial(pathname),
                 })
               }
             >
-              Share
+              New stash
             </button>
           )}
           <UserMenu
@@ -162,7 +160,7 @@ export default function AppShell({ user, onLogout, children }: AppShellProps) {
       <CommandPalette
         open={cmdkOpen}
         onClose={() => setCmdkOpen(false)}
-        stashId={activeStashId}
+        workspaceId={activeWorkspaceId}
       />
     </div>
   );
@@ -242,17 +240,17 @@ function UserMenu({
 }
 
 function Breadcrumb({
-  activeStash,
+  activeWorkspace,
   pageCrumbs,
 }: {
-  activeStash: Workspace | undefined;
+  activeWorkspace: Workspace | undefined;
   pageCrumbs: { label: string; href?: string; onClick?: () => void }[] | null;
 }) {
   const items: { label: string; href?: string }[] = [];
-  if (activeStash) {
-    items.push({ label: activeStash.name, href: `/stashes/${activeStash.id}` });
+  if (activeWorkspace) {
+    items.push({ label: activeWorkspace.name, href: `/workspaces/${activeWorkspace.id}` });
   } else {
-    items.push({ label: "Stashes", href: "/" });
+    items.push({ label: "Workspaces", href: "/" });
   }
   if (pageCrumbs && pageCrumbs.length > 0) {
     pageCrumbs.forEach((c) => items.push({ label: c.label, href: c.href }));
@@ -262,11 +260,11 @@ function Breadcrumb({
     <span className="ml-1.5 flex min-w-0 items-center gap-1.5 text-muted">
       {items.map((c, i) => {
         const last = i === items.length - 1;
-        const isStash = i === 0;
+        const isWorkspace = i === 0;
         return (
           <span key={i} className="flex min-w-0 items-center gap-1">
             {i > 0 && <span className="text-muted/60">/</span>}
-            {isStash && (
+            {isWorkspace && (
               <span className="flex h-4 w-4 items-center justify-center text-[14px] text-muted">
                 <StashIcon />
               </span>

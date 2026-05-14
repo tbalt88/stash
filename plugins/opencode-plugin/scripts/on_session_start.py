@@ -2,24 +2,22 @@
 """opencode session.created: save session_id for downstream streaming.
 
 opencode only emits `session.deleted` on explicit user delete — normal quit
-fires nothing. To avoid leaking the prior session_id and skipping curation,
-we treat any new session whose id differs from state as a signal that the
-prior session ended. Flush a session_end for the stale id first, then save
-the new one.
+fires nothing. To avoid leaking the prior session_id, we treat any new session
+whose id differs from state as a signal that the prior session ended. Flush a
+session_end for the stale id first, then save the new one.
 """
 
+from adapt import adapt_session_start
 from config import DATA_DIR, get_client, get_config, get_stdin_data, is_configured
+
 from stashai.plugin.event import HookEvent
 from stashai.plugin.hooks import (
-    create_session_stash,
-    finalize_session_stash,
-    reset_session_stash_state,
+    create_session_record,
+    finalize_session_upload,
+    reset_session_record_state,
     stream_session_end,
 )
 from stashai.plugin.state import load_state, reset_stats, save_state
-
-from adapt import adapt_session_start
-from stashai.plugin.curate_spawn import spawn_curation
 
 
 def _flush_stale_session(prior_sid: str, state: dict) -> None:
@@ -29,13 +27,9 @@ def _flush_stale_session(prior_sid: str, state: dict) -> None:
     try:
         with get_client() as client:
             stream_session_end(client, cfg, stale_state, stale_event)
-            finalize_session_stash(client, cfg, stale_state, stale_event, DATA_DIR)
+            finalize_session_upload(client, cfg, stale_state, stale_event, DATA_DIR)
     except Exception:
         pass
-    # 24h cooldown still gates this; safe to call.
-    if cfg.get("workspace_id"):
-        spawn_curation("opencode", ["run"])
-
 
 def main():
     if not is_configured():
@@ -47,7 +41,7 @@ def main():
     if prior_sid and prior_sid != event.session_id:
         _flush_stale_session(prior_sid, state)
 
-    reset_session_stash_state(state)
+    reset_session_record_state(state)
     state["session_id"] = event.session_id
     save_state(DATA_DIR, state)
     reset_stats(DATA_DIR)
@@ -56,7 +50,7 @@ def main():
     cfg = get_config()
     try:
         with get_client() as client:
-            create_session_stash(client, cfg, state, event, DATA_DIR)
+            create_session_record(client, cfg, state, event, DATA_DIR)
     except Exception:
         pass
 

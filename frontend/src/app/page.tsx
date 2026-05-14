@@ -6,198 +6,31 @@ import { useRouter } from "next/navigation";
 import AppShell from "../components/AppShell";
 import { useAuth } from "../hooks/useAuth";
 import {
-  listAllPages,
-  listMyWorkspaces,
-  listPublicWorkspaces,
   createWorkspace,
   joinWorkspace,
+  listAllPages,
+  listMySessions,
+  listMyWorkspaces,
+  listStashes,
+  type WorkspaceStash,
   UserPageEntry,
 } from "../lib/api";
-import {
-  Workspace,
-} from "../lib/types";
+import type { SessionSummary } from "../lib/api";
+import type { Workspace } from "../lib/types";
 
-function LoggedInHome({ user, logout }: { user: NonNullable<ReturnType<typeof useAuth>["user"]>; logout: () => void }) {
-  const router = useRouter();
-  const [myWorkspaces, setMyWorkspaces] = useState<Workspace[]>([]);
-  const [publicWorkspaces, setPublicWorkspaces] = useState<Workspace[]>([]);
-  const [recentPages, setRecentPages] = useState<UserPageEntry[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  // Create / join state
-  const [showCreate, setShowCreate] = useState(false);
-  const [newName, setNewName] = useState("");
-  const [newDesc, setNewDesc] = useState("");
-  const [isPublic, setIsPublic] = useState(false);
-  const [joinCode, setJoinCode] = useState("");
-  const [error, setError] = useState("");
-
-  const myWsIds = useMemo(() => new Set(myWorkspaces.map((w) => w.id)), [myWorkspaces]);
-
-  const loadData = useCallback(() => {
-    setLoading(true);
-    Promise.all([
-      listMyWorkspaces().then((r) => r?.workspaces ?? []).catch(() => [] as Workspace[]),
-      listPublicWorkspaces().then((r) => r?.workspaces ?? []).catch(() => [] as Workspace[]),
-      listAllPages().then((r) => r?.pages ?? []).catch(() => [] as UserPageEntry[]),
-    ]).then(([mine, pub, pgs]) => {
-      setMyWorkspaces(mine);
-      setPublicWorkspaces(pub);
-      setRecentPages(pgs);
-      setLoading(false);
-    });
-  }, []);
-
-  useEffect(() => { loadData(); }, [loadData]);
-
-  const handleCreate = async () => {
-    if (!newName.trim()) return;
-    setError("");
-    try {
-      const ws = await createWorkspace(newName.trim(), newDesc.trim(), isPublic);
-      setShowCreate(false);
-      setNewName("");
-      setNewDesc("");
-      router.push(`/workspaces/${ws.id}`);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to create workspace");
-    }
-  };
-
-  const handleJoin = async () => {
-    if (!joinCode.trim()) return;
-    setError("");
-    try {
-      const ws = await joinWorkspace(joinCode.trim());
-      router.push(`/workspaces/${ws.id}`);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to join workspace");
-    }
-  };
-
-  const otherPublic = publicWorkspaces.filter((w) => !myWsIds.has(w.id));
-
-  return (
-    <AppShell user={user} onLogout={logout}>
-      <div className="max-w-4xl mx-auto w-full px-4 py-8">
-        <div className="flex items-center justify-between mb-6">
-          <h1 className="text-2xl font-bold text-foreground font-display">Workspaces</h1>
-          <button onClick={() => setShowCreate(true)} className="text-sm bg-brand hover:bg-brand-hover text-foreground px-3 py-1.5 rounded">
-            Create Workspace
-          </button>
-        </div>
-
-        {error && <p className="text-red-400 text-sm mb-4">{error}<button onClick={() => setError("")} className="ml-2 text-red-500">&times;</button></p>}
-
-        {/* Create workspace form */}
-        {showCreate && (
-          <div className="bg-surface border border-border rounded-lg p-4 mb-6">
-            <h3 className="text-foreground font-medium mb-3">New Workspace</h3>
-            <input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Name" className="w-full bg-raised border border-border rounded px-3 py-2 text-foreground text-sm mb-2" />
-            <input value={newDesc} onChange={(e) => setNewDesc(e.target.value)} placeholder="Description (optional)" className="w-full bg-raised border border-border rounded px-3 py-2 text-foreground text-sm mb-2" />
-            <label className="flex items-center gap-2 text-sm text-dim mb-3"><input type="checkbox" checked={isPublic} onChange={(e) => setIsPublic(e.target.checked)} /> Public</label>
-            <div className="flex gap-2">
-              <button onClick={handleCreate} className="bg-brand hover:bg-brand-hover text-foreground px-4 py-1.5 rounded text-sm">Create</button>
-              <button onClick={() => setShowCreate(false)} className="bg-raised text-dim px-4 py-1.5 rounded text-sm">Cancel</button>
-            </div>
-          </div>
-        )}
-
-        {/* Join by invite code */}
-        <div className="bg-surface border border-border rounded-lg p-4 mb-6">
-          <h3 className="text-foreground font-medium mb-2">Join by Invite Code</h3>
-          <div className="flex gap-2">
-            <input value={joinCode} onChange={(e) => setJoinCode(e.target.value)} placeholder="Enter invite code" className="flex-1 bg-raised border border-border rounded px-3 py-2 text-foreground text-sm" />
-            <button onClick={handleJoin} className="bg-success hover:bg-success/80 text-foreground px-4 py-1.5 rounded text-sm">Join</button>
-          </div>
-        </div>
-
-        {loading ? (
-          <p className="text-muted text-sm">Loading...</p>
-        ) : (
-          <>
-            {/* My Workspaces */}
-            {myWorkspaces.length > 0 && (
-              <section className="mb-8">
-                <h2 className="text-sm font-medium text-muted uppercase tracking-wider mb-3">My Workspaces</h2>
-                <div className="grid gap-3 sm:grid-cols-2">
-                  {myWorkspaces.map((ws) => (
-                    <Link key={ws.id} href={`/workspaces/${ws.id}`} className="bg-surface border border-border rounded-lg p-4 hover:border-brand transition-colors">
-                      <div className="text-foreground font-medium">{ws.name}</div>
-                      {ws.description && <div className="text-dim text-sm mt-1">{ws.description}</div>}
-                      <div className="text-[10px] text-muted mt-1">{ws.member_count ?? 0} members</div>
-                    </Link>
-                  ))}
-                </div>
-              </section>
-            )}
-
-            {/* Public Workspaces */}
-            {otherPublic.length > 0 && (
-              <section className="mb-8">
-                <h2 className="text-sm font-medium text-muted uppercase tracking-wider mb-3">Public Workspaces</h2>
-                <div className="grid gap-3 sm:grid-cols-2">
-                  {otherPublic.map((ws) => (
-                    <Link key={ws.id} href={`/workspaces/${ws.id}`} className="bg-surface border border-border rounded-lg p-4 hover:border-brand transition-colors">
-                      <div className="text-foreground font-medium">{ws.name}</div>
-                      {ws.description && <div className="text-dim text-sm mt-1">{ws.description}</div>}
-                      <div className="text-[10px] text-muted mt-1">Public</div>
-                    </Link>
-                  ))}
-                </div>
-              </section>
-            )}
-
-            {/* Recent pages across workspaces */}
-            {recentPages.length > 0 && (
-              <section>
-                <h2 className="text-sm font-medium text-muted uppercase tracking-wider mb-3">Recent Pages</h2>
-                <div className="space-y-0.5">
-                  {recentPages.slice(0, 10).map((p) => (
-                    <Link
-                      key={p.id}
-                      href={`/wiki?ws=${p.workspace_id}&page=${p.id}`}
-                      className="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-raised transition-colors"
-                    >
-                      <div className="w-8 h-8 rounded-md bg-green-500/15 text-green-500 flex items-center justify-center text-xs font-bold flex-shrink-0">P</div>
-                      <div className="min-w-0 flex-1">
-                        <div className="text-sm text-foreground truncate">{p.name}</div>
-                        <div className="text-xs text-muted truncate">
-                          {p.workspace_name}
-                          {p.folder_path.length > 0 ? ` · ${p.folder_path.join("/")}` : ""}
-                        </div>
-                      </div>
-                      <span className="text-xs text-muted flex-shrink-0">{formatRelativeTime(p.updated_at)}</span>
-                    </Link>
-                  ))}
-                </div>
-              </section>
-            )}
-
-            {myWorkspaces.length === 0 && recentPages.length === 0 && (
-              <div className="text-center py-12">
-                <p className="text-dim mb-4">Nothing here yet. Create a workspace to get started.</p>
-              </div>
-            )}
-          </>
-        )}
-      </div>
-    </AppShell>
-  );
+interface RecentStash extends WorkspaceStash {
+  workspace_name: string;
 }
 
-function formatRelativeTime(dateStr: string): string {
-  const now = Date.now();
-  const then = new Date(dateStr).getTime();
-  const diffMs = now - then;
-  const diffMin = Math.floor(diffMs / 60000);
-  if (diffMin < 1) return "just now";
-  if (diffMin < 60) return `${diffMin}m ago`;
-  const diffHr = Math.floor(diffMin / 60);
-  if (diffHr < 24) return `${diffHr}h ago`;
-  const diffDay = Math.floor(diffHr / 24);
-  if (diffDay < 30) return `${diffDay}d ago`;
-  return new Date(dateStr).toLocaleDateString();
+interface HomeData {
+  workspaces: Workspace[];
+  stashes: RecentStash[];
+  recentPages: UserPageEntry[];
+  recentSessions: SessionSummary[];
+}
+
+function emptyHomeData(): HomeData {
+  return { workspaces: [], stashes: [], recentPages: [], recentSessions: [] };
 }
 
 export default function Home() {
@@ -205,14 +38,388 @@ export default function Home() {
   const router = useRouter();
 
   useEffect(() => {
-    if (!loading && !user) {
-      router.replace("/login");
-    }
+    if (!loading && !user) router.replace("/login");
   }, [loading, router, user]);
 
   if (loading || !user) {
-    return <div className="min-h-screen flex items-center justify-center text-muted">Loading...</div>;
+    return <div className="flex min-h-screen items-center justify-center text-muted">Loading...</div>;
   }
 
   return <LoggedInHome user={user} logout={logout} />;
+}
+
+function LoggedInHome({
+  user,
+  logout,
+}: {
+  user: NonNullable<ReturnType<typeof useAuth>["user"]>;
+  logout: () => void;
+}) {
+  const router = useRouter();
+  const [data, setData] = useState<HomeData>(emptyHomeData);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [newName, setNewName] = useState("");
+  const [newDesc, setNewDesc] = useState("");
+  const [joinCode, setJoinCode] = useState("");
+  const [creating, setCreating] = useState(false);
+  const [joining, setJoining] = useState(false);
+
+  const loadData = useCallback(async () => {
+    setLoading(true);
+    setError("");
+    try {
+      const [stashResult, pageResult, sessionResult] = await Promise.all([
+        listMyWorkspaces(),
+        listAllPages(),
+        listMySessions(undefined, 8),
+      ]);
+      const stashes = await Promise.all(
+        stashResult.workspaces.map(async (workspace) => {
+          const workspaceStashes = await listStashes(workspace.id);
+          return workspaceStashes.map((stash) => ({ ...stash, workspace_name: workspace.name }));
+        })
+      );
+      setData({
+        workspaces: stashResult.workspaces,
+        stashes: stashes.flat().sort((a, b) => dateSort(b.updated_at, a.updated_at)).slice(0, 8),
+        recentPages: pageResult.pages.slice(0, 8),
+        recentSessions: sessionResult,
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load Stash");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
+
+  const ownedStashes = useMemo(
+    () => data.workspaces.filter((workspace) => workspace.creator_id === user.id),
+    [data.workspaces, user.id]
+  );
+  const externalStashes = useMemo(
+    () => data.workspaces.filter((workspace) => workspace.creator_id !== user.id),
+    [data.workspaces, user.id]
+  );
+
+  async function handleCreate(event: React.FormEvent) {
+    event.preventDefault();
+    if (!newName.trim()) return;
+
+    setCreating(true);
+    setError("");
+    try {
+      const workspace = await createWorkspace(newName.trim(), newDesc.trim());
+      router.push(`/workspaces/${workspace.id}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to create workspace");
+      setCreating(false);
+    }
+  }
+
+  async function handleJoin(event: React.FormEvent) {
+    event.preventDefault();
+    if (!joinCode.trim()) return;
+
+    setJoining(true);
+    setError("");
+    try {
+      const workspace = await joinWorkspace(joinCode.trim());
+      router.push(`/workspaces/${workspace.id}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to join workspace");
+      setJoining(false);
+    }
+  }
+
+  return (
+    <AppShell user={user} onLogout={logout}>
+      <div className="mx-auto flex w-full max-w-[1180px] flex-col gap-8 px-6 py-8">
+        <header className="grid gap-6 border-b border-border-subtle pb-7 lg:grid-cols-[1fr_360px]">
+          <div>
+            <p className="font-mono text-[11px] font-medium uppercase tracking-[0.14em] text-muted">
+              Newsfeed
+            </p>
+            <h1 className="mt-3 font-display text-[34px] font-bold tracking-tight text-foreground">
+              Agent work, organized into workspaces.
+            </h1>
+            <p className="mt-3 max-w-[700px] text-[14.5px] leading-[1.6] text-muted">
+              A Stash Workspace is the shared container for your team&apos;s agent
+              sessions, wiki pages, and files. Stashes are the published bundles
+              you publish or hand to another workspace.
+            </p>
+            <div className="mt-5 flex flex-wrap gap-2">
+              <Link
+                href="/search"
+                className="rounded-md bg-[var(--color-brand-600)] px-3 py-2 text-[13px] font-medium text-white hover:bg-[var(--color-brand-700)]"
+              >
+                Search everything
+              </Link>
+              <Link
+                href="/discover"
+                className="rounded-md border border-border bg-base px-3 py-2 text-[13px] text-foreground hover:bg-raised"
+              >
+                Discover public stashes
+              </Link>
+            </div>
+          </div>
+
+          <form
+            onSubmit={handleCreate}
+            className="rounded-lg border border-border bg-surface p-4"
+          >
+            <h2 className="font-display text-[16px] font-semibold text-foreground">
+              Create a workspace
+            </h2>
+            <div className="mt-3 flex flex-col gap-3">
+              <input
+                value={newName}
+                onChange={(event) => setNewName(event.target.value)}
+                placeholder="e.g. Growth engineering"
+                className="rounded-md border border-border bg-base px-3 py-2 text-[13px] text-foreground placeholder:text-muted focus:border-brand focus:outline-none"
+              />
+              <textarea
+                value={newDesc}
+                onChange={(event) => setNewDesc(event.target.value)}
+                rows={3}
+                placeholder="What should this workspace collect?"
+                className="resize-none rounded-md border border-border bg-base px-3 py-2 text-[13px] text-foreground placeholder:text-muted focus:border-brand focus:outline-none"
+              />
+              <button
+                type="submit"
+                disabled={creating || !newName.trim()}
+                className="rounded-md bg-[var(--color-brand-600)] px-3 py-2 text-[13px] font-medium text-white hover:bg-[var(--color-brand-700)] disabled:opacity-45"
+              >
+                {creating ? "Creating..." : "Create workspace"}
+              </button>
+            </div>
+          </form>
+        </header>
+
+        {error && (
+          <div className="rounded-md border border-red-300 bg-red-50 px-3 py-2 text-[13px] text-red-700">
+            {error}
+          </div>
+        )}
+
+        <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_340px]">
+          <main className="min-w-0">
+            <SectionTitle title="My workspaces" count={ownedStashes.length} />
+            {loading ? (
+              <LoadingRows />
+            ) : ownedStashes.length > 0 ? (
+              <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                {ownedStashes.map((stash) => (
+                  <WorkspaceCard key={stash.id} workspace={stash} />
+                ))}
+              </div>
+            ) : (
+              <EmptyState text="Create your first workspace to collect sessions, wiki pages, and files." />
+            )}
+
+            <div className="mt-8">
+              <SectionTitle title="Shared workspaces" count={externalStashes.length} />
+              {externalStashes.length > 0 ? (
+                <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                  {externalStashes.map((stash) => (
+                    <WorkspaceCard key={stash.id} workspace={stash} external />
+                  ))}
+                </div>
+              ) : (
+                <EmptyState text="Workspaces another admin adds you to show up here." />
+              )}
+            </div>
+          </main>
+
+          <aside className="flex min-w-0 flex-col gap-5">
+            <form onSubmit={handleJoin} className="rounded-lg border border-border bg-surface p-4">
+              <h2 className="font-display text-[16px] font-semibold text-foreground">
+                Add by invite
+              </h2>
+              <p className="mt-1 text-[12.5px] leading-relaxed text-muted">
+                Join a private workspace with an admin-provided invite code.
+              </p>
+              <div className="mt-3 flex gap-2">
+                <input
+                  value={joinCode}
+                  onChange={(event) => setJoinCode(event.target.value)}
+                  placeholder="Invite code"
+                  className="min-w-0 flex-1 rounded-md border border-border bg-base px-3 py-2 text-[13px] text-foreground placeholder:text-muted focus:border-brand focus:outline-none"
+                />
+                <button
+                  type="submit"
+                  disabled={joining || !joinCode.trim()}
+                  className="rounded-md border border-border bg-base px-3 py-2 text-[13px] font-medium text-foreground hover:bg-raised disabled:opacity-45"
+                >
+                  {joining ? "Joining..." : "Join"}
+                </button>
+              </div>
+            </form>
+
+            <StashPanel stashes={data.stashes} />
+
+            <ActivityPanel
+              title="Recent pages"
+              empty="No wiki pages yet."
+              items={data.recentPages.map((page) => ({
+                id: page.id,
+                href: `/workspaces/${page.workspace_id}/p/${page.id}`,
+                title: page.name,
+                meta: `${page.workspace_name}${page.folder_path.length ? " / " + page.folder_path.join("/") : ""} / ${relativeTime(page.updated_at)}`,
+              }))}
+            />
+          </aside>
+        </div>
+      </div>
+    </AppShell>
+  );
+}
+
+function SectionTitle({ title, count }: { title: string; count: number }) {
+  return (
+    <div className="flex items-center justify-between gap-3">
+      <h2 className="font-display text-[20px] font-semibold text-foreground">{title}</h2>
+      <span className="font-mono text-[11px] uppercase tracking-[0.12em] text-muted">
+        {count}
+      </span>
+    </div>
+  );
+}
+
+function WorkspaceCard({
+  workspace,
+  external = false,
+}: {
+  workspace: Workspace;
+  external?: boolean;
+}) {
+  return (
+    <Link
+      href={`/workspaces/${workspace.id}`}
+      className="group min-w-0 rounded-lg border border-border bg-base p-4 transition hover:border-[var(--color-brand-300)] hover:bg-[var(--color-brand-50)]"
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h3 className="truncate font-display text-[16px] font-semibold text-foreground group-hover:text-[var(--color-brand-700)]">
+            {workspace.name}
+          </h3>
+          <p className="mt-1 line-clamp-2 min-h-[40px] text-[13px] leading-relaxed text-muted">
+            {workspace.description || "No description."}
+          </p>
+        </div>
+        {external && (
+          <span className="shrink-0 rounded-md border border-border-subtle px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-muted">
+            external
+          </span>
+        )}
+      </div>
+      <div className="mt-3 flex flex-wrap gap-2 text-[11px] text-dim">
+        <span>{workspace.member_count ?? 0} members</span>
+      </div>
+    </Link>
+  );
+}
+
+function StashPanel({ stashes }: { stashes: RecentStash[] }) {
+  return (
+    <section className="rounded-lg border border-border bg-surface p-4">
+      <h2 className="font-display text-[16px] font-semibold text-foreground">
+        Recent stashes
+      </h2>
+      <div className="mt-3 flex flex-col gap-1">
+        {stashes.length > 0 ? (
+          stashes.map((stash) => (
+            <Link
+              key={stash.id}
+              href={`/stashes/${stash.slug}`}
+              className="rounded-md px-2 py-2 hover:bg-raised"
+            >
+              <div className="line-clamp-1 text-[13px] font-medium text-foreground">
+                {stash.title}
+              </div>
+              <div className="mt-0.5 line-clamp-1 text-[11.5px] text-muted">
+                {stash.workspace_name} / {stash.items.length} items / {relativeTime(stash.updated_at)}
+              </div>
+            </Link>
+          ))
+        ) : (
+          <p className="py-3 text-[12.5px] text-muted">
+            Create a stash from any workspace Share button.
+          </p>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function ActivityPanel({
+  title,
+  empty,
+  items,
+}: {
+  title: string;
+  empty: string;
+  items: { id: string; href: string; title: string; meta: string }[];
+}) {
+  return (
+    <section className="rounded-lg border border-border bg-surface p-4">
+      <h2 className="font-display text-[16px] font-semibold text-foreground">{title}</h2>
+      <div className="mt-3 flex flex-col gap-1">
+        {items.length > 0 ? (
+          items.map((item) => (
+            <Link
+              key={item.id}
+              href={item.href}
+              className="rounded-md px-2 py-2 hover:bg-raised"
+            >
+              <div className="line-clamp-1 text-[13px] font-medium text-foreground">
+                {item.title}
+              </div>
+              <div className="mt-0.5 line-clamp-1 text-[11.5px] text-muted">{item.meta}</div>
+            </Link>
+          ))
+        ) : (
+          <p className="py-3 text-[12.5px] text-muted">{empty}</p>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function EmptyState({ text }: { text: string }) {
+  return (
+    <div className="mt-3 rounded-lg border border-dashed border-border bg-surface/50 px-4 py-8 text-center text-[13px] text-muted">
+      {text}
+    </div>
+  );
+}
+
+function LoadingRows() {
+  return (
+    <div className="mt-3 grid gap-3 sm:grid-cols-2">
+      {[0, 1].map((item) => (
+        <div key={item} className="h-[132px] rounded-lg border border-border bg-surface" />
+      ))}
+    </div>
+  );
+}
+
+function relativeTime(iso: string): string {
+  const ms = Date.now() - new Date(iso).getTime();
+  if (ms < 60_000) return "just now";
+  const minutes = Math.floor(ms / 60_000);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 30) return `${days}d ago`;
+  return new Date(iso).toLocaleDateString();
+}
+
+function dateSort(a: string, b: string): number {
+  return new Date(a).getTime() - new Date(b).getTime();
 }

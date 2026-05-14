@@ -1,33 +1,21 @@
-"""Permission service: Google Drive-like access checks for all object types.
-
-Access logic:
-1. Anonymous viewer (user_id=None) gets read iff visibility is 'link' or 'public'.
-2. Workspace owner/admin always has access (bypass all checks).
-3. visibility='public'/'link' → anyone can read. Write requires share entry.
-4. visibility='private' → only users in object_shares.
-5. visibility='inherit' (default) → workspace members + object_shares.
-
-Pages and folders inherit visibility up the folder chain: a private folder
-denies access to every page (and every subfolder/page) inside it, even if
-the workspace itself is public.
-"""
+"""Permission service for workspace content objects."""
 
 from uuid import UUID
 
 from ..database import get_pool
 
-# Object types that live inside a workspace and have a workspace_id column
-# directly. Pages/folders also have workspace_id but their effective
-# visibility walks the folder chain first.
+# Object types that live inside a workspace and have a workspace_id column directly.
 _WORKSPACE_LOOKUP = {
-    "workspace": ("workspaces", "id"),
     "table": ("tables", "workspace_id"),
     "file": ("files", "workspace_id"),
     "history": ("history_events", "workspace_id"),
-    "view": ("views", "workspace_id"),
+    "session": ("sessions", "workspace_id"),
+    "stash": ("stashes", "workspace_id"),
     "folder": ("folders", "workspace_id"),
     "page": ("pages", "workspace_id"),
 }
+
+_TAG_OBJECT_TYPES = {"folder", "page", "session", "table", "file", "history"}
 
 
 async def resolve_workspace_id(object_type: str, object_id: UUID) -> UUID | None:
@@ -71,85 +59,89 @@ async def _folder_chain(folder_id: UUID) -> list[UUID]:
     return [r["id"] for r in rows]
 
 
-async def _effective_read_visibility(
-    object_type: str, object_id: UUID, workspace_id: UUID | None
-) -> str:
-    """Resolve read inheritance for anonymous/link readers.
-
-    One recursive CTE walks the object → folder chain → workspace path,
-    joins to object_permissions, and returns the first non-'inherit'
-    visibility. Used to short-circuit N+1 `get_visibility` calls.
-    """
-    pool = get_pool()
-
+async def _privacy_targets(object_type: str, object_id: UUID) -> list[tuple[str, UUID]]:
     if object_type == "page":
-        row = await pool.fetchrow(
-            """
-            WITH RECURSIVE chain AS (
-                -- The page itself: depth 0, "page" type
-                SELECT 0 AS depth, 'page'::text AS object_type, p.id AS object_id,
-                       p.folder_id AS next_folder
-                FROM pages p WHERE p.id = $1
-                UNION ALL
-                -- Walk up the folder chain
-                SELECT c.depth + 1, 'folder'::text, f.id, f.parent_folder_id
-                FROM folders f JOIN chain c ON c.next_folder = f.id
-            ),
-            with_ws AS (
-                SELECT depth, object_type, object_id FROM chain
-                UNION ALL
-                SELECT (SELECT COUNT(*)+1 FROM chain), 'workspace', $2::uuid
-                WHERE $2::uuid IS NOT NULL
-            )
-            SELECT op.visibility
-            FROM with_ws w
-            JOIN object_permissions op
-              ON op.object_type = w.object_type AND op.object_id = w.object_id
-            WHERE op.visibility <> 'inherit'
-            ORDER BY w.depth ASC
-            LIMIT 1
-            """,
-            object_id,
-            workspace_id,
-        )
-        return row["visibility"] if row else "inherit"
-
+        return [("page", object_id)] + [
+            ("folder", folder_id) for folder_id in await _folder_chain_for_page(object_id)
+        ]
     if object_type == "folder":
-        row = await pool.fetchrow(
-            """
-            WITH RECURSIVE chain AS (
-                SELECT 0 AS depth, id AS object_id, parent_folder_id AS next_folder
-                FROM folders WHERE id = $1
-                UNION ALL
-                SELECT c.depth + 1, f.id, f.parent_folder_id
-                FROM folders f JOIN chain c ON c.next_folder = f.id
-            ),
-            with_ws AS (
-                SELECT depth, 'folder'::text AS object_type, object_id FROM chain
-                UNION ALL
-                SELECT (SELECT COUNT(*)+1 FROM chain), 'workspace', $2::uuid
-                WHERE $2::uuid IS NOT NULL
-            )
-            SELECT op.visibility
-            FROM with_ws w
-            JOIN object_permissions op
-              ON op.object_type = w.object_type AND op.object_id = w.object_id
-            WHERE op.visibility <> 'inherit'
-            ORDER BY w.depth ASC
-            LIMIT 1
-            """,
-            object_id,
-            workspace_id,
-        )
-        return row["visibility"] if row else "inherit"
+        return [("folder", folder_id) for folder_id in await _folder_chain(object_id)]
+    if object_type == "session":
+        return [("session", object_id)]
+    if object_type in {"table", "file", "history"}:
+        return [(object_type, object_id)]
+    return []
 
-    # Non-hierarchical types: just check own visibility, then workspace.
-    vis = await get_visibility(object_type, object_id)
-    if vis != "inherit":
-        return vis
-    if object_type == "workspace" or workspace_id is None:
-        return "inherit"
-    return await get_visibility("workspace", workspace_id)
+
+async def _effective_privacy_tags(object_type: str, object_id: UUID) -> list[dict]:
+    pool = get_pool()
+    tags: list[dict] = []
+    for target_type, target_id in await _privacy_targets(object_type, object_id):
+        rows = await pool.fetch(
+            "SELECT pt.id, pt.workspace_id, pt.name, pt.access "
+            "FROM privacy_tag_objects pto "
+            "JOIN privacy_tags pt ON pt.id = pto.tag_id "
+            "WHERE pto.object_type = $1 AND pto.object_id = $2 "
+            "ORDER BY pt.name",
+            target_type,
+            target_id,
+        )
+        tags.extend(dict(row) for row in rows)
+    return tags
+
+
+async def _tag_member_permission(tag_id: UUID, user_id: UUID) -> str | None:
+    pool = get_pool()
+    row = await pool.fetchrow(
+        "SELECT permission FROM privacy_tag_members WHERE tag_id = $1 AND user_id = $2",
+        tag_id,
+        user_id,
+    )
+    return row["permission"] if row else None
+
+
+async def _privacy_tag_allows(tag: dict, user_id: UUID | None, require_write: bool) -> bool:
+    access = tag["access"]
+    if user_id is None:
+        return access == "public" and not require_write
+
+    if access == "public":
+        return not require_write
+    if access == "workspace":
+        if require_write:
+            return False
+        return await is_workspace_member(tag["workspace_id"], user_id)
+
+    permission = await _tag_member_permission(tag["id"], user_id)
+    if not permission:
+        return False
+    if not require_write:
+        return True
+    return permission in ("write", "admin")
+
+
+async def _check_tag_access(
+    object_type: str,
+    object_id: UUID,
+    user_id: UUID | None,
+    workspace_id: UUID | None,
+    require_write: bool,
+) -> bool:
+    if user_id is not None:
+        role = await get_workspace_role(workspace_id, user_id) if workspace_id else None
+        if role in ("owner", "admin"):
+            return True
+
+    tags = await _effective_privacy_tags(object_type, object_id)
+    if not tags:
+        if user_id is None or require_write:
+            return False
+        return bool(workspace_id and await is_workspace_member(workspace_id, user_id))
+
+    for tag in tags:
+        if not await _privacy_tag_allows(tag, user_id, require_write):
+            return False
+    return True
 
 
 async def check_access(
@@ -160,68 +152,21 @@ async def check_access(
     require_write: bool = False,
 ) -> bool:
     """Check if a user can access an object. user_id=None means anonymous viewer."""
-    pool = get_pool()
-
     if workspace_id is None:
         workspace_id = await resolve_workspace_id(object_type, object_id)
 
+    if object_type in _TAG_OBJECT_TYPES:
+        return await _check_tag_access(
+            object_type, object_id, user_id, workspace_id, require_write
+        )
+
     if user_id is None:
-        if require_write:
-            return False
-        effective = await _effective_read_visibility(object_type, object_id, workspace_id)
-        return effective in ("public", "link")
+        return False
 
     role = await get_workspace_role(workspace_id, user_id) if workspace_id else None
-
     if role in ("owner", "admin"):
         return True
-
-    effective = await _effective_read_visibility(object_type, object_id, workspace_id)
-    if effective in ("public", "link") and not require_write:
-        return True
-
-    share = await pool.fetchrow(
-        "SELECT permission FROM object_shares "
-        "WHERE object_type = $1 AND object_id = $2 AND user_id = $3",
-        object_type,
-        object_id,
-        user_id,
-    )
-    if share:
-        if not require_write:
-            return True
-        return share["permission"] in ("write", "admin")
-
-    # Walk up the folder chain for explicit shares against any ancestor.
-    chain: list[tuple[str, UUID]] = []
-    if object_type == "page":
-        chain = [("folder", fid) for fid in await _folder_chain_for_page(object_id)]
-    elif object_type == "folder":
-        chain = [("folder", fid) for fid in await _folder_chain(object_id) if fid != object_id]
-    for ancestor_type, ancestor_id in chain:
-        share = await pool.fetchrow(
-            "SELECT permission FROM object_shares "
-            "WHERE object_type = $1 AND object_id = $2 AND user_id = $3",
-            ancestor_type,
-            ancestor_id,
-            user_id,
-        )
-        if share:
-            if not require_write:
-                return True
-            if share["permission"] in ("write", "admin"):
-                return True
-
-    # Workspace members fall through to the workspace default for objects
-    # whose effective visibility hasn't been pinned down by anything along
-    # the chain. Read-only — write still requires a share. We use the
-    # effective visibility here (not the direct one) so a private ancestor
-    # folder hides its descendants from members without a share.
-    if effective in ("inherit", "public", "link") and workspace_id and role is not None:
-        if not require_write:
-            return True
-
-    return False
+    return bool(role and not require_write)
 
 
 async def get_workspace_role(workspace_id: UUID, user_id: UUID) -> str | None:
@@ -239,31 +184,70 @@ async def is_workspace_member(workspace_id: UUID, user_id: UUID) -> bool:
 
 
 async def get_visibility(object_type: str, object_id: UUID) -> str:
-    pool = get_pool()
-    row = await pool.fetchrow(
-        "SELECT visibility FROM object_permissions WHERE object_type = $1 AND object_id = $2",
-        object_type,
-        object_id,
-    )
-    return row["visibility"] if row else "inherit"
+    if object_type not in _TAG_OBJECT_TYPES:
+        raise ValueError(f"Unsupported privacy tag object type: {object_type}")
+
+    tags = await _effective_privacy_tags(object_type, object_id)
+    if not tags:
+        return "inherit"
+    if all(tag["access"] == "public" for tag in tags):
+        return "public"
+    return "private"
 
 
 async def set_visibility(object_type: str, object_id: UUID, visibility: str) -> None:
+    await set_privacy_visibility(object_type, object_id, visibility)
+
+
+async def set_privacy_visibility(
+    object_type: str,
+    object_id: UUID,
+    visibility: str,
+    created_by: UUID | None = None,
+) -> None:
+    if object_type not in _TAG_OBJECT_TYPES:
+        raise ValueError(f"Unsupported privacy tag object type: {object_type}")
+    if visibility not in {"inherit", "private", "link", "public"}:
+        raise ValueError(f"Unsupported visibility: {visibility}")
+
     pool = get_pool()
+    await pool.execute(
+        "DELETE FROM privacy_tag_objects WHERE object_type = $1 AND object_id = $2",
+        object_type,
+        object_id,
+    )
     if visibility == "inherit":
+        return
+
+    workspace_id = await resolve_workspace_id(object_type, object_id)
+    if workspace_id is None:
+        raise ValueError("Object not found")
+
+    access = "public" if visibility in ("link", "public") else "members"
+    tag = await pool.fetchrow(
+        "INSERT INTO privacy_tags (workspace_id, name, access, created_by) "
+        "VALUES ($1, $2, $3, $4) "
+        "ON CONFLICT (workspace_id, name) DO UPDATE SET access = $3, updated_at = now() "
+        "RETURNING id",
+        workspace_id,
+        f"{object_type}:{object_id}:{visibility}",
+        access,
+        created_by,
+    )
+    await pool.execute(
+        "INSERT INTO privacy_tag_objects (tag_id, object_type, object_id) "
+        "VALUES ($1, $2, $3) ON CONFLICT DO NOTHING",
+        tag["id"],
+        object_type,
+        object_id,
+    )
+    if visibility == "private" and created_by is not None:
         await pool.execute(
-            "DELETE FROM object_permissions WHERE object_type = $1 AND object_id = $2",
-            object_type,
-            object_id,
-        )
-    else:
-        await pool.execute(
-            "INSERT INTO object_permissions (object_type, object_id, visibility) "
-            "VALUES ($1, $2, $3) "
-            "ON CONFLICT (object_type, object_id) DO UPDATE SET visibility = $3",
-            object_type,
-            object_id,
-            visibility,
+            "INSERT INTO privacy_tag_members (tag_id, user_id, permission) "
+            "VALUES ($1, $2, 'admin') "
+            "ON CONFLICT (tag_id, user_id) DO UPDATE SET permission = 'admin'",
+            tag["id"],
+            created_by,
         )
 
 
@@ -275,50 +259,104 @@ async def add_share(
     granted_by: UUID,
 ) -> dict:
     pool = get_pool()
-    row = await pool.fetchrow(
-        "INSERT INTO object_shares (object_type, object_id, user_id, permission, granted_by) "
-        "VALUES ($1, $2, $3, $4, $5) "
-        "ON CONFLICT (object_type, object_id, user_id) DO UPDATE SET permission = $4 "
-        "RETURNING *",
-        object_type,
-        object_id,
-        user_id,
-        permission,
-        granted_by,
-    )
-    return dict(row)
+    if object_type in _TAG_OBJECT_TYPES:
+        workspace_id = await resolve_workspace_id(object_type, object_id)
+        if workspace_id is None:
+            raise ValueError("Object not found")
+        tag = await pool.fetchrow(
+            "SELECT pt.id FROM privacy_tags pt "
+            "JOIN privacy_tag_objects pto ON pto.tag_id = pt.id "
+            "WHERE pto.object_type = $1 AND pto.object_id = $2 AND pt.access = 'members' "
+            "ORDER BY pt.created_at LIMIT 1",
+            object_type,
+            object_id,
+        )
+        if not tag:
+            tag = await pool.fetchrow(
+                "INSERT INTO privacy_tags (workspace_id, name, access, created_by) "
+                "VALUES ($1, $2, 'members', $3) "
+                "ON CONFLICT (workspace_id, name) DO UPDATE SET updated_at = now() "
+                "RETURNING id",
+                workspace_id,
+                f"{object_type}:{object_id}:shared",
+                granted_by,
+            )
+            await pool.execute(
+                "INSERT INTO privacy_tag_objects (tag_id, object_type, object_id) "
+                "VALUES ($1, $2, $3) ON CONFLICT DO NOTHING",
+                tag["id"],
+                object_type,
+                object_id,
+            )
+        row = await pool.fetchrow(
+            "INSERT INTO privacy_tag_members (tag_id, user_id, permission) "
+            "VALUES ($1, $2, $3) "
+            "ON CONFLICT (tag_id, user_id) DO UPDATE SET permission = $3 "
+            "RETURNING $2::uuid AS user_id, permission, $4::uuid AS granted_by, created_at",
+            tag["id"],
+            user_id,
+            permission,
+            granted_by,
+        )
+        return dict(row)
+
+    raise ValueError(f"Unsupported privacy tag object type: {object_type}")
 
 
 async def remove_share(object_type: str, object_id: UUID, user_id: UUID) -> bool:
     pool = get_pool()
-    result = await pool.execute(
-        "DELETE FROM object_shares WHERE object_type = $1 AND object_id = $2 AND user_id = $3",
-        object_type,
-        object_id,
-        user_id,
-    )
-    return result == "DELETE 1"
+    if object_type in _TAG_OBJECT_TYPES:
+        result = await pool.execute(
+            "DELETE FROM privacy_tag_members ptm "
+            "USING privacy_tag_objects pto "
+            "WHERE ptm.tag_id = pto.tag_id "
+            "AND pto.object_type = $1 AND pto.object_id = $2 AND ptm.user_id = $3",
+            object_type,
+            object_id,
+            user_id,
+        )
+        return result != "DELETE 0"
+
+    raise ValueError(f"Unsupported privacy tag object type: {object_type}")
 
 
 async def get_shares(object_type: str, object_id: UUID) -> list[dict]:
     pool = get_pool()
-    rows = await pool.fetch(
-        "SELECT os.user_id, u.name AS user_name, os.permission, os.granted_by, os.created_at "
-        "FROM object_shares os JOIN users u ON u.id = os.user_id "
-        "WHERE os.object_type = $1 AND os.object_id = $2 "
-        "ORDER BY os.created_at",
-        object_type,
-        object_id,
-    )
-    return [dict(r) for r in rows]
+    if object_type in _TAG_OBJECT_TYPES:
+        rows = await pool.fetch(
+            "SELECT ptm.user_id, u.name AS user_name, ptm.permission, "
+            "pt.created_by AS granted_by, ptm.created_at "
+            "FROM privacy_tag_members ptm "
+            "JOIN privacy_tag_objects pto ON pto.tag_id = ptm.tag_id "
+            "JOIN privacy_tags pt ON pt.id = ptm.tag_id "
+            "JOIN users u ON u.id = ptm.user_id "
+            "WHERE pto.object_type = $1 AND pto.object_id = $2 "
+            "ORDER BY ptm.created_at",
+            object_type,
+            object_id,
+        )
+        return [dict(r) for r in rows]
+
+    raise ValueError(f"Unsupported privacy tag object type: {object_type}")
 
 
 async def get_permissions(object_type: str, object_id: UUID) -> dict:
     vis = await get_visibility(object_type, object_id)
     shares = await get_shares(object_type, object_id)
+    tags = []
+    if object_type in _TAG_OBJECT_TYPES:
+        tags = [
+            {
+                "id": tag["id"],
+                "name": tag["name"],
+                "access": tag["access"],
+            }
+            for tag in await _effective_privacy_tags(object_type, object_id)
+        ]
     return {
         "object_type": object_type,
         "object_id": object_id,
         "visibility": vis,
         "shares": shares,
+        "tags": tags,
     }

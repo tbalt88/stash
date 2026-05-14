@@ -2,7 +2,7 @@
 
 Upload now parses JSONL into history_events rows; no R2 blob. The
 roundtrip test confirms the events come back out of the /events
-endpoint in the shape the chat viewer can parse.
+endpoint in the shape the session viewer can parse.
 """
 
 import io

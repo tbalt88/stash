@@ -104,21 +104,18 @@ export default function CLIPage() {
 
       <CommandRef
         command="stash workspaces list"
-        args="[--mine]"
+        args=""
         description="List workspaces you belong to."
-        params={[
-          { name: "--mine", type: "flag", desc: "Show only workspaces you own." },
-        ]}
+        params={[]}
       />
 
       <CommandRef
         command="stash workspaces create"
-        args="<name> [--description TEXT] [--public]"
+        args="<name> [--description TEXT]"
         description="Create a new workspace."
         params={[
           { name: "<name>", type: "string", desc: "Name for the workspace.", required: true },
           { name: "--description", type: "string", desc: "Workspace description." },
-          { name: "--public", type: "flag", desc: "Make the workspace publicly visible." },
         ]}
       />
 
@@ -159,67 +156,66 @@ export default function CLIPage() {
         ]}
       />
 
-      <H2>Notebooks</H2>
+      <H2>Wiki</H2>
 
       <CommandRef
-        command="stash notebooks list"
+        command="stash wiki pages"
         args="[--ws ID] [--all]"
-        description="List notebooks in the current workspace."
+        description="List wiki pages in the current workspace."
         params={[
           { name: "--ws", type: "string", desc: "Workspace ID override." },
-          { name: "--all", type: "flag", desc: "Include notebooks from all workspaces." },
+          { name: "--all", type: "flag", desc: "Include pages from all workspaces." },
         ]}
       />
 
       <CommandRef
-        command="stash notebooks create"
-        args="<name> [--ws ID] [--personal]"
-        description="Create a new notebook collection."
+        command="stash wiki tree"
+        args="[--ws ID]"
+        description="Show the folder and page tree for a workspace."
         params={[
-          { name: "<name>", type: "string", desc: "Name for the notebook.", required: true },
-          { name: "--ws", type: "string", desc: "Workspace ID override." },
-          { name: "--personal", type: "flag", desc: "Create as a personal notebook." },
-        ]}
-      />
-
-      <CommandRef
-        command="stash notebooks pages"
-        args="<notebook_id> [--ws ID]"
-        description="List all pages in a notebook."
-        params={[
-          { name: "<notebook_id>", type: "string", desc: "ID of the notebook.", required: true },
           { name: "--ws", type: "string", desc: "Workspace ID override." },
         ]}
       />
 
       <CommandRef
-        command="stash notebooks add-page"
-        args="<notebook_id> <name> [--content '...']"
-        description="Add a new page to a notebook."
+        command="stash wiki create-folder"
+        args="<name> [--ws ID] [--parent FOLDER_ID]"
+        description="Create a folder in the wiki."
         params={[
-          { name: "<notebook_id>", type: "string", desc: "ID of the notebook.", required: true },
+          { name: "<name>", type: "string", desc: "Folder name.", required: true },
+          { name: "--ws", type: "string", desc: "Workspace ID override." },
+          { name: "--parent", type: "string", desc: "Parent folder ID." },
+        ]}
+      />
+
+      <CommandRef
+        command="stash wiki add-page"
+        args="<name> [--ws ID] [--folder FOLDER_ID] [--content '...']"
+        description="Add a new page to the wiki."
+        params={[
           { name: "<name>", type: "string", desc: "Page title.", required: true },
+          { name: "--folder", type: "string", desc: "Folder ID." },
           { name: "--content", type: "string", desc: "Initial page content." },
         ]}
       />
 
       <CommandRef
-        command="stash notebooks read-page"
-        args="<notebook_id> <page_id>"
-        description="Read the content of a notebook page."
+        command="stash wiki read-page"
+        args="<page_id> [--ws ID]"
+        description="Read a wiki page."
         params={[
-          { name: "<notebook_id>", type: "string", desc: "ID of the notebook.", required: true },
           { name: "<page_id>", type: "string", desc: "ID of the page.", required: true },
+          { name: "--ws", type: "string", desc: "Workspace ID override." },
         ]}
       />
 
       <CommandRef
-        command="stash notebooks edit-page"
-        args="<notebook_id> <page_id> --content '...'"
-        description="Update the content of a notebook page. Reads from stdin if --content is not given."
+        command="stash wiki edit-page"
+        args="<page_id> [--ws ID] --content '...'"
+        description="Update a wiki page. Reads from stdin if --content is not given."
         params={[
-          { name: "<notebook_id>", type: "string", desc: "ID of the notebook.", required: true },
           { name: "<page_id>", type: "string", desc: "ID of the page.", required: true },
+          { name: "--ws", type: "string", desc: "Workspace ID override." },
           { name: "--content", type: "string", desc: "New page content. Reads from stdin if omitted." },
         ]}
       />
