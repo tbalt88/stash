@@ -805,17 +805,19 @@ function FolderTreeNode({
         {contents === null && loaded && (
           <div className="px-2 py-1 text-[11px] italic text-muted">loading…</div>
         )}
-        {contents?.subfolders.map((sub) => (
-          <FolderTreeNode
-            key={sub.id}
-            workspaceId={workspaceId}
-            folderId={sub.id}
-            name={sub.name}
-            isFolderPinned={isFolderPinned}
-            isFilePinned={isFilePinned}
-            onPinMenu={onPinMenu}
-          />
-        ))}
+        {contents?.subfolders
+          .filter((sub) => !isFolderPinned(sub.id))
+          .map((sub) => (
+            <FolderTreeNode
+              key={sub.id}
+              workspaceId={workspaceId}
+              folderId={sub.id}
+              name={sub.name}
+              isFolderPinned={isFolderPinned}
+              isFilePinned={isFilePinned}
+              onPinMenu={onPinMenu}
+            />
+          ))}
         {contents?.pages.map((p) => (
           <NavRow
             key={p.id}
@@ -824,16 +826,18 @@ function FolderTreeNode({
             label={p.name}
           />
         ))}
-        {contents?.files.map((f) => (
-          <FileNavRow
-            key={f.id}
-            workspaceId={workspaceId}
-            file={f}
-            label={f.name}
-            onPinMenu={(event) =>
-              onPinMenu?.(event, "file", f.id, f.name, isFilePinned(f.id))
-            }
-          />
+        {contents?.files
+          .filter((f) => !isFilePinned(f.id))
+          .map((f) => (
+            <FileNavRow
+              key={f.id}
+              workspaceId={workspaceId}
+              file={f}
+              label={f.name}
+              onPinMenu={(event) =>
+                onPinMenu?.(event, "file", f.id, f.name, isFilePinned(f.id))
+              }
+            />
         ))}
         {contents &&
           contents.subfolders.length === 0 &&
@@ -879,14 +883,18 @@ function FilesBlock({
   const folders = tree?.folders ?? [];
   const pages = tree?.pages ?? [];
   const files = tree?.files ?? [];
-  const rootFolders = folders.filter((f) => !f.parent_folder_id);
+  const pinnedFolderSet = new Set(pinnedFolders);
+  const pinnedFileSet = new Set(pinnedFiles);
+  const visibleFolders = folders.filter((folder) => !pinnedFolderSet.has(folder.id));
+  const visibleFiles = files.filter((file) => !pinnedFileSet.has(file.id));
+  const rootFolders = visibleFolders.filter((f) => !f.parent_folder_id);
   const rootPages = pages.filter((p) => !p.folder_id);
-  const rootFiles = files.filter((f) => !f.folder_id);
+  const rootFiles = visibleFiles.filter((f) => !f.folder_id);
   const folderById = new Map((tree?.folders ?? []).map((folder) => [folder.id, folder]));
   const fileById = new Map((tree?.files ?? []).map((file) => [file.id, file]));
   const pinnedFolderRows = pinnedFolders.map((id) => {
     const folder = folderById.get(id);
-    const label = pinnedLabels.folders[id] ?? folder?.name ?? `Folder ${id}`;
+    const label = pinnedLabels.folders[id] ?? folder?.name ?? "Folder";
     return {
       id,
       label,
@@ -899,7 +907,7 @@ function FilesBlock({
     if (!file) {
       return {
         id,
-        label: `File ${id}`,
+        label: "File",
         href: `/workspaces/${workspace.id}/f/${id}`,
         icon: <span className={fileIconClass(undefined)}><FileIcon /></span>,
       };
@@ -918,8 +926,6 @@ function FilesBlock({
         </span>,
     };
   });
-  const pinnedFolderSet = new Set(pinnedFolders);
-  const pinnedFileSet = new Set(pinnedFiles);
   const total = folders.length + pages.length + files.length;
   const filesDrop = dropState.key === dropKey(workspace.id, "files") ? dropState : null;
   const [pinMenu, setPinMenu] = useState<PinMenuState | null>(null);
