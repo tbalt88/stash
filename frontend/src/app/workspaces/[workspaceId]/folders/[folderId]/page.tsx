@@ -31,7 +31,7 @@ export default function FolderDetailPage() {
   const router = useRouter();
   const workspaceId = params.workspaceId as string;
   const folderId = params.folderId as string;
-  const { user, loading, logout } = useAuth();
+  const { user, loading } = useAuth();
 
   const [contents, setContents] = useState<FolderContents | null>(null);
   const [error, setError] = useState("");

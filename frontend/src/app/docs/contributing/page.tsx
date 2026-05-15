@@ -1,4 +1,4 @@
-import { Callout, Code, CodeBlock, H3, P, Title, Subtitle } from "../components";
+import { Callout, CodeBlock, H3, P, Title, Subtitle } from "../components";
 
 export default function ContributingPage() {
   return (

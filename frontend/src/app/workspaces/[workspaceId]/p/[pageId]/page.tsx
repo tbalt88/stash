@@ -35,7 +35,7 @@ export default function StashPageView() {
   const router = useRouter();
   const workspaceId = params.workspaceId as string;
   const pageId = params.pageId as string;
-  const { user, loading, logout } = useAuth();
+  const { user, loading } = useAuth();
 
   const [page, setPage] = useState<Page | null>(null);
   const [folderChain, setFolderChain] = useState<FolderBreadcrumb[]>([]);

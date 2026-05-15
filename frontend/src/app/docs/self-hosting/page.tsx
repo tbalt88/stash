@@ -1,4 +1,4 @@
-import { Callout, Code, CodeBlock, H3, P, ParamTable, Title, Subtitle } from "../components";
+import { Code, CodeBlock, H3, P, ParamTable, Title, Subtitle } from "../components";
 
 export default function SelfHostingPage() {
   return (

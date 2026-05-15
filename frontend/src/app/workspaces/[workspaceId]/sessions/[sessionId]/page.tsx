@@ -90,7 +90,7 @@ export default function SessionViewerPage() {
   const router = useRouter();
   const workspaceId = params.workspaceId as string;
   const sessionId = decodeURIComponent(params.sessionId as string);
-  const { user, loading, logout } = useAuth();
+  const { user, loading } = useAuth();
 
   const [agentName, setAgentName] = useState("");
   const [turns, setTurns] = useState<MessageTurn[]>([]);

@@ -99,7 +99,7 @@ export default function WorkspaceHomePage() {
   const params = useParams();
   const router = useRouter();
   const workspaceId = params.workspaceId as string;
-  const { user, loading, logout } = useAuth();
+  const { user, loading } = useAuth();
 
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
   const [members, setMembers] = useState<WorkspaceMember[]>([]);

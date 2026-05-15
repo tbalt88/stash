@@ -38,7 +38,7 @@ export default function FileViewerPage() {
   const router = useRouter();
   const workspaceId = params.workspaceId as string;
   const fileId = params.fileId as string;
-  const { user, loading, logout } = useAuth();
+  const { user, loading } = useAuth();
 
   const [file, setFile] = useState<FileInfo | null>(null);
   const [folderChain, setFolderChain] = useState<FolderBreadcrumb[]>([]);
@@ -159,6 +159,7 @@ function FileBody({ file, text }: { file: FileInfo; text: string | null }) {
   if (isImage(file.content_type)) {
     return (
       <div className="flex items-center justify-center bg-gray-100 p-8">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src={file.url} alt={file.name} className="max-h-full max-w-full" />
       </div>
     );
