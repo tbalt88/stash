@@ -69,19 +69,19 @@ function LoggedInHome({
     setLoading(true);
     setError("");
     try {
-      const [stashResult, pageResult, sessionResult] = await Promise.all([
+      const [workspaceResult, pageResult, sessionResult] = await Promise.all([
         listMyWorkspaces(),
         listAllPages(),
         listMySessions(undefined, 8),
       ]);
       const stashes = await Promise.all(
-        stashResult.workspaces.map(async (workspace) => {
+        workspaceResult.workspaces.map(async (workspace) => {
           const workspaceStashes = await listStashes(workspace.id);
           return workspaceStashes.map((stash) => ({ ...stash, workspace_name: workspace.name }));
         })
       );
       setData({
-        workspaces: stashResult.workspaces,
+        workspaces: workspaceResult.workspaces,
         stashes: stashes.flat().sort((a, b) => dateSort(b.updated_at, a.updated_at)).slice(0, 8),
         recentPages: pageResult.pages.slice(0, 8),
         recentSessions: sessionResult,
@@ -97,11 +97,11 @@ function LoggedInHome({
     loadData();
   }, [loadData]);
 
-  const ownedStashes = useMemo(
+  const ownedWorkspaces = useMemo(
     () => data.workspaces.filter((workspace) => workspace.creator_id === user.id),
     [data.workspaces, user.id]
   );
-  const externalStashes = useMemo(
+  const sharedWorkspaces = useMemo(
     () => data.workspaces.filter((workspace) => workspace.creator_id !== user.id),
     [data.workspaces, user.id]
   );
@@ -207,13 +207,13 @@ function LoggedInHome({
 
         <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_340px]">
           <main className="min-w-0">
-            <SectionTitle title="My workspaces" count={ownedStashes.length} />
+            <SectionTitle title="My workspaces" count={ownedWorkspaces.length} />
             {loading ? (
               <LoadingRows />
-            ) : ownedStashes.length > 0 ? (
+            ) : ownedWorkspaces.length > 0 ? (
               <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                {ownedStashes.map((stash) => (
-                  <WorkspaceCard key={stash.id} workspace={stash} />
+                {ownedWorkspaces.map((workspace) => (
+                  <WorkspaceCard key={workspace.id} workspace={workspace} />
                 ))}
               </div>
             ) : (
@@ -221,11 +221,11 @@ function LoggedInHome({
             )}
 
             <div className="mt-8">
-              <SectionTitle title="Shared workspaces" count={externalStashes.length} />
-              {externalStashes.length > 0 ? (
+              <SectionTitle title="Shared workspaces" count={sharedWorkspaces.length} />
+              {sharedWorkspaces.length > 0 ? (
                 <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                  {externalStashes.map((stash) => (
-                    <WorkspaceCard key={stash.id} workspace={stash} external />
+                  {sharedWorkspaces.map((workspace) => (
+                    <WorkspaceCard key={workspace.id} workspace={workspace} shared />
                   ))}
                 </div>
               ) : (
@@ -291,10 +291,10 @@ function SectionTitle({ title, count }: { title: string; count: number }) {
 
 function WorkspaceCard({
   workspace,
-  external = false,
+  shared = false,
 }: {
   workspace: Workspace;
-  external?: boolean;
+  shared?: boolean;
 }) {
   return (
     <Link
@@ -310,9 +310,9 @@ function WorkspaceCard({
             {workspace.description || "No description."}
           </p>
         </div>
-        {external && (
+        {shared && (
           <span className="shrink-0 rounded-md border border-border-subtle px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-muted">
-            external
+            shared
           </span>
         )}
       </div>
