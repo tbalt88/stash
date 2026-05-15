@@ -1090,7 +1090,7 @@ function buildRows(spine: WorkspaceSidebar | null): SelectableRow[] {
   const tables: SelectableRow[] = [];
   for (const f of tree.files) {
     // CSV-backed files double as tables — surface them as "Tables" so the
-    // user shares the structured Stash rather than the raw blob.
+    // user shares the table Stash rather than the raw blob.
     if (f.linked_table_id) {
       tables.push({
         key: `table:${f.linked_table_id}`,

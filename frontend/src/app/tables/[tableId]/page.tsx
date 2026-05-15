@@ -101,7 +101,7 @@ function TableEditorPageInner() {
   // Display
   const [wrapCells, setWrapCells] = useState(false);
 
-  // Views
+  // Saved table layouts are persisted by the existing table-view API.
   const [activeViewId, setActiveViewId] = useState<string | null>(null);
 
   // Embeddings
@@ -345,9 +345,9 @@ function TableEditorPageInner() {
     catch (err) { setError(err instanceof Error ? err.message : "Failed"); }
   };
 
-  // --- Views ---
-  const handleSaveView = async () => {
-    const name = prompt("View name:");
+  // --- Saved layouts ---
+  const handleSaveLayout = async () => {
+    const name = prompt("Layout name:");
     if (!name) return;
     try {
       const view = { name, filters: filters.length > 0 ? filters : undefined, sort_by: sortBy || undefined, sort_order: sortBy ? sortOrder : undefined, visible_columns: hiddenCols.size > 0 ? visibleColumns.map((c) => c.id) : undefined };
@@ -357,14 +357,14 @@ function TableEditorPageInner() {
       if (saved) setActiveViewId(saved.id);
     } catch (err) { setError(err instanceof Error ? err.message : "Failed"); }
   };
-  const handleLoadView = (view: TableView) => {
+  const handleLoadLayout = (view: TableView) => {
     setActiveViewId(view.id);
     setFilters(view.filters?.map((f) => ({ column_id: f.column_id, op: f.op, value: f.value || "" })) ?? []);
     setSortBy(view.sort_by || ""); setSortOrder((view.sort_order as "asc" | "desc") || "asc");
     if (view.visible_columns) { const vis = new Set(view.visible_columns); setHiddenCols(new Set(sortedColumns.filter((c) => !vis.has(c.id)).map((c) => c.id))); } else { setHiddenCols(new Set()); }
     if (view.filters && view.filters.length > 0) setShowFilterBar(true); else setShowFilterBar(false);
   };
-  const handleDeleteView = async (viewId: string) => {
+  const handleDeleteLayout = async (viewId: string) => {
     try { const updated = await deleteTableView(wsId, tableId, viewId); setTable(updated); if (activeViewId === viewId) { setActiveViewId(null); setFilters([]); setSortBy(""); setSortOrder("asc"); setShowFilterBar(false); setHiddenCols(new Set()); } }
     catch (err) { setError(err instanceof Error ? err.message : "Failed"); }
   };
@@ -520,7 +520,7 @@ function TableEditorPageInner() {
             <span className="text-[11px] font-mono text-muted">{visibleColumns.length}/{sortedColumns.length} cols</span>
             <span className="text-[11px] font-mono text-muted">{totalCount} rows</span>
             <button onClick={addFilter} className="text-xs text-muted hover:text-foreground px-2 py-1 rounded hover:bg-raised">Filter</button>
-            {(filters.length > 0 || sortBy) && <button onClick={handleSaveView} className="text-xs text-muted hover:text-foreground px-2 py-1 rounded hover:bg-raised">Save view</button>}
+            {(filters.length > 0 || sortBy) && <button onClick={handleSaveLayout} className="text-xs text-muted hover:text-foreground px-2 py-1 rounded hover:bg-raised">Save layout</button>}
             {/* Group by */}
             <select value={groupByCol} onChange={(e) => { setGroupByCol(e.target.value); setCollapsedGroups(new Set()); }} className="text-xs bg-raised border border-border rounded px-2 py-1 text-foreground outline-none">
               <option value="">No grouping</option>
@@ -623,17 +623,17 @@ function TableEditorPageInner() {
           </div>
         )}
 
-        {/* View tabs */}
+        {/* Saved layout tabs */}
         {table?.views && table.views.length > 0 && (
           <div className="px-4 py-1.5 border-b border-border bg-surface flex items-center gap-1 flex-shrink-0 overflow-x-auto">
             <button onClick={() => { setActiveViewId(null); setFilters([]); setSortBy(""); setSortOrder("asc"); setShowFilterBar(false); setHiddenCols(new Set()); }} className={`px-3 py-1 text-xs rounded ${!activeViewId ? "bg-brand/15 text-brand font-medium" : "text-muted hover:text-foreground hover:bg-raised"}`}>All rows</button>
             {table.views.map((view: TableView) => (
               <div key={view.id} className="flex items-center group">
-                <button onClick={() => handleLoadView(view)} className={`px-3 py-1 text-xs rounded ${activeViewId === view.id ? "bg-brand/15 text-brand font-medium" : "text-muted hover:text-foreground hover:bg-raised"}`}>{view.name}</button>
-                <button onClick={() => handleDeleteView(view.id)} className="text-[10px] text-muted hover:text-red-400 opacity-0 group-hover:opacity-100 -ml-1">&times;</button>
+                <button onClick={() => handleLoadLayout(view)} className={`px-3 py-1 text-xs rounded ${activeViewId === view.id ? "bg-brand/15 text-brand font-medium" : "text-muted hover:text-foreground hover:bg-raised"}`}>{view.name}</button>
+                <button onClick={() => handleDeleteLayout(view.id)} className="text-[10px] text-muted hover:text-red-400 opacity-0 group-hover:opacity-100 -ml-1">&times;</button>
               </div>
             ))}
-            <button onClick={handleSaveView} className="px-2 py-1 text-xs text-muted hover:text-brand">+ Save view</button>
+            <button onClick={handleSaveLayout} className="px-2 py-1 text-xs text-muted hover:text-brand">+ Save layout</button>
           </div>
         )}
 

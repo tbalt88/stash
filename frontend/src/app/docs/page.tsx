@@ -6,7 +6,7 @@ const PILLARS = [
     label: "Consume",
     color: "bg-brand/8 border-brand/20 text-brand",
     dot: "bg-brand",
-    description: "Agents push data in automatically — sessions, files, and structured data.",
+    description: "Agents push data in automatically — sessions, Files, and tables.",
   },
   {
     label: "Organize",
