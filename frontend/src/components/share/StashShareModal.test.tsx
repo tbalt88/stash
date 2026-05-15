@@ -117,12 +117,13 @@ describe("StashShareModal session sharing", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Share session" }));
 
+    await screen.findByRole("heading", { name: "Share session as Stash" });
     await screen.findByText("1 item selected");
     await waitFor(() =>
       expect(screen.getByPlaceholderText("Debug auth flow")).toBeInTheDocument()
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Create stash" }));
+    fireEvent.click(screen.getByRole("button", { name: "Create Stash" }));
 
     await waitFor(() =>
       expect(createStash).toHaveBeenCalledWith(

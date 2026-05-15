@@ -264,11 +264,11 @@ export default function StashShareModal() {
         <div className="flex items-center justify-between border-b border-border-subtle px-5 py-3">
           <div className="flex items-center gap-3">
             <h2 className="font-display text-[15px] font-semibold text-foreground">
-              Create stash from {workspaceName || "workspace"}
+              {modalTitle(initial, workspaceName)}
             </h2>
             <div className="flex rounded-md border border-border bg-surface text-[12px]">
               <TabButton active={tab === "new"} onClick={() => setTab("new")}>
-                New stash
+                New Stash
               </TabButton>
               <TabButton
                 active={tab === "manage"}
@@ -535,7 +535,7 @@ function NewShareTab(props: {
             <input
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              placeholder={placeholderTitle || "Untitled stash"}
+              placeholder={placeholderTitle || "Untitled Stash"}
               className="rounded-md border border-border bg-surface px-2 py-1.5"
             />
           </label>
@@ -587,7 +587,7 @@ function NewShareTab(props: {
             disabled={submitting || total === 0}
             className="rounded-md bg-[var(--color-brand-600)] px-3 py-1.5 text-[13px] font-medium text-white hover:bg-[var(--color-brand-700)] disabled:opacity-40"
           >
-            {submitting ? "Creating…" : "Create stash"}
+            {submitting ? "Creating…" : "Create Stash"}
           </button>
         </div>
       </div>
@@ -606,7 +606,7 @@ function ManageTab(props: {
   if (stashes.length === 0) {
     return (
       <div className="px-5 py-10 text-center text-[12.5px] text-muted">
-        No stashes yet. Use the New stash tab to create one.
+        No Stashes yet. Use the New Stash tab to create one.
       </div>
     );
   }
@@ -1164,4 +1164,17 @@ function permissionLabel(permission: StashMemberPermission): string {
   if (permission === "admin") return "can manage";
   if (permission === "write") return "can edit";
   return "can view";
+}
+
+function modalTitle(initial: StashItemSpec[] | undefined, workspaceName: string | undefined) {
+  if (!initial?.length) return `Create Stash from ${workspaceName || "workspace"}`;
+  if (initial.length > 1) return "Share as Stash";
+
+  const type = initial[0].object_type;
+  if (type === "page") return "Share page as Stash";
+  if (type === "session") return "Share session as Stash";
+  if (type === "folder") return "Share folder as Stash";
+  if (type === "file") return "Share file as Stash";
+  if (type === "table") return "Share table as Stash";
+  return "Share as Stash";
 }
