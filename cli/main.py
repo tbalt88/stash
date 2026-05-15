@@ -763,7 +763,7 @@ def browse(
 
 
 # ===========================================================================
-# Share — publish a session artifact as a public Stash
+# Share — publish a session as a public Stash
 # ===========================================================================
 
 
@@ -834,7 +834,7 @@ def _current_session_id() -> str | None:
     return None
 
 
-def _extract_artifact(raw_jsonl: str) -> tuple[str, str, str]:
+def _extract_session_bookends(raw_jsonl: str) -> tuple[str, str, str]:
     """Extract (title, first_user_prompt, last_assistant_message) from a transcript.
 
     Returns the bookends of the conversation: the question that kicked it off
@@ -889,14 +889,14 @@ def _extract_artifact(raw_jsonl: str) -> tuple[str, str, str]:
 
 @app.command("share")
 def share_session(
-    title: str = typer.Option("", "--title", "-t", help="Title for the shared artifact."),
+    title: str = typer.Option("", "--title", "-t", help="Title for the shared Stash."),
     session_id: str = typer.Option(
         "", "--session", "-s", help="Session ID. Auto-detected if omitted."
     ),
     files: list[str] = typer.Option([], "--file", "-f", help="Files to attach (repeatable)."),
     workspace_id: str = typer.Option(None, "--ws"),
 ):
-    """Share a session as a public artifact with a shareable link.
+    """Share a session as a public Stash.
 
     Publishes a focused summary (the question + finding), the full conversation
     transcript, and any attached files as a single public Stash.
@@ -917,7 +917,7 @@ def share_session(
         raise typer.Exit(1)
 
     raw_jsonl = jsonl_path.read_text(errors="replace")
-    ai_title, first_user, last_assistant = _extract_artifact(raw_jsonl)
+    ai_title, first_user, last_assistant = _extract_session_bookends(raw_jsonl)
 
     if not last_assistant:
         console.print("[red]No assistant messages found in this session.[/red]")
@@ -1012,7 +1012,7 @@ def share_session(
         bundle = c.publish_stash(
             ws,
             title=page_title,
-            description="Shared session artifact",
+            description="Shared session Stash",
             items=stash_items,
         )
 
@@ -3040,7 +3040,7 @@ Common reads (all support `--json`):
 - `stash files pages --all` — shared pages across workspaces
 
 Common writes:
-- `stash share --title "..."` — share this session as a public artifact with a shareable link
+- `stash share --title "..."` — share this session as a public Stash
 - `stash read <url>` — read a public Stash URL
 """
     claude_md.write_text(existing.rstrip() + "\n" + block)
