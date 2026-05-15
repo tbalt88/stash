@@ -248,8 +248,9 @@ async def update_stash(
                 )
             if partition_items is not None:
                 await _validate_item_partition(conn, next_access, partition_items, stash_id)
-            if sets:
+            if items is not None:
                 sets.append("updated_at = now()")
+            if sets:
                 args.append(stash_id)
                 await conn.execute(
                     f"UPDATE stashes SET {', '.join(sets)} WHERE id = ${idx}",

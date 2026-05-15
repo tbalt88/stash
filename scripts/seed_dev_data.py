@@ -769,6 +769,17 @@ async def _ensure_stashes(workspace_id: UUID, user: dict, folders: dict[str, dic
             spec["title"],
         )
         if exists:
+            item_count = await database.get_pool().fetchval(
+                "SELECT COUNT(*) FROM stash_items WHERE stash_id = $1",
+                exists["id"],
+            )
+            if item_count:
+                continue
+            await stash_service.update_stash(
+                stash_id=exists["id"],
+                user_id=user["id"],
+                items=spec["items"],
+            )
             continue
         await stash_service.create_stash(
             workspace_id=workspace_id,
@@ -780,6 +791,37 @@ async def _ensure_stashes(workspace_id: UUID, user: dict, folders: dict[str, dic
             cover_image_url=None,
             items=spec["items"],
         )
+
+
+async def _seed_workspace_bundle(
+    workspace_id: UUID,
+    workspace_owner_id: UUID,
+    created_users: dict[str, dict],
+) -> dict[str, int]:
+    folders = await _ensure_folders(workspace_id, workspace_owner_id)
+    pages = await _ensure_pages(workspace_id, workspace_owner_id, folders)
+    tables = await _ensure_tables(workspace_id, workspace_owner_id)
+    files = await _ensure_files(workspace_id, workspace_owner_id, folders, tables)
+    sessions = await _ensure_sessions(workspace_id, created_users, folders)
+
+    owner = {"id": workspace_owner_id}
+    await _ensure_stashes(
+        workspace_id,
+        owner,
+        folders,
+        pages,
+        tables,
+        sessions,
+        files,
+    )
+
+    return {
+        "folders": len(folders),
+        "pages": len(pages),
+        "tables": len(tables),
+        "files": len(files),
+        "sessions": len(sessions),
+    }
 
 
 async def _ensure_external_stash_sample(
@@ -820,12 +862,22 @@ async def _ensure_external_stash_sample(
 
     external_stash_title = "Partner Briefs"
     existing_external = await database.get_pool().fetchrow(
-        "SELECT slug FROM stashes WHERE workspace_id = $1 AND title = $2",
+        "SELECT id, slug FROM stashes WHERE workspace_id = $1 AND title = $2",
         external_workspace_id,
         external_stash_title,
     )
     if existing_external:
         external_slug = existing_external["slug"]
+        item_count = await database.get_pool().fetchval(
+            "SELECT COUNT(*) FROM stash_items WHERE stash_id = $1",
+            existing_external["id"],
+        )
+        if not item_count:
+            await stash_service.update_stash(
+                stash_id=existing_external["id"],
+                user_id=external_owner["id"],
+                items=[_item("page", page["id"], 0)],
+            )
     else:
         created_external = await stash_service.create_stash(
             workspace_id=external_workspace_id,
@@ -854,6 +906,12 @@ async def _ensure_external_stash_sample(
 async def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--workspace-name", default=SAMPLE_WORKSPACE_NAME)
+    parser.add_argument("--workspace-id", help="Seed an explicit workspace by ID.")
+    parser.add_argument(
+        "--seed-empty-workspaces",
+        action="store_true",
+        help="Seed every workspace that currently has no stashes.",
+    )
     args = parser.parse_args()
 
     workspace_name = args.workspace_name
@@ -876,35 +934,82 @@ async def main() -> int:
             log.info("User %s %s", "created" if created else "found", row["name"])
 
         workspace_owner = created_users[SAMPLE_USERS[0]["name"]]
-        workspace, created = await _ensure_workspace(
-            pool,
-            workspace_owner,
-            workspace_name=workspace_name,
-            workspace_description=SAMPLE_WORKSPACE_DESCRIPTION,
-        )
-        workspace_name = workspace["name"]
-        workspace_id = workspace["id"]
-        await _ensure_membership(workspace_id, list(created_users.values()), workspace_owner)
+        seeded_workspace_count = 0
+        seeded_session_total = 0
+        seeded_file_total = 0
 
-        if created:
-            log.info("Created workspace: %s", workspace_name)
+        if args.workspace_id:
+            target_workspace = await database.get_pool().fetchrow(
+                "SELECT id, name, creator_id FROM workspaces WHERE id = $1",
+                args.workspace_id,
+            )
+            if not target_workspace:
+                log.error("No workspace found for --workspace-id=%s", args.workspace_id)
+                return 1
+
+            target_id = target_workspace["id"]
+            target_name = target_workspace["name"]
+            target_owner_id = target_workspace["creator_id"] or workspace_owner["id"]
+            metrics = await _seed_workspace_bundle(target_id, target_owner_id, created_users)
+            log.info("Seeded explicit workspace: %s", target_name)
+            workspace_name = target_name
+            workspace_id = target_id
+            seeded_workspace_count = 1
+            seeded_session_total += metrics["sessions"]
+            seeded_file_total += metrics["files"]
         else:
-            log.info("Reusing workspace: %s", workspace_name)
+            workspace, created = await _ensure_workspace(
+                pool,
+                workspace_owner,
+                workspace_name=workspace_name,
+                workspace_description=SAMPLE_WORKSPACE_DESCRIPTION,
+            )
+            workspace_name = workspace["name"]
+            workspace_id = workspace["id"]
+            await _ensure_membership(workspace_id, list(created_users.values()), workspace_owner)
 
-        workspace_id = workspace["id"]
-        folders = await _ensure_folders(workspace_id, workspace_owner["id"])
-        pages = await _ensure_pages(workspace_id, workspace_owner["id"], folders)
-        tables = await _ensure_tables(workspace_id, workspace_owner["id"])
-        files = await _ensure_files(workspace_id, workspace_owner["id"], folders, tables)
-        sessions = await _ensure_sessions(workspace_id, created_users, folders)
-        await _ensure_stashes(workspace_id, workspace_owner, folders, pages, tables, sessions, files)
-        await _ensure_external_stash_sample(workspace_id, workspace_owner, created_users)
+            if created:
+                log.info("Created workspace: %s", workspace_name)
+            else:
+                log.info("Reusing workspace: %s", workspace_name)
+
+            metrics = await _seed_workspace_bundle(workspace_id, workspace_owner["id"], created_users)
+            await _ensure_external_stash_sample(workspace_id, workspace_owner, created_users)
+            seeded_workspace_count = 1
+            seeded_session_total += metrics["sessions"]
+            seeded_file_total += metrics["files"]
+
+            if args.seed_empty_workspaces:
+                empty_workspaces = await pool.fetch(
+                    """
+                    SELECT w.id, w.name, w.creator_id
+                    FROM workspaces w
+                    LEFT JOIN stashes s ON s.workspace_id = w.id
+                    WHERE s.id IS NULL
+                    ORDER BY w.created_at
+                    """
+                )
+                for workspace_row in empty_workspaces:
+                    metrics = await _seed_workspace_bundle(
+                        workspace_row["id"],
+                        workspace_row["creator_id"] or workspace_owner["id"],
+                        created_users,
+                    )
+                    seeded_workspace_count += 1
+                    seeded_session_total += metrics["sessions"]
+                    seeded_file_total += metrics["files"]
+
+        if seeded_workspace_count:
+            log.info(
+                "Seeded %d workspace(s).", seeded_workspace_count
+            )
 
         log.info("Seed complete for workspace: %s", workspace_name)
         if created_api_keys:
             log.info("Sample API keys (new users):")
             for username, key in created_api_keys.items():
                 log.info("  %s: %s", username, key)
+
         stash_count = await database.get_pool().fetchval(
             "SELECT count(*) FROM stashes WHERE workspace_id = $1",
             workspace_id,
@@ -912,8 +1017,8 @@ async def main() -> int:
         print(
             "Seed complete: "
             f"users={len(created_users)} "
-            f"sessions={len(sessions)} "
-            f"files={len(files)} "
+            f"sessions={seeded_session_total} "
+            f"files={seeded_file_total} "
             f"stashes={stash_count}"
         )
     finally:
