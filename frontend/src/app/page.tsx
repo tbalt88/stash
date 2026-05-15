@@ -162,7 +162,7 @@ function LoggedInHome({
                 href="/discover"
                 className="rounded-md border border-border bg-base px-3 py-2 text-[13px] text-foreground hover:bg-raised"
               >
-                Discover public stashes
+                Discover public Stashes
               </Link>
             </div>
           </div>
@@ -348,7 +348,7 @@ function StashPanel({ stashes }: { stashes: RecentStash[] }) {
   return (
     <section className="rounded-lg border border-border bg-surface p-4">
       <h2 className="font-display text-[16px] font-semibold text-foreground">
-        Recent stashes
+        Recent Stashes
       </h2>
       <div className="mt-3 flex flex-col gap-1">
         {stashes.length > 0 ? (
@@ -368,7 +368,7 @@ function StashPanel({ stashes }: { stashes: RecentStash[] }) {
           ))
         ) : (
           <p className="py-3 text-[12.5px] text-muted">
-            Create a stash from any workspace Share button.
+            Create a Stash from any workspace Share button.
           </p>
         )}
       </div>

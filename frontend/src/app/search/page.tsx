@@ -274,7 +274,7 @@ function SearchPageInner() {
             Search
           </p>
           <h1 className="mt-3 font-display text-[34px] font-bold tracking-tight text-foreground">
-            Search pages, sessions, and stashes.
+            Search pages, sessions, and Stashes.
           </h1>
           <p className="mt-2 max-w-[700px] text-[14.5px] leading-relaxed text-muted">
             Search one workspace, one Stash, a folder inside a workspace, or
@@ -309,7 +309,7 @@ function SearchPageInner() {
                   onChange={(event) => setSelectedProductStashId(event.target.value)}
                   className="rounded-md border border-border bg-base px-2 py-2 text-[13px] text-foreground focus:border-brand focus:outline-none"
                 >
-                  <option value="">All stashes</option>
+                  <option value="">All Stashes</option>
                   {searchedStashes.map((stash) => (
                     <option key={stash.id} value={stash.id}>
                       {stash.title}
@@ -410,7 +410,7 @@ function SearchPageInner() {
             >
               <input
                 type="text"
-                placeholder="Search for a decision, transcript, stash, or page..."
+                placeholder="Search for a decision, transcript, Stash, or page..."
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
                 className="min-w-0 flex-1 bg-transparent text-[15px] text-foreground placeholder:text-muted focus:outline-none"

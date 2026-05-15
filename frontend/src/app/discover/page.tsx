@@ -68,7 +68,7 @@ export default function DiscoverPage() {
           type="text"
           value={query}
           onChange={(event) => setQuery(event.target.value)}
-          placeholder="Search public stashes"
+          placeholder="Search public Stashes"
           className="min-w-0 flex-1 rounded-lg border border-border bg-base px-3 py-2 text-[13px] text-foreground placeholder:text-muted focus:border-[var(--color-brand-400)] focus:outline-none"
         />
         <div className="flex rounded-md border border-border bg-base p-0.5 text-[12px]">

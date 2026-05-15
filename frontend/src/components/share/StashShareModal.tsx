@@ -236,8 +236,8 @@ export default function StashShareModal() {
 
   const onDelete = async (stash: WorkspaceStash) => {
     const message = stash.is_external
-      ? "Remove this external stash from the workspace?"
-      : "Delete this stash? Anyone with the public URL will get a 404.";
+      ? "Remove this external Stash from the workspace?"
+      : "Delete this Stash? Anyone with the public URL will get a 404.";
     if (!confirm(message)) return;
     try {
       if (stash.is_external && stash.added_to_workspace_id) {

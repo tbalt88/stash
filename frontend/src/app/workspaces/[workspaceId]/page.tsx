@@ -300,8 +300,8 @@ export default function WorkspaceHomePage() {
             >
               <span aria-hidden>🔗</span>{" "}
               {stashes.length === 0
-                ? "No stashes"
-                : `${stashes.length} stash${stashes.length === 1 ? "" : "es"}`}
+                ? "No Stashes"
+                : `${stashes.length} Stash${stashes.length === 1 ? "" : "es"}`}
             </button>
             <span className="text-muted">·</span>
             <span>updated {workspace?.updated_at ? formatRelative(workspace.updated_at) : ""}</span>
@@ -432,7 +432,7 @@ export default function WorkspaceHomePage() {
           <SectionHeader
             icon={<StashIcon />}
             title="Stashes"
-            trailing={`${stashes.length} stash${stashes.length === 1 ? "" : "es"}`}
+            trailing={`${stashes.length} Stash${stashes.length === 1 ? "" : "es"}`}
           />
           {isMember && (
             <button
@@ -445,7 +445,7 @@ export default function WorkspaceHomePage() {
               }
               className="mt-2 rounded-md bg-[var(--color-brand-600)] px-3 py-1.5 text-[13px] font-medium text-white hover:bg-[var(--color-brand-700)]"
             >
-              + Add stash
+              + Add Stash
             </button>
           )}
           {stashes.length > 0 ? (
