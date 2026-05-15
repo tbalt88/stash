@@ -54,6 +54,10 @@ SAMPLE_WORKSPACE_DESCRIPTION = (
     "Local development dataset used to preview the Sessions/Files/Stashes product "
     "UI with realistic sample content."
 )
+SAMPLE_EXTERNAL_WORKSPACE_NAME = "Sample Partner Workspace"
+SAMPLE_EXTERNAL_WORKSPACE_DESCRIPTION = (
+    "Small external workspace used to seed one attachable external stash."
+)
 
 SAMPLE_USERS = [
     {
@@ -778,6 +782,75 @@ async def _ensure_stashes(workspace_id: UUID, user: dict, folders: dict[str, dic
         )
 
 
+async def _ensure_external_stash_sample(
+    workspace_id: UUID,
+    workspace_owner: dict,
+    users: dict[str, dict],
+) -> None:
+    external_owner = users["demo_devon"]
+    external_workspace, _ = await _ensure_workspace(
+        database.get_pool(),
+        external_owner,
+        workspace_name=SAMPLE_EXTERNAL_WORKSPACE_NAME,
+        workspace_description=SAMPLE_EXTERNAL_WORKSPACE_DESCRIPTION,
+    )
+    external_workspace_id = external_workspace["id"]
+
+    page_name = "External Contributor Brief"
+    existing_page = await database.get_pool().fetchrow(
+        "SELECT id FROM pages WHERE workspace_id = $1 AND name = $2 AND folder_id IS NOT DISTINCT FROM NULL "
+        "AND COALESCE(metadata->>'shared_in_stash_id', '') = ''",
+        external_workspace_id,
+        page_name,
+    )
+
+    if existing_page:
+        page = {"id": existing_page["id"]}
+    else:
+        page = await files_tree_service.create_page(
+            workspace_id=external_workspace_id,
+            name=page_name,
+            created_by=external_owner["id"],
+            content=(
+                "# External collaborator brief\\n\\n"
+                "This page lives in a different workspace and is intentionally attached as "
+                "an external stash item.\n"
+            ),
+        )
+
+    external_stash_title = "Partner Briefs"
+    existing_external = await database.get_pool().fetchrow(
+        "SELECT slug FROM stashes WHERE workspace_id = $1 AND title = $2",
+        external_workspace_id,
+        external_stash_title,
+    )
+    if existing_external:
+        external_slug = existing_external["slug"]
+    else:
+        created_external = await stash_service.create_stash(
+            workspace_id=external_workspace_id,
+            owner_id=external_owner["id"],
+            title=external_stash_title,
+            description="Sample public stash from a different workspace.",
+            access="public",
+            discoverable=True,
+            cover_image_url=None,
+            items=[_item("page", page["id"], 0)],
+        )
+        external_slug = created_external["slug"]
+
+    attached = await stash_service.add_external_stash(
+        workspace_id,
+        external_slug,
+        workspace_owner["id"],
+    )
+    if attached:
+        if not attached["is_external"]:
+            log.warning("External stash %s is already local to workspace; skipping attachment.", external_slug)
+        else:
+            log.info("Attached external stash sample: %s", attached["title"])
+
+
 async def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--workspace-name", default=SAMPLE_WORKSPACE_NAME)
@@ -825,6 +898,7 @@ async def main() -> int:
         files = await _ensure_files(workspace_id, workspace_owner["id"], folders, tables)
         sessions = await _ensure_sessions(workspace_id, created_users, folders)
         await _ensure_stashes(workspace_id, workspace_owner, folders, pages, tables, sessions, files)
+        await _ensure_external_stash_sample(workspace_id, workspace_owner, created_users)
 
         log.info("Seed complete for workspace: %s", workspace_name)
         if created_api_keys:

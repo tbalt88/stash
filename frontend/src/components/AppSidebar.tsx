@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useState, type DragEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type DragEvent, type MouseEvent } from "react";
 import { usePathname } from "next/navigation";
 import {
   type FolderContents,
@@ -52,6 +52,14 @@ interface WorkspaceNode extends Workspace {
 type SidebarSection = "sessions" | "files" | "stashes";
 type DropSection = "sessions" | "files";
 type DropStatus = "idle" | "over" | "saving" | "done" | "error";
+type PinMenuState = {
+  kind: PinKind;
+  id: string;
+  label: string;
+  pinned: boolean;
+  x: number;
+  y: number;
+};
 
 interface SidebarDropState {
   key: string | null;
@@ -61,7 +69,16 @@ interface SidebarDropState {
 
 const OPEN_WORKSPACES_KEY = "stash_sidebar_open_workspaces";
 const OPEN_SECTIONS_KEY = "stash_sidebar_open_sections";
+const PINNED_FS_KEY = "stash_sidebar_pinned_files_folders";
+const PINNED_FS_LABELS_KEY = "stash_sidebar_pinned_files_folders_labels";
 const PREVIEW_ITEM_LIMIT = 10;
+const EMPTY_PIN_STATE = { folders: [], files: [] };
+
+type PinKind = "folder" | "file";
+type PinnedLabels = {
+  folders: Record<string, string>;
+  files: Record<string, string>;
+};
 
 function readOpenMap(key: string): Record<string, boolean> {
   if (typeof window === "undefined") return {};
@@ -75,6 +92,34 @@ function readOpenMap(key: string): Record<string, boolean> {
 function writeOpenMap(key: string, value: Record<string, boolean>) {
   if (typeof window === "undefined") return;
   window.localStorage.setItem(key, JSON.stringify(value));
+}
+
+function readPinnedMap(): Record<string, { folders: string[]; files: string[] }> {
+  if (typeof window === "undefined") return {};
+
+  const raw = window.localStorage.getItem(PINNED_FS_KEY);
+  if (!raw) return {};
+
+  return JSON.parse(raw);
+}
+
+function writePinnedMap(value: Record<string, { folders: string[]; files: string[] }>) {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(PINNED_FS_KEY, JSON.stringify(value));
+}
+
+function readPinnedLabelMap(): Record<string, PinnedLabels> {
+  if (typeof window === "undefined") return {};
+
+  const raw = window.localStorage.getItem(PINNED_FS_LABELS_KEY);
+  if (!raw) return {};
+
+  return JSON.parse(raw);
+}
+
+function writePinnedLabelMap(value: Record<string, PinnedLabels>) {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(PINNED_FS_LABELS_KEY, JSON.stringify(value));
 }
 
 function sectionKey(workspaceId: string, section: SidebarSection): string {
@@ -129,12 +174,14 @@ function NavRow({
   icon,
   label,
   active,
+  onContextMenu,
   trailing,
 }: {
   href: string;
   icon: React.ReactNode;
   label: string;
   active?: boolean;
+  onContextMenu?: (event: MouseEvent<HTMLAnchorElement>) => void;
   trailing?: React.ReactNode;
 }) {
   return (
@@ -146,11 +193,47 @@ function NavRow({
           ? "bg-[var(--color-brand-50)] text-[var(--color-brand-800)]"
           : "text-dim hover:bg-raised hover:text-foreground")
       }
+      onContextMenu={onContextMenu}
     >
       <span className="flex h-4 w-4 items-center justify-center text-[14px]">{icon}</span>
       <span className="flex-1 truncate">{label}</span>
       {trailing}
     </Link>
+  );
+}
+
+function PinMenu({
+  state,
+  onClose,
+  onTogglePin,
+  menuRef,
+}: {
+      state: PinMenuState;
+      onClose: () => void;
+      onTogglePin: () => void;
+      menuRef: { current: HTMLDivElement | null };
+}) {
+  return (
+    <div
+      ref={menuRef}
+      className="fixed z-40 rounded-md border border-border bg-surface py-1 text-[13px] shadow-lg"
+      style={{ left: state.x, top: state.y }}
+      role="menu"
+    >
+      <button
+        type="button"
+        role="menuitem"
+        onClick={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          onTogglePin();
+          onClose();
+        }}
+        className="w-full px-3 py-1.5 text-left text-foreground hover:bg-raised"
+      >
+        {state.pinned ? `Unpin ${state.label}` : `Pin ${state.label}`}
+      </button>
+    </div>
   );
 }
 
@@ -164,6 +247,11 @@ function WorkspaceTree({
   dropState,
   onDropFiles,
   onDropHover,
+  pinnedFolders,
+  pinnedFiles,
+  pinnedLabels,
+  onPinToggle,
+  onUnpinAll,
 }: {
   workspace: WorkspaceNode;
   spine: WorkspaceSidebar | null;
@@ -174,6 +262,11 @@ function WorkspaceTree({
   dropState: SidebarDropState;
   onDropFiles: (workspaceId: string, section: DropSection, files: FileList) => void;
   onDropHover: (workspaceId: string, section: DropSection, active: boolean) => void;
+  pinnedFolders: string[];
+  pinnedFiles: string[];
+  pinnedLabels: PinnedLabels;
+  onPinToggle: (kind: PinKind, workspaceId: string, id: string, label?: string) => void;
+  onUnpinAll: (workspaceId: string) => void;
 }) {
   const dropProps = (section: DropSection) => ({
     onDragOver(event: DragEvent<HTMLElement>) {
@@ -259,6 +352,11 @@ function WorkspaceTree({
           onOpenChange={(nextOpen) => onSectionOpenChange("files", nextOpen)}
           dropState={dropState}
           dropProps={dropProps("files")}
+          pinnedFolders={pinnedFolders}
+          pinnedFiles={pinnedFiles}
+          pinnedLabels={pinnedLabels}
+          onPinToggle={(kind, id, label) => onPinToggle(kind, workspace.id, id, label)}
+          onUnpinAll={() => onUnpinAll(workspace.id)}
         />
         <StashesBlock
           workspace={workspace}
@@ -570,9 +668,13 @@ function StashTreeRow({ row }: { row: StashTreeItem }) {
 function FileNavRow({
   workspaceId,
   file,
+  label,
+  onPinMenu,
 }: {
   workspaceId: string;
   file: Pick<WorkspaceFile, "id" | "name" | "content_type" | "linked_table_id">;
+  label: string;
+  onPinMenu?: (event: MouseEvent<HTMLAnchorElement>) => void;
 }) {
   const isCsvLinked =
     file.content_type?.includes("csv") && file.linked_table_id;
@@ -587,7 +689,9 @@ function FileNavRow({
           {file.content_type?.includes("csv") ? <TableIcon /> : <FileIcon />}
         </span>
       }
-      label={file.name}
+      label={label}
+      trailing={null}
+      onContextMenu={onPinMenu}
     />
   );
 }
@@ -611,10 +715,16 @@ function FolderTreeNode({
   workspaceId,
   folderId,
   name,
+  isFolderPinned,
+  isFilePinned,
+  onPinMenu,
 }: {
   workspaceId: string;
   folderId: string;
   name: string;
+  isFolderPinned: (folderId: string) => boolean;
+  isFilePinned: (fileId: string) => boolean;
+  onPinMenu?: (event: MouseEvent<HTMLElement>, kind: PinKind, id: string, label: string, pinned: boolean) => void;
 }) {
   const cachedContents = readCachedFolderContents(folderId);
   const [contents, setContents] = useState<FolderContents | null>(cachedContents);
@@ -643,6 +753,16 @@ function FolderTreeNode({
   return (
     <details open={open} className="text-[12.5px]">
       <summary
+        onContextMenu={(event) => {
+          event.preventDefault();
+          onPinMenu?.(
+            event,
+            "folder",
+            folderId,
+            name,
+            isFolderPinned(folderId)
+          );
+        }}
         onClick={(e) => e.preventDefault()}
         className="page-row flex items-center gap-1 rounded-md px-2 py-0.5 hover:bg-raised"
       >
@@ -667,6 +787,9 @@ function FolderTreeNode({
             workspaceId={workspaceId}
             folderId={sub.id}
             name={sub.name}
+            isFolderPinned={isFolderPinned}
+            isFilePinned={isFilePinned}
+            onPinMenu={onPinMenu}
           />
         ))}
         {contents?.pages.map((p) => (
@@ -678,7 +801,15 @@ function FolderTreeNode({
           />
         ))}
         {contents?.files.map((f) => (
-          <FileNavRow key={f.id} workspaceId={workspaceId} file={f} />
+          <FileNavRow
+            key={f.id}
+            workspaceId={workspaceId}
+            file={f}
+            label={f.name}
+            onPinMenu={(event) =>
+              onPinMenu?.(event, "file", f.id, f.name, isFilePinned(f.id))
+            }
+          />
         ))}
         {contents &&
           contents.subfolders.length === 0 &&
@@ -698,6 +829,11 @@ function FilesBlock({
   onOpenChange,
   dropState,
   dropProps,
+  pinnedFolders,
+  pinnedFiles,
+  pinnedLabels,
+  onPinToggle,
+  onUnpinAll,
 }: {
   workspace: WorkspaceNode;
   spine: WorkspaceSidebar | null;
@@ -709,6 +845,11 @@ function FilesBlock({
     onDragLeave: (event: DragEvent<HTMLElement>) => void;
     onDrop: (event: DragEvent<HTMLElement>) => void;
   };
+  pinnedFolders: string[];
+  pinnedFiles: string[];
+  pinnedLabels: PinnedLabels;
+  onPinToggle: (kind: PinKind, id: string, label?: string) => void;
+  onUnpinAll: () => void;
 }) {
   const tree = spine?.files;
   const folders = tree?.folders ?? [];
@@ -717,8 +858,91 @@ function FilesBlock({
   const rootFolders = folders.filter((f) => !f.parent_folder_id);
   const rootPages = pages.filter((p) => !p.folder_id);
   const rootFiles = files.filter((f) => !f.folder_id);
+  const folderById = new Map((tree?.folders ?? []).map((folder) => [folder.id, folder]));
+  const fileById = new Map((tree?.files ?? []).map((file) => [file.id, file]));
+  const pinnedFolderRows = pinnedFolders.map((id) => {
+    const folder = folderById.get(id);
+    const label = pinnedLabels.folders[id] ?? folder?.name ?? `Folder ${id}`;
+    return {
+      id,
+      label,
+      href: `/workspaces/${workspace.id}/folders/${id}`,
+      icon: <FolderIcon />,
+    };
+  });
+  const pinnedFileRows = pinnedFiles.map((id) => {
+    const file = fileById.get(id);
+    if (!file) {
+      return {
+        id,
+        label: `File ${id}`,
+        href: `/workspaces/${workspace.id}/f/${id}`,
+        icon: <span className={fileIconClass(undefined)}><FileIcon /></span>,
+      };
+    }
+    const label = pinnedLabels.files[id] ?? file.name;
+    const isCsvLinked = file.content_type?.includes("csv") && file.linked_table_id;
+    return {
+      id,
+      label,
+      href: isCsvLinked
+        ? `/tables/${file.linked_table_id}?workspaceId=${workspace.id}`
+        : `/workspaces/${workspace.id}/f/${id}`,
+      icon:
+        <span className={fileIconClass(file.content_type)}>
+          {file.content_type?.includes("csv") ? <TableIcon /> : <FileIcon />}
+        </span>,
+    };
+  });
+  const pinnedFolderSet = new Set(pinnedFolders);
+  const pinnedFileSet = new Set(pinnedFiles);
   const total = folders.length + pages.length + files.length;
   const filesDrop = dropState.key === dropKey(workspace.id, "files") ? dropState : null;
+  const [pinMenu, setPinMenu] = useState<PinMenuState | null>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const menuClamp =
+    pinMenu && typeof window !== "undefined"
+      ? {
+          x: Math.max(0, Math.min(pinMenu.x, window.innerWidth - 190)),
+          y: Math.max(0, Math.min(pinMenu.y, window.innerHeight - 72)),
+        }
+      : pinMenu;
+
+  useEffect(() => {
+    if (!pinMenu) return;
+
+    const onDown = (event: globalThis.MouseEvent) => {
+      if (menuRef.current && menuRef.current.contains(event.target as Node)) return;
+      setPinMenu(null);
+    };
+    const onKey = (event: globalThis.KeyboardEvent) => {
+      if (event.key === "Escape") setPinMenu(null);
+    };
+
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [pinMenu]);
+
+  const pinnedCount = pinnedFolders.length + pinnedFiles.length;
+  const renderPinned = pinnedCount > 0;
+
+  function showPinMenu(
+    event: MouseEvent<HTMLElement>,
+    kind: PinKind,
+    id: string,
+    label: string,
+    pinned: boolean
+  ) {
+    event.preventDefault();
+    event.stopPropagation();
+    setPinMenu({ kind, id, label, pinned, x: event.clientX, y: event.clientY });
+  }
+
   return (
     <details
       open={open}
@@ -747,12 +971,57 @@ function FilesBlock({
       </summary>
       <div className="ml-3 space-y-0.5 border-l border-border pl-2">
         {filesDrop?.message ? <DropMessage state={filesDrop} /> : null}
+            {renderPinned ? (
+              <div className="space-y-0.5">
+                <div className="flex items-center justify-between gap-2 px-2 py-0.5">
+                  <span className="text-[10px] uppercase tracking-wide text-muted">
+                    Pinned ({pinnedCount})
+                  </span>
+              <button
+                type="button"
+                onClick={(event) => {
+                  event.preventDefault();
+                  onUnpinAll();
+                }}
+                className="rounded px-1 py-0.5 text-[10px] text-[var(--color-brand-700)] hover:bg-[var(--color-brand-50)]"
+                aria-label="Unpin all files and folders"
+              >
+                    Unpin all
+                  </button>
+                </div>
+                {pinnedFolderRows.map((folder) => (
+                  <NavRow
+                    key={`pinned-folder-${folder.id}`}
+                    href={folder.href}
+                    icon={folder.icon}
+                    label={folder.label}
+                    onContextMenu={(event) =>
+                      showPinMenu(event, "folder", folder.id, folder.label, true)
+                    }
+                  />
+                ))}
+                {pinnedFileRows.map((file) => (
+                  <NavRow
+                    key={`pinned-file-${file.id}`}
+                    href={file.href}
+                    icon={file.icon}
+                    label={file.label}
+                    onContextMenu={(event) =>
+                      showPinMenu(event, "file", file.id, file.label, true)
+                    }
+                  />
+                ))}
+              </div>
+            ) : null}
         {rootFolders.map((f) => (
           <FolderTreeNode
             key={f.id}
             workspaceId={workspace.id}
             folderId={f.id}
             name={f.name}
+            isFolderPinned={(folderId) => pinnedFolderSet.has(folderId)}
+            isFilePinned={(fileId) => pinnedFileSet.has(fileId)}
+            onPinMenu={showPinMenu}
           />
         ))}
         {rootPages.slice(0, PREVIEW_ITEM_LIMIT).map((p) => (
@@ -764,10 +1033,30 @@ function FilesBlock({
           />
         ))}
         {rootFiles.slice(0, PREVIEW_ITEM_LIMIT).map((f) => (
-          <FileNavRow key={f.id} workspaceId={workspace.id} file={f} />
+          <FileNavRow
+            key={f.id}
+            workspaceId={workspace.id}
+            file={f}
+            label={f.name}
+            onPinMenu={(event) =>
+              showPinMenu(event, "file", f.id, f.name, pinnedFileSet.has(f.id))
+            }
+          />
         ))}
         {!spine || total === 0 ? (
           <div className="px-2 py-1 text-[11px] italic text-muted">empty</div>
+        ) : null}
+        {pinMenu && menuClamp ? (
+          <PinMenu
+            state={{
+              ...pinMenu,
+              x: menuClamp.x,
+              y: menuClamp.y,
+            }}
+            onClose={() => setPinMenu(null)}
+            onTogglePin={() => onPinToggle(pinMenu.kind, pinMenu.id, pinMenu.label)}
+            menuRef={menuRef}
+          />
         ) : null}
       </div>
     </details>
@@ -808,7 +1097,7 @@ function StashesBlock({
   const externalStashes = stashes.filter((stash) => stash.is_external);
 
   function renderStashGroup(
-    title: string,
+    title: string | null,
     items: typeof stashes,
     includeEmpty = false
   ) {
@@ -816,9 +1105,11 @@ function StashesBlock({
 
     return (
       <div className="space-y-0.5 border-l border-border pl-2">
-        <div className="px-2 py-0.5 text-[10px] uppercase tracking-wide text-muted">
-          {title} {items.length}
-        </div>
+        {title ? (
+          <div className="px-2 py-0.5 text-[10px] uppercase tracking-wide text-muted">
+            {title}
+          </div>
+        ) : null}
         {items.length === 0 ? (
           <div className="px-2 py-1 text-[11px] italic text-muted">empty</div>
         ) : (
@@ -908,8 +1199,8 @@ function StashesBlock({
         {internalStashes.length === 0 && externalStashes.length === 0 ? (
           <div className="px-2 py-1 text-[11px] italic text-muted">empty</div>
         ) : null}
-        {renderStashGroup("Workspace", internalStashes, false)}
-        {renderStashGroup("External", externalStashes, false)}
+        {renderStashGroup(null, internalStashes, false)}
+        {renderStashGroup("External stashes", externalStashes, false)}
       </div>
     </details>
   );
@@ -951,6 +1242,12 @@ export default function AppSidebar({
     status: "idle",
     message: "",
   });
+  const [pinnedState, setPinnedState] = useState<Record<string, { folders: string[]; files: string[] }>>(
+    () => readPinnedMap()
+  );
+  const [pinnedLabelsState, setPinnedLabelsState] = useState<Record<string, PinnedLabels>>(
+    () => readPinnedLabelMap()
+  );
 
   useEffect(() => {
     if (!userId) return;
@@ -1115,6 +1412,178 @@ export default function AppSidebar({
     clearDropLater(workspaceId, section);
   }
 
+  function handlePinToggle(
+    kind: PinKind,
+    workspaceId: string,
+    id: string,
+    label?: string
+  ) {
+    setPinnedState((current) => {
+      const workspacePins = current[workspaceId] ?? EMPTY_PIN_STATE;
+      if (kind === "folder") {
+        const isPinned = workspacePins.folders.includes(id);
+        const nextFolders = isPinned
+          ? workspacePins.folders.filter((value) => value !== id)
+          : [...workspacePins.folders, id];
+        const nextWorkspace = { ...workspacePins, folders: nextFolders };
+        const nextState = { ...current, [workspaceId]: nextWorkspace };
+        writePinnedMap(nextState);
+        if (!isPinned && label) {
+          setPinnedLabelsState((currentLabels) => {
+            const nextLabels = {
+              ...currentLabels,
+              [workspaceId]: {
+                ...(currentLabels[workspaceId] ?? { folders: {}, files: {} }),
+                folders: {
+                  ...(currentLabels[workspaceId]?.folders ?? {}),
+                  [id]: label,
+                },
+              },
+            };
+            writePinnedLabelMap(nextLabels);
+            return nextLabels;
+          });
+        }
+        if (isPinned) {
+          setPinnedLabelsState((currentLabels) => {
+            const workspaceLabels = currentLabels[workspaceId];
+            if (!workspaceLabels) return currentLabels;
+
+            const { [id]: _, ...restFolders } = workspaceLabels.folders;
+            const nextLabels = {
+              ...currentLabels,
+              [workspaceId]: {
+                ...workspaceLabels,
+                folders: restFolders,
+              },
+            };
+            writePinnedLabelMap(nextLabels);
+            return nextLabels;
+          });
+        }
+        return nextState;
+      }
+
+      const isPinned = workspacePins.files.includes(id);
+      const nextFiles = isPinned
+        ? workspacePins.files.filter((value) => value !== id)
+        : [...workspacePins.files, id];
+      const nextWorkspace = { ...workspacePins, files: nextFiles };
+      const nextState = { ...current, [workspaceId]: nextWorkspace };
+      writePinnedMap(nextState);
+      if (!isPinned && label) {
+        setPinnedLabelsState((currentLabels) => {
+          const nextLabels = {
+            ...currentLabels,
+            [workspaceId]: {
+              ...(currentLabels[workspaceId] ?? { folders: {}, files: {} }),
+              files: {
+                ...(currentLabels[workspaceId]?.files ?? {}),
+                [id]: label,
+              },
+            },
+          };
+          writePinnedLabelMap(nextLabels);
+          return nextLabels;
+        });
+      }
+      if (isPinned) {
+        setPinnedLabelsState((currentLabels) => {
+          const workspaceLabels = currentLabels[workspaceId];
+          if (!workspaceLabels) return currentLabels;
+
+          const { [id]: _, ...restFiles } = workspaceLabels.files;
+          const nextLabels = {
+            ...currentLabels,
+            [workspaceId]: {
+              ...workspaceLabels,
+              files: restFiles,
+            },
+          };
+          writePinnedLabelMap(nextLabels);
+          return nextLabels;
+        });
+      }
+      return nextState;
+    });
+  }
+
+  function handleUnpinAll(workspaceId: string) {
+      setPinnedState((current) => {
+        const workspacePins = current[workspaceId];
+        if (!workspacePins || (workspacePins.folders.length === 0 && workspacePins.files.length === 0)) {
+          return current;
+        }
+        const nextState = {
+          ...current,
+          [workspaceId]: { folders: [], files: [] },
+        };
+        writePinnedMap(nextState);
+        setPinnedLabelsState((currentLabels) => {
+          const workspaceLabels = currentLabels[workspaceId];
+          if (!workspaceLabels) return currentLabels;
+
+          const nextLabels = {
+            ...currentLabels,
+            [workspaceId]: { folders: {}, files: {} },
+          };
+          writePinnedLabelMap(nextLabels);
+          return nextLabels;
+        });
+      return nextState;
+    });
+  }
+
+  useEffect(() => {
+    setPinnedLabelsState((currentLabels) => {
+      const nextLabels: Record<string, PinnedLabels> = { ...currentLabels };
+      let changed = false;
+
+      for (const [workspaceId, workspacePins] of Object.entries(pinnedState)) {
+        const tree = spines[workspaceId]?.files;
+        const folderById = new Map((tree?.folders ?? []).map((folder) => [folder.id, folder]));
+        const fileById = new Map((tree?.files ?? []).map((file) => [file.id, file]));
+
+        const workspaceLabels = nextLabels[workspaceId] ?? { folders: {}, files: {} };
+        let workspaceChanged = false;
+        const nextWorkspaceFolders = { ...workspaceLabels.folders };
+        const nextWorkspaceFiles = { ...workspaceLabels.files };
+
+        for (const folderId of workspacePins.folders) {
+          if (nextWorkspaceFolders[folderId]) continue;
+
+          const folderName = folderById.get(folderId)?.name;
+          if (!folderName) continue;
+
+          nextWorkspaceFolders[folderId] = folderName;
+          workspaceChanged = true;
+        }
+
+        for (const fileId of workspacePins.files) {
+          if (nextWorkspaceFiles[fileId]) continue;
+
+          const fileName = fileById.get(fileId)?.name;
+          if (!fileName) continue;
+
+          nextWorkspaceFiles[fileId] = fileName;
+          workspaceChanged = true;
+        }
+
+        if (!workspaceChanged) continue;
+
+        nextLabels[workspaceId] = {
+          folders: nextWorkspaceFolders,
+          files: nextWorkspaceFiles,
+        };
+        changed = true;
+      }
+
+      if (!changed) return currentLabels;
+      writePinnedLabelMap(nextLabels);
+      return nextLabels;
+    });
+  }, [pinnedState, spines]);
+
   return (
     <aside className="scroll-thin overflow-y-auto border-r border-border bg-surface">
       <div className="px-3 pb-1 pt-3">
@@ -1187,6 +1656,11 @@ export default function AppSidebar({
                 dropState={dropState}
                 onDropFiles={handleDropFiles}
                 onDropHover={handleDropHover}
+                pinnedFolders={pinnedState[s.id]?.folders ?? EMPTY_PIN_STATE.folders}
+                pinnedFiles={pinnedState[s.id]?.files ?? EMPTY_PIN_STATE.files}
+                pinnedLabels={pinnedLabelsState[s.id] ?? { folders: {}, files: {} }}
+                onPinToggle={(kind, id, label) => handlePinToggle(kind, s.id, id, label)}
+                onUnpinAll={handleUnpinAll}
               />
             ))}
           </nav>
@@ -1205,10 +1679,15 @@ export default function AppSidebar({
               handleSectionOpenChange(s.id, section, open)
             }
             dropState={dropState}
-            onDropFiles={handleDropFiles}
-            onDropHover={handleDropHover}
-          />
-        ))}
+                onDropFiles={handleDropFiles}
+                onDropHover={handleDropHover}
+                pinnedFolders={pinnedState[s.id]?.folders ?? EMPTY_PIN_STATE.folders}
+                pinnedFiles={pinnedState[s.id]?.files ?? EMPTY_PIN_STATE.files}
+                pinnedLabels={pinnedLabelsState[s.id] ?? { folders: {}, files: {} }}
+                onPinToggle={(kind, id, label) => handlePinToggle(kind, s.id, id, label)}
+                onUnpinAll={handleUnpinAll}
+              />
+            ))}
         {mine.length === 0 && (
           <div className="px-3 py-1.5 text-[12px] italic text-muted">
             No workspaces yet.
