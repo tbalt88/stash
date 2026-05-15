@@ -16,6 +16,7 @@ import {
   PageIcon,
   TableIcon,
 } from "../../../../../components/StashIcons";
+import { useBreadcrumbs } from "../../../../../components/BreadcrumbContext";
 import { useAuth } from "../../../../../hooks/useAuth";
 import {
   createFolder,
@@ -36,6 +37,23 @@ export default function FolderDetailPage() {
   const [contents, setContents] = useState<FolderContents | null>(null);
   const [error, setError] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const folderPath = contents?.breadcrumbs ?? [];
+  const breadcrumbs =
+    folderPath.length > 0
+      ? [
+          ...folderPath.slice(0, -1).map((crumb) => ({
+            label: crumb.name,
+            href: `/workspaces/${workspaceId}/folders/${crumb.id}`,
+          })),
+          { label: contents?.folder.name ?? "Folder" },
+        ]
+      : [{ label: "Folder" }];
+
+  useBreadcrumbs(
+    breadcrumbs,
+    `${workspaceId}/folder/${folderId}/${folderPath.map((crumb) => crumb.id).join(",")}`
+  );
 
   const load = useCallback(async () => {
     try {

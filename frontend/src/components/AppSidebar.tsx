@@ -239,7 +239,7 @@ function WorkspaceTree({
           </summary>
         <div className="ml-3 space-y-0.5 border-l border-border pl-2">
             {sessionsDrop?.message ? <DropMessage state={sessionsDrop} /> : null}
-            {groupSidebarSessions((spine?.sessions ?? []).slice(0, PREVIEW_ITEM_LIMIT)).map((group) => (
+            {groupSidebarSessions(spine?.sessions ?? []).map((group) => (
               <SessionTreeDetails
                 key={group.dateKey}
                 workspaceId={workspace.id}
