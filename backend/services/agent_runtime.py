@@ -134,7 +134,7 @@ async def _parse_stash_items(raw_items: list[dict], workspace_id: UUID) -> list[
 
 @tool(
     "search_history",
-    "Full-text search across this Stash Workspace's agent transcripts and history events.",
+    "Full-text search across this Stash Workspace's agent transcripts and session events.",
     {
         "type": "object",
         "properties": {
@@ -363,7 +363,7 @@ async def _list_stashes(args: dict) -> dict:
                     "properties": {
                         "object_type": {
                             "type": "string",
-                            "enum": ["folder", "page", "table", "file", "history", "session"],
+                            "enum": ["folder", "page", "table", "file", "session"],
                         },
                         "object_id": {"type": "string"},
                         "position": {"type": "integer", "default": 0},
@@ -418,7 +418,7 @@ async def _create_stash(args: dict) -> dict:
                     "properties": {
                         "object_type": {
                             "type": "string",
-                            "enum": ["folder", "page", "table", "file", "history", "session"],
+                            "enum": ["folder", "page", "table", "file", "session"],
                         },
                         "object_id": {"type": "string"},
                         "position": {"type": "integer", "default": 0},

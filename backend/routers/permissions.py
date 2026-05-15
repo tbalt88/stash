@@ -19,7 +19,7 @@ from ..services import permission_service, stash_service
 router = APIRouter(prefix="/api/v1/objects", tags=["permissions"])
 
 
-_SHAREABLE = {"folder", "page", "session", "table", "file", "history", "stash"}
+_SHAREABLE = {"folder", "page", "session", "table", "file", "stash"}
 
 
 async def _require_can_share(object_type: str, object_id: UUID, user_id: UUID) -> None:

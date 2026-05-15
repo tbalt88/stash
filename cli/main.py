@@ -3778,7 +3778,7 @@ def config_cmd(
 @app.command("share-object")
 def share_object_cmd(
     object_type: str = typer.Argument(
-        ..., help="workspace|folder|page|session|table|file|history|stash"
+        ..., help="folder|page|session|table|file|stash"
     ),
     object_id: str = typer.Argument(..., help="UUID of the object"),
     access: str = typer.Option(
@@ -3795,7 +3795,7 @@ def share_object_cmd(
 @app.command("visibility")
 def visibility_cmd(
     object_type: str = typer.Argument(
-        ..., help="workspace|folder|page|session|table|file|history|stash"
+        ..., help="folder|page|session|table|file|stash"
     ),
     object_id: str = typer.Argument(..., help="UUID of the object"),
     level: str = typer.Argument(..., help="workspace|private|public"),

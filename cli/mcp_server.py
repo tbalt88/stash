@@ -29,12 +29,12 @@ def _json(obj: object) -> str:
     return json.dumps(obj, default=str)
 
 
-# ── History / search ──────────────────────────────────────────────
+# ── Sessions / search ──────────────────────────────────────────────
 
 
 @mcp.tool()
 def stash_search(query: str, limit: int = 20, workspace_id: str = "") -> str:
-    """Full-text + semantic search across workspace history events."""
+    """Full-text + semantic search across workspace session events."""
     client, default_ws = _client()
     ws = _require_ws(workspace_id or default_ws)
     return _json(client.search_events(ws, query, limit=limit))
@@ -47,7 +47,7 @@ def stash_query_events(
     event_type: str = "",
     workspace_id: str = "",
 ) -> str:
-    """Query recent history events, optionally filtered by agent or event type."""
+    """Query recent session events, optionally filtered by agent or event type."""
     client, default_ws = _client()
     ws = _require_ws(workspace_id or default_ws)
     return _json(
@@ -78,7 +78,7 @@ def stash_push_event(
     tool_name: str = "",
     workspace_id: str = "",
 ) -> str:
-    """Push a new event into workspace history."""
+    """Push a new event into workspace sessions."""
     client, default_ws = _client()
     ws = _require_ws(workspace_id or default_ws)
     return _json(
@@ -529,7 +529,7 @@ def stash_whoami() -> str:
 
 @mcp.tool()
 def stash_get_permissions(object_type: str, object_id: str) -> str:
-    """Get privacy for any object (workspace|folder|page|session|table|file|history|stash)."""
+    """Get privacy for any object (folder|page|session|table|file|stash)."""
     client, _ = _client()
     return _json(client.get_object_permissions(object_type, object_id))
 

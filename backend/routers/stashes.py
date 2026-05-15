@@ -133,7 +133,7 @@ async def list_object_stashes(
     object_id: UUID,
     current_user: dict = Depends(get_current_user),
 ):
-    if object_type not in {"folder", "page", "table", "file", "history", "session"}:
+    if object_type not in {"folder", "page", "table", "file", "session"}:
         raise HTTPException(status_code=400, detail="Unsupported Stash item type")
     if not await workspace_service.is_member(workspace_id, current_user["id"]):
         raise HTTPException(status_code=403, detail="Not a workspace member")

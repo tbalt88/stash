@@ -103,11 +103,11 @@ class WorkspaceListResponse(BaseModel):
 
 # --- Stashes (publishable subsets of a workspace) ---
 
-StashObjectType = str  # 'folder' | 'page' | 'table' | 'file' | 'history' | 'session'
+StashObjectType = str  # 'folder' | 'page' | 'table' | 'file' | 'session'
 
 
 class StashItem(BaseModel):
-    object_type: StashObjectType = Field(..., pattern=r"^(folder|page|table|file|history|session)$")
+    object_type: StashObjectType = Field(..., pattern=r"^(folder|page|table|file|session)$")
     object_id: UUID
     position: int = 0
     label_override: str | None = Field(None, max_length=160)
@@ -154,7 +154,7 @@ class StashListResponse(BaseModel):
 
 
 # Public renderer payload — items are inlined with their content where it
-# makes sense (folders/pages, table rows, file metadata, history events).
+# makes sense (folders/pages, table rows, file metadata, session events).
 # The shape is intentionally permissive: each entry has the item
 # type/id/label plus an `inline` blob whose contents depend on the type.
 

@@ -312,9 +312,7 @@ async def test_resolve_workspace_for_content_types(pool):
     page_id = await _make_page(pool, ws_id, owner_id)
     session_id = await _make_session(pool, ws_id, owner_id)
     table_id = await _make_table(pool, ws_id, owner_id)
-    event_id = await _make_history_event(pool, ws_id, owner_id)
 
     assert await permission_service.resolve_workspace_id("page", page_id) == ws_id
     assert await permission_service.resolve_workspace_id("session", session_id) == ws_id
     assert await permission_service.resolve_workspace_id("table", table_id) == ws_id
-    assert await permission_service.resolve_workspace_id("history", event_id) == ws_id

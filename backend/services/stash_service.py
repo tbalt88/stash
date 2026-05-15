@@ -192,10 +192,6 @@ async def _object_title(object_type: str, object_id: UUID) -> str:
         row = await pool.fetchrow("SELECT name FROM tables WHERE id = $1", object_id)
     elif object_type == "file":
         row = await pool.fetchrow("SELECT name FROM files WHERE id = $1", object_id)
-    elif object_type == "history":
-        row = await pool.fetchrow(
-            "SELECT agent_name AS name FROM history_events WHERE id = $1", object_id
-        )
     elif object_type == "session":
         row = await pool.fetchrow(
             "SELECT session_id AS name FROM sessions WHERE id = $1", object_id
@@ -579,20 +575,6 @@ async def inline_items(stash: dict, viewer_id: UUID | None = None) -> list[dict]
                     "size_bytes": f["size_bytes"],
                     "created_at": f["created_at"].isoformat(),
                 }
-        elif obj_type == "history":
-            ev = await pool.fetchrow(
-                "SELECT agent_name, event_type, content, created_at "
-                "FROM history_events WHERE id = $1",
-                obj_id,
-            )
-            if ev:
-                label = label or f"{ev['agent_name']} · {ev['event_type']}"
-                inline = {
-                    "agent_name": ev["agent_name"],
-                    "event_type": ev["event_type"],
-                    "content": ev["content"],
-                    "created_at": ev["created_at"].isoformat(),
-                }
         elif obj_type == "session":
             s = await pool.fetchrow(
                 "SELECT id, session_id, agent_name, summary, summary_status, started_at, "
@@ -678,11 +660,6 @@ def items_to_text(title: str, items: list[dict]) -> str:
                 parts.append("\n".join(table_lines))
         elif obj_type == "file":
             parts.append(f"*Attached file: {label} ({inline.get('content_type', 'unknown')})*\n")
-        elif obj_type == "history":
-            parts.append(f"**{inline.get('agent_name', '')}** ({inline.get('event_type', '')})")
-            if inline.get("content"):
-                parts.append(inline["content"])
-            parts.append("")
         elif obj_type == "session":
             session = inline.get("session", {})
             parts.append(f"## Session {session.get('session_id', label)}")

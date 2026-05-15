@@ -546,7 +546,7 @@ class StashClient:
         base = f"/api/v1/workspaces/{workspace_id}/tables" if workspace_id else "/api/v1/tables"
         return self._request("DELETE", f"{base}/{table_id}/columns/{column_id}").json()
 
-    # ── Unified sharing API (object_type: workspace|folder|page|table|file|history|stash) ──
+    # ── Unified sharing API (object_type: folder|page|session|table|file|stash) ──
 
     def get_object_permissions(self, object_type: str, object_id: str) -> dict:
         return self._get(f"/api/v1/objects/{object_type}/{object_id}/permissions")

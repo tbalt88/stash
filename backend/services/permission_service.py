@@ -1,7 +1,7 @@
 """Permission service for workspace content objects.
 
 Stashes are the only privacy boundary for files, pages, folders, sessions,
-tables, and history. Content with no Stash membership is workspace-visible.
+and tables. Content with no Stash membership is workspace-visible.
 """
 
 from uuid import UUID
@@ -11,14 +11,13 @@ from ..database import get_pool
 _WORKSPACE_LOOKUP = {
     "table": ("tables", "workspace_id"),
     "file": ("files", "workspace_id"),
-    "history": ("history_events", "workspace_id"),
     "session": ("sessions", "workspace_id"),
     "stash": ("stashes", "workspace_id"),
     "folder": ("folders", "workspace_id"),
     "page": ("pages", "workspace_id"),
 }
 
-_CONTENT_TYPES = {"folder", "page", "session", "table", "file", "history"}
+_CONTENT_TYPES = {"folder", "page", "session", "table", "file"}
 
 
 async def resolve_workspace_id(object_type: str, object_id: UUID) -> UUID | None:

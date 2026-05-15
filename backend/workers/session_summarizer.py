@@ -97,7 +97,7 @@ async def summarize_one(session_id: UUID, workspace_id: UUID, session_external_i
         await get_pool().execute(
             "UPDATE sessions SET summary_status = 'failed', "
             "summary_last_attempt_at = now(), "
-            "summary_last_error = 'no history events for session' "
+            "summary_last_error = 'no session events' "
             "WHERE id = $1",
             session_id,
         )
@@ -107,7 +107,7 @@ async def summarize_one(session_id: UUID, workspace_id: UUID, session_external_i
     if len(transcript) > TRANSCRIPT_CHAR_BUDGET:
         transcript = transcript[:TRANSCRIPT_CHAR_BUDGET] + "\n\n[... transcript truncated ...]"
 
-    user = prompts.render_session_summary_user(transcript, source_label="history events")
+    user = prompts.render_session_summary_user(transcript, source_label="session events")
 
     started = datetime.now(UTC)
     try:

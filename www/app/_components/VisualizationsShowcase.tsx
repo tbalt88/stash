@@ -192,8 +192,8 @@ export default function VisualizationsShowcase() {
           <div>
             <EmbeddingProjection3D />
             <p className="mt-4 text-[13.5px] leading-[1.6] text-dim">
-              <span className="text-ink">3D embedding projection.</span> History
-              events, pages, and tables projected with PCA. Clusters form
+              <span className="text-ink">3D embedding projection.</span> Sessions,
+              pages, and tables projected with PCA. Clusters form
               around topics — not folders.
             </p>
           </div>
