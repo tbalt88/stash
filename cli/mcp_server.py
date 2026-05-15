@@ -356,20 +356,23 @@ def stash_leave_workspace(workspace_id: str) -> str:
     return _json({"left": workspace_id})
 
 
-# ── Files folders ──────────────────────────────────────────────────
+# ── Skills ─────────────────────────────────────────────────────────
 
 
 @mcp.tool()
-def stash_read_folder(folder_name: str, stash_id: str = "") -> str:
-    """Read a Files folder by name. Returns the folder's SKILL.md (if any)
-    + sibling pages, concatenated for agent context."""
+def stash_list_skills(workspace_id: str = "") -> str:
+    """List skills defined as Files folders with a SKILL.md page."""
     client, default_ws = _client()
-    ws = _require_ws(stash_id or default_ws)
-    try:
-        data = client._get(f"/api/v1/stashes/{ws}/skills/{folder_name}")
-    except Exception as e:
-        data = {"error": str(e)}
-    return _json(data)
+    ws = _require_ws(workspace_id or default_ws)
+    return _json(client._get(f"/api/v1/workspaces/{ws}/skills"))
+
+
+@mcp.tool()
+def stash_read_skill(name: str, workspace_id: str = "") -> str:
+    """Read a skill's SKILL.md and sibling pages from Files."""
+    client, default_ws = _client()
+    ws = _require_ws(workspace_id or default_ws)
+    return _json(client._get(f"/api/v1/workspaces/{ws}/skills/{name}"))
 
 
 # ── Files ─────────────────────────────────────────────────────────

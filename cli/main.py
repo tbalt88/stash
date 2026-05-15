@@ -3821,18 +3821,18 @@ app.add_typer(skill_app, name="skill")
 
 @skill_app.command("list")
 def skill_list(
-    stash_id: str = typer.Argument("", help="Stash ID (defaults to active stash)."),
+    workspace_id: str = typer.Argument("", help="Workspace ID; defaults to .stash."),
     as_json: bool = typer.Option(False, "--json"),
 ):
-    """List skills in a stash."""
+    """List skills in a workspace."""
     cfg = load_config()
     c = StashClient(cfg["base_url"], cfg.get("api_key", ""))
-    ws = stash_id or (load_manifest() or {}).get("workspace_id")
+    ws = workspace_id or (load_manifest() or {}).get("workspace_id")
     if not ws:
-        console.print("[red]No stash. Pass an ID or run `stash connect`.[/red]")
+        console.print("[red]No workspace. Pass an ID or run `stash connect`.[/red]")
         raise typer.Exit(1)
     try:
-        data = c._get(f"/api/v1/stashes/{ws}/skills")
+        data = c._get(f"/api/v1/workspaces/{ws}/skills")
     except StashError as e:
         _err(e)
     if _use_json(as_json):
@@ -3844,20 +3844,20 @@ def skill_list(
             )
         if not data:
             console.print(
-                "[muted]No skills yet. `stash skill add <stash> <folder>` to create one.[/muted]"
+                "[muted]No skills yet. `stash skill add <workspace> <folder>` to create one.[/muted]"
             )
 
 
 @skill_app.command("show")
 def skill_show(
-    stash_id: str = typer.Argument(...),
+    workspace_id: str = typer.Argument(...),
     name: str = typer.Argument(...),
 ):
     """Read a skill (SKILL.md frontmatter + body + sibling files concatenated)."""
     cfg = load_config()
     c = StashClient(cfg["base_url"], cfg.get("api_key", ""))
     try:
-        data = c._get(f"/api/v1/stashes/{stash_id}/skills/{name}")
+        data = c._get(f"/api/v1/workspaces/{workspace_id}/skills/{name}")
     except StashError as e:
         _err(e)
     console.print(data["combined"])
@@ -3865,10 +3865,10 @@ def skill_show(
 
 @skill_app.command("add")
 def skill_add(
-    stash_id: str = typer.Argument(...),
+    workspace_id: str = typer.Argument(...),
     folder: str = typer.Argument(..., help="Local folder containing a SKILL.md file."),
 ):
-    """Upload a local skill folder (must contain a SKILL.md) into a stash as a Files folder."""
+    """Upload a local skill folder (must contain a SKILL.md) into workspace Files."""
     src = Path(folder)
     if not src.is_dir():
         console.print(f"[red]Not a folder: {folder}[/red]")
@@ -3883,11 +3883,11 @@ def skill_add(
     folder_name = src.name
     try:
         # Skills are represented as folders containing markdown pages.
-        new_folder = c.create_folder(stash_id, folder_name)
+        new_folder = c.create_folder(workspace_id, folder_name)
         folder_id = new_folder["id"]
         for md_file in sorted(src.glob("*.md")):
             c.create_page(
-                stash_id,
+                workspace_id,
                 name=md_file.name,
                 content=md_file.read_text(),
                 folder_id=folder_id,
@@ -3895,7 +3895,7 @@ def skill_add(
             )
     except StashError as e:
         _err(e)
-    console.print(f"[green]Added skill '{folder_name}' to stash {stash_id}.[/green]")
+    console.print(f"[green]Added skill '{folder_name}' to workspace {workspace_id}.[/green]")
 
 
 if __name__ == "__main__":
