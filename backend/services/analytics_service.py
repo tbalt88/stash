@@ -333,7 +333,7 @@ async def compute_knowledge_density(
 ) -> tuple[list[dict], int]:
     """Compute the full top-50 cluster list for a user and return (clusters, signature).
 
-    Single-pass stem aggregation across pages, table rows, and history
+    Single-pass stem aggregation across pages, table rows, and session events
     events. Label prettification is done in Python from one bulk word-frequency
     query — no per-stem LATERAL subqueries."""
     pool = get_pool()

@@ -4,7 +4,7 @@ A "session" in Stash is a sequence of `history_events` rows tied by
 session_id. The CLI's `stash share` materializes a session into a page
 from a local .jsonl file. This router provides the same materialize step
 server-side, sourced from the events the workspace already has, so the
-frontend /history page can ship a Share button without involving the CLI.
+session viewer can ship a Share button without involving the CLI.
 """
 
 from uuid import UUID

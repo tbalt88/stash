@@ -1,7 +1,7 @@
 """Server-side session summarizer worker.
 
 Claims sessions with summary_status='need_summary', assembles a transcript
-from history_events, and runs one Haiku call through the agent runtime to
+from session events, and runs one Haiku call through the agent runtime to
 populate `sessions.summary`.
 """
 

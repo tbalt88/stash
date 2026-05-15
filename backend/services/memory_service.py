@@ -1,4 +1,4 @@
-"""History service: structured agent event storage with FTS, vector search, and batch insert.
+"""Session event service: structured agent event storage with FTS, vector search, and batch insert.
 
 Events belong directly to a workspace (or are personal with workspace_id=NULL).
 Grouped by agent_name → session_id for display.
