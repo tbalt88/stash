@@ -262,6 +262,27 @@ function LoggedInHome({
             <StashPanel stashes={data.stashes} />
 
             <ActivityPanel
+              title="Recent sessions"
+              empty="No sessions yet."
+              items={data.recentSessions
+                .filter((session) => session.workspace_id)
+                .map((session) => ({
+                  id: session.session_id,
+                  href: `/workspaces/${session.workspace_id}/sessions/${encodeURIComponent(
+                    session.session_id
+                  )}`,
+                  title: sessionTitle(session),
+                  meta: [
+                    session.workspace_name,
+                    session.agent_name,
+                    relativeTime(session.last_event_at),
+                  ]
+                    .filter(Boolean)
+                    .join(" / "),
+                }))}
+            />
+
+            <ActivityPanel
               title="Recent pages"
               empty="No pages yet."
               items={data.recentPages.map((page) => ({
@@ -421,4 +442,10 @@ function relativeTime(iso: string): string {
 
 function dateSort(a: string, b: string): number {
   return new Date(a).getTime() - new Date(b).getTime();
+}
+
+function sessionTitle(session: SessionSummary): string {
+  const preview = (session.first_prompt_preview || "").trim().replace(/\s+/g, " ");
+  if (preview) return preview.length > 80 ? preview.slice(0, 80) + "..." : preview;
+  return session.agent_name || session.session_id;
 }
