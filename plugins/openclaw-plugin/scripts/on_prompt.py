@@ -6,11 +6,11 @@ are forwarded raw to the underlying coding agent), so this hook only streams.
 Context injection is the delegated agent's responsibility.
 """
 
+from adapt import adapt_prompt
 from config import DATA_DIR, get_client, get_config, get_stdin_data, is_configured
+
 from stashai.plugin.hooks import stream_user_message
 from stashai.plugin.state import load_state
-
-from adapt import adapt_prompt
 
 
 def main():

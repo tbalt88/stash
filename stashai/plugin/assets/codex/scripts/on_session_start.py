@@ -3,12 +3,12 @@
 
 import os
 
-from config import DATA_DIR, get_client, get_config, get_stdin_data, is_configured
-from stashai.plugin.hooks import create_session_record, reset_session_record_state
-from stashai.plugin.state import load_state, reset_stats, save_state
-from stashai.plugin.session_upload import spawn_session_watcher
-
 from adapt import adapt_session_start
+from config import DATA_DIR, get_client, get_config, get_stdin_data, is_configured
+
+from stashai.plugin.hooks import create_session_record, reset_session_record_state
+from stashai.plugin.session_upload import spawn_session_watcher
+from stashai.plugin.state import load_state, reset_stats, save_state
 
 
 def main():

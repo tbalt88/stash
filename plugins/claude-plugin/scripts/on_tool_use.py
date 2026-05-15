@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """PostToolUse (async): stream tool call + result to Stash history."""
 
+from adapt import adapt_tool_use
 from config import DATA_DIR, get_client, get_config, get_stdin_data, is_configured
+
 from stashai.plugin.hooks import stream_tool_use
 from stashai.plugin.state import load_state
-
-from adapt import adapt_tool_use
 
 
 def main():

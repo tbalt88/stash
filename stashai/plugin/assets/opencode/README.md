@@ -66,5 +66,5 @@ opencode agents have shell access. Point the agent at the `stash` CLI for reads 
 stash history query --ws <id> --limit 20 --json
 stash history search "<query>" --ws <id> --json
 stash whoami --json
-stash workspace list --mine --json
+stash workspaces list --json
 ```

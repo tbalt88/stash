@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """Cursor sessionStart: save session_id and create the session record."""
 
+from adapt import adapt_session_start
 from config import DATA_DIR, get_client, get_config, get_stdin_data, is_configured
+
 from stashai.plugin.hooks import create_session_record, reset_session_record_state
 from stashai.plugin.state import load_state, reset_stats, save_state
-
-from adapt import adapt_session_start
 
 
 def main():

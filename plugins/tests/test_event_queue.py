@@ -8,11 +8,10 @@ push drains a batch of the backlog so the queue clears during normal traffic.
 from __future__ import annotations
 
 import json
-from pathlib import Path
 
 import pytest
 
-from stashai.plugin.stash_client import StashClient, StashError, QUEUE_FILENAME
+from stashai.plugin.stash_client import QUEUE_FILENAME, StashClient
 
 
 class _Recorder:
@@ -47,7 +46,7 @@ def _queue_lines(tmp_path):
     qp = tmp_path / QUEUE_FILENAME
     if not qp.exists():
         return []
-    return [json.loads(l) for l in qp.read_text().splitlines() if l]
+    return [json.loads(line) for line in qp.read_text().splitlines() if line]
 
 
 def test_failed_push_enqueues(tmp_path):

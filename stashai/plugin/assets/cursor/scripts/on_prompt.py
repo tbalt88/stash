@@ -5,11 +5,11 @@ Cursor's beforeSubmitPrompt does not accept a context-injection key, so this
 hook is stream-only.
 """
 
+from adapt import adapt_prompt
 from config import DATA_DIR, get_client, get_config, get_stdin_data, is_configured
+
 from stashai.plugin.hooks import stream_user_message
 from stashai.plugin.state import load_state
-
-from adapt import adapt_prompt
 
 
 def main():
