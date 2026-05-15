@@ -11,6 +11,7 @@ from __future__ import annotations
 from uuid import UUID
 
 from ..database import get_pool
+from . import permission_service
 
 
 def parse_frontmatter(md: str) -> tuple[dict, str]:
@@ -43,7 +44,7 @@ def parse_frontmatter(md: str) -> tuple[dict, str]:
     return meta, body
 
 
-async def list_skills(stash_id: UUID) -> list[dict]:
+async def list_skills(workspace_id: UUID, user_id: UUID) -> list[dict]:
     """List every skill folder in a stash. Returns folder + frontmatter from
     its SKILL.md."""
     pool = get_pool()
@@ -55,10 +56,24 @@ async def list_skills(stash_id: UUID) -> list[dict]:
         "JOIN pages p ON p.folder_id = f.id AND p.name = 'SKILL.md' "
         "WHERE f.workspace_id = $1 "
         "ORDER BY f.name",
-        stash_id,
+        workspace_id,
     )
     out = []
     for r in rows:
+        can_read_folder = await permission_service.check_access(
+            "folder",
+            r["folder_id"],
+            user_id,
+            workspace_id=workspace_id,
+        )
+        can_read_skill_md = await permission_service.check_access(
+            "page",
+            r["skill_md_id"],
+            user_id,
+            workspace_id=workspace_id,
+        )
+        if not can_read_folder or not can_read_skill_md:
+            continue
         meta, _body = parse_frontmatter(r["skill_md"] or "")
         out.append(
             {
@@ -75,12 +90,12 @@ async def list_skills(stash_id: UUID) -> list[dict]:
     return out
 
 
-async def read_skill(stash_id: UUID, name: str) -> dict | None:
+async def read_skill(workspace_id: UUID, name: str, user_id: UUID) -> dict | None:
     """Read a skill by its frontmatter name OR its folder name. Returns the
     parsed SKILL.md plus the full text of every sibling file concatenated, so
     an agent can load the whole skill in one call."""
     pool = get_pool()
-    skills = await list_skills(stash_id)
+    skills = await list_skills(workspace_id, user_id)
     match = next(
         (s for s in skills if s["name"] == name or s["folder_id"] == name),
         None,
@@ -100,6 +115,16 @@ async def read_skill(stash_id: UUID, name: str) -> dict | None:
         "FROM pages WHERE folder_id = $1 ORDER BY name",
         UUID(folder_id),
     )
+    readable_pages = []
+    for page in pages:
+        if await permission_service.check_access(
+            "page",
+            page["id"],
+            user_id,
+            workspace_id=workspace_id,
+        ):
+            readable_pages.append(page)
+    pages = readable_pages
 
     skill_md = next((p for p in pages if p["name"] == "SKILL.md"), None)
     body = ""

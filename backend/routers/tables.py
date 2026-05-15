@@ -20,9 +20,6 @@ from ..models import (
     RowListResponse,
     RowResponse,
     RowUpdateRequest,
-    SetVisibilityRequest,
-    ShareRequest,
-    ShareResponse,
     TableCreateRequest,
     TableListResponse,
     TableResponse,
@@ -582,48 +579,20 @@ async def get_permissions(
 async def set_visibility(
     workspace_id: UUID,
     table_id: UUID,
-    req: SetVisibilityRequest,
     current_user: dict = Depends(get_current_user),
 ):
-    if not await permission_service.check_access(
-        "table", table_id, current_user["id"], workspace_id=workspace_id, require_write=False
-    ):
-        raise HTTPException(status_code=403, detail="Not allowed to share this table")
-    await _check_ws_table(workspace_id, table_id)
-    await permission_service.set_visibility("table", table_id, req.visibility)
-    return {"status": "ok", "visibility": req.visibility}
+    await _check_read(workspace_id, current_user["id"])
+    raise HTTPException(status_code=400, detail="Create or update a Stash to change privacy")
 
 
-@ws_router.post("/{table_id}/permissions/share", response_model=ShareResponse)
+@ws_router.post("/{table_id}/permissions/share")
 async def add_share(
     workspace_id: UUID,
     table_id: UUID,
-    req: ShareRequest,
     current_user: dict = Depends(get_current_user),
 ):
-    if not await permission_service.check_access(
-        "table", table_id, current_user["id"], workspace_id=workspace_id, require_write=False
-    ):
-        raise HTTPException(status_code=403, detail="Not allowed to share this table")
-    await _check_ws_table(workspace_id, table_id)
-    share = await permission_service.add_share(
-        "table",
-        table_id,
-        req.user_id,
-        req.permission,
-        current_user["id"],
-    )
-    from ..database import get_pool
-
-    pool = get_pool()
-    user = await pool.fetchrow("SELECT name FROM users WHERE id = $1", req.user_id)
-    return ShareResponse(
-        user_id=share["user_id"],
-        user_name=user["name"] if user else "",
-        permission=share["permission"],
-        granted_by=share["granted_by"],
-        created_at=share["created_at"],
-    )
+    await _check_read(workspace_id, current_user["id"])
+    raise HTTPException(status_code=400, detail="Share a Stash instead of sharing a table")
 
 
 @ws_router.delete("/{table_id}/permissions/share/{user_id}", status_code=204)
@@ -633,9 +602,5 @@ async def remove_share(
     user_id: UUID,
     current_user: dict = Depends(get_current_user),
 ):
-    if not await permission_service.check_access(
-        "table", table_id, current_user["id"], workspace_id=workspace_id, require_write=False
-    ):
-        raise HTTPException(status_code=403, detail="Not allowed to manage this table's shares")
-    await _check_ws_table(workspace_id, table_id)
-    await permission_service.remove_share("table", table_id, user_id)
+    await _check_read(workspace_id, current_user["id"])
+    raise HTTPException(status_code=400, detail="Share a Stash instead of sharing a table")

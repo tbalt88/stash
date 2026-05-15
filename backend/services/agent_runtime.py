@@ -177,7 +177,8 @@ async def _search_history(args: dict) -> dict:
 )
 async def _read_page(args: dict) -> dict:
     workspace_id = _current_workspace()
-    page = await files_tree_service.get_page(UUID(args["page_id"]), workspace_id)
+    user_id = _current_user()
+    page = await files_tree_service.get_page(UUID(args["page_id"]), workspace_id, user_id)
     if not page:
         return _text_result(json.dumps({"error": "not found"}))
     return _text_result(
@@ -205,8 +206,12 @@ async def _read_page(args: dict) -> dict:
 )
 async def _grep_pages(args: dict) -> dict:
     workspace_id = _current_workspace()
+    user_id = _current_user()
     rows = await files_tree_service.search_pages_fts(
-        workspace_id, args.get("pattern", ""), limit=int(args.get("limit", 10))
+        workspace_id,
+        args.get("pattern", ""),
+        limit=int(args.get("limit", 10)),
+        user_id=user_id,
     )
     out = [
         {
@@ -228,11 +233,21 @@ async def _list_files(args: dict) -> dict:
     from ..database import get_pool
 
     workspace_id = _current_workspace()
+    user_id = _current_user()
     rows = await get_pool().fetch(
         "SELECT id, name, content_type, size_bytes FROM files WHERE workspace_id = $1 "
         "ORDER BY created_at DESC LIMIT 50",
         workspace_id,
     )
+    visible_rows = []
+    for row in rows:
+        if await permission_service.check_access(
+            "file",
+            row["id"],
+            user_id,
+            workspace_id=workspace_id,
+        ):
+            visible_rows.append(row)
     out = [
         {
             "id": str(r["id"]),
@@ -240,7 +255,7 @@ async def _list_files(args: dict) -> dict:
             "content_type": r["content_type"],
             "size_bytes": r["size_bytes"],
         }
-        for r in rows
+        for r in visible_rows
     ]
     return _text_result(json.dumps(out))
 
@@ -258,12 +273,21 @@ async def _read_file(args: dict) -> dict:
     from ..database import get_pool
 
     workspace_id = _current_workspace()
+    user_id = _current_user()
+    file_id = UUID(args["file_id"])
     row = await get_pool().fetchrow(
         "SELECT name, extracted_text FROM files WHERE id = $1 AND workspace_id = $2",
-        UUID(args["file_id"]),
+        file_id,
         workspace_id,
     )
     if not row:
+        return _text_result(json.dumps({"error": "not found"}))
+    if not await permission_service.check_access(
+        "file",
+        file_id,
+        user_id,
+        workspace_id=workspace_id,
+    ):
         return _text_result(json.dumps({"error": "not found"}))
     return _text_result(
         json.dumps({"name": row["name"], "text": (row["extracted_text"] or "")[:6000]})
@@ -310,7 +334,8 @@ async def _query_table(args: dict) -> dict:
 )
 async def _list_skills(args: dict) -> dict:
     workspace_id = _current_workspace()
-    skills = await skill_service.list_skills(workspace_id)
+    user_id = _current_user()
+    skills = await skill_service.list_skills(workspace_id, user_id)
     out = [
         {"name": s["name"], "description": s["description"], "files": s["file_count"]}
         for s in skills
@@ -329,7 +354,8 @@ async def _list_skills(args: dict) -> dict:
 )
 async def _read_skill(args: dict) -> dict:
     workspace_id = _current_workspace()
-    skill = await skill_service.read_skill(workspace_id, args.get("name", ""))
+    user_id = _current_user()
+    skill = await skill_service.read_skill(workspace_id, args.get("name", ""), user_id)
     if not skill:
         return _text_result(json.dumps({"error": "not found"}))
     return _text_result(json.dumps({"name": skill["name"], "combined": skill["combined"]}))
@@ -342,7 +368,8 @@ async def _read_skill(args: dict) -> dict:
 )
 async def _list_stashes(args: dict) -> dict:
     workspace_id = _current_workspace()
-    stashes = await stash_service.list_workspace_stashes(workspace_id)
+    user_id = _current_user()
+    stashes = await stash_service.list_workspace_stashes(workspace_id, user_id)
     return _text_result(json.dumps([_stash_to_dict(stash) for stash in stashes]))
 
 

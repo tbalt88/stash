@@ -380,7 +380,18 @@ async def list_public_stashes(
     return out
 
 
-async def list_workspace_stashes(workspace_id: UUID) -> list[dict]:
+async def _filter_readable_stashes(stashes: list[dict], user_id: UUID | None) -> list[dict]:
+    readable = []
+    for stash in stashes:
+        if await user_can_read(stash["id"], user_id):
+            readable.append(stash)
+    return readable
+
+
+async def list_workspace_stashes(
+    workspace_id: UUID,
+    user_id: UUID | None = None,
+) -> list[dict]:
     pool = get_pool()
     native_rows = await pool.fetch(
         f"{_STASH_SELECT} WHERE v.workspace_id = $1 ORDER BY updated_at DESC",
@@ -400,7 +411,7 @@ async def list_workspace_stashes(workspace_id: UUID) -> list[dict]:
         _mark_external(await _attach_items(dict(row)), row["added_to_workspace_id"])
         for row in external_rows
     ]
-    return native + external
+    return await _filter_readable_stashes(native + external, user_id)
 
 
 async def add_external_stash(workspace_id: UUID, slug: str, added_by: UUID) -> dict | None:
@@ -434,7 +445,12 @@ async def remove_external_stash(workspace_id: UUID, stash_id: UUID) -> bool:
     return result == "DELETE 1"
 
 
-async def list_object_stashes(workspace_id: UUID, object_type: str, object_id: UUID) -> list[dict]:
+async def list_object_stashes(
+    workspace_id: UUID,
+    object_type: str,
+    object_id: UUID,
+    user_id: UUID | None = None,
+) -> list[dict]:
     pool = get_pool()
     rows = await pool.fetch(
         f"SELECT {_STASH_COLS} FROM stashes v "
@@ -445,7 +461,7 @@ async def list_object_stashes(workspace_id: UUID, object_type: str, object_id: U
         object_type,
         object_id,
     )
-    return [await _attach_items(dict(row)) for row in rows]
+    return await _filter_readable_stashes([await _attach_items(dict(row)) for row in rows], user_id)
 
 
 async def get_stash(stash_id: UUID) -> dict | None:

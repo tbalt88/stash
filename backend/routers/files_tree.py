@@ -15,9 +15,6 @@ from ..models import (
     PageResponse,
     PageUpdateRequest,
     PermissionResponse,
-    SetVisibilityRequest,
-    ShareRequest,
-    ShareResponse,
     WorkspacePageEntry,
     WorkspacePageListResponse,
     WorkspaceTreeResponse,
@@ -444,50 +441,20 @@ async def get_folder_permissions(
 async def set_folder_visibility(
     workspace_id: UUID,
     folder_id: UUID,
-    req: SetVisibilityRequest,
     current_user: dict = Depends(get_current_user),
 ):
-    if not await permission_service.check_access(
-        "folder", folder_id, current_user["id"], workspace_id=workspace_id, require_write=False
-    ):
-        raise HTTPException(status_code=403, detail="Not allowed to share this folder")
-    await _check_ws_owns_folder(workspace_id, folder_id)
-    await permission_service.set_privacy_visibility(
-        "folder", folder_id, req.visibility, current_user["id"]
-    )
-    return {"status": "ok", "visibility": req.visibility}
+    await _check_ws_access(workspace_id, current_user["id"])
+    raise HTTPException(status_code=400, detail="Create or update a Stash to change privacy")
 
 
-@router.post("/folders/{folder_id}/permissions/share", response_model=ShareResponse)
+@router.post("/folders/{folder_id}/permissions/share")
 async def add_folder_share(
     workspace_id: UUID,
     folder_id: UUID,
-    req: ShareRequest,
     current_user: dict = Depends(get_current_user),
 ):
-    if not await permission_service.check_access(
-        "folder", folder_id, current_user["id"], workspace_id=workspace_id, require_write=False
-    ):
-        raise HTTPException(status_code=403, detail="Not allowed to share this folder")
-    await _check_ws_owns_folder(workspace_id, folder_id)
-    share = await permission_service.add_share(
-        "folder",
-        folder_id,
-        req.user_id,
-        req.permission,
-        current_user["id"],
-    )
-    from ..database import get_pool
-
-    pool = get_pool()
-    user = await pool.fetchrow("SELECT name FROM users WHERE id = $1", req.user_id)
-    return ShareResponse(
-        user_id=share["user_id"],
-        user_name=user["name"] if user else "",
-        permission=share["permission"],
-        granted_by=share["granted_by"],
-        created_at=share["created_at"],
-    )
+    await _check_ws_access(workspace_id, current_user["id"])
+    raise HTTPException(status_code=400, detail="Share a Stash instead of sharing a folder")
 
 
 @router.delete("/folders/{folder_id}/permissions/share/{user_id}", status_code=204)
@@ -497,9 +464,5 @@ async def remove_folder_share(
     user_id: UUID,
     current_user: dict = Depends(get_current_user),
 ):
-    if not await permission_service.check_access(
-        "folder", folder_id, current_user["id"], workspace_id=workspace_id, require_write=False
-    ):
-        raise HTTPException(status_code=403, detail="Not allowed to manage this folder's shares")
-    await _check_ws_owns_folder(workspace_id, folder_id)
-    await permission_service.remove_share("folder", folder_id, user_id)
+    await _check_ws_access(workspace_id, current_user["id"])
+    raise HTTPException(status_code=400, detail="Share a Stash instead of sharing a folder")

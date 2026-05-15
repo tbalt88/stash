@@ -20,6 +20,76 @@ _WORKSPACE_LOOKUP = {
 _CONTENT_TYPES = {"folder", "page", "session", "table", "file"}
 
 
+def _folder_chain_sql(folder_id_expr: str) -> str:
+    return (
+        "WITH RECURSIVE folder_chain AS ("
+        "  SELECT folder_node.id, folder_node.parent_folder_id "
+        f"  FROM folders folder_node WHERE folder_node.id = {folder_id_expr}"
+        "  UNION ALL"
+        "  SELECT parent_folder.id, parent_folder.parent_folder_id FROM folders parent_folder "
+        "  JOIN folder_chain c ON parent_folder.id = c.parent_folder_id"
+        ") SELECT id FROM folder_chain"
+    )
+
+
+def _stash_item_target_condition(object_type: str, object_alias: str, stash_item_alias: str) -> str:
+    if object_type == "page":
+        folder_chain = _folder_chain_sql(f"{object_alias}.folder_id")
+        return (
+            f"(({stash_item_alias}.object_type = 'page' "
+            f"AND {stash_item_alias}.object_id = {object_alias}.id) "
+            f"OR ({stash_item_alias}.object_type = 'folder' "
+            f"AND {object_alias}.folder_id IS NOT NULL "
+            f"AND {stash_item_alias}.object_id IN ({folder_chain})))"
+        )
+    if object_type == "file":
+        folder_chain = _folder_chain_sql(f"{object_alias}.folder_id")
+        return (
+            f"(({stash_item_alias}.object_type = 'file' "
+            f"AND {stash_item_alias}.object_id = {object_alias}.id) "
+            f"OR ({stash_item_alias}.object_type = 'folder' "
+            f"AND {object_alias}.folder_id IS NOT NULL "
+            f"AND {stash_item_alias}.object_id IN ({folder_chain})))"
+        )
+    if object_type in _CONTENT_TYPES:
+        return (
+            f"({stash_item_alias}.object_type = '{object_type}' "
+            f"AND {stash_item_alias}.object_id = {object_alias}.id)"
+        )
+    return "FALSE"
+
+
+def readable_content_condition(object_type: str, object_alias: str, user_arg: int) -> str:
+    target_condition = _stash_item_target_condition(object_type, object_alias, "content_stash_item")
+    return f"""
+        (
+          NOT EXISTS (
+            SELECT 1
+            FROM stash_items content_stash_item
+            WHERE {target_condition}
+          )
+          OR EXISTS (
+            SELECT 1
+            FROM stash_items content_stash_item
+            JOIN stashes content_stash ON content_stash.id = content_stash_item.stash_id
+            LEFT JOIN workspace_members content_workspace_member
+              ON content_workspace_member.workspace_id = content_stash.workspace_id
+             AND content_workspace_member.user_id = ${user_arg}
+            LEFT JOIN stash_members content_stash_member
+              ON content_stash_member.stash_id = content_stash.id
+             AND content_stash_member.user_id = ${user_arg}
+            WHERE {target_condition}
+              AND (
+                content_stash.access IN ('public', 'workspace')
+                OR content_stash.owner_id = ${user_arg}
+                OR content_workspace_member.role IN ('owner', 'admin')
+                OR content_stash_member.user_id IS NOT NULL
+              )
+          )
+        )
+    """
+
+
 async def resolve_workspace_id(object_type: str, object_id: UUID) -> UUID | None:
     pool = get_pool()
     if object_type not in _WORKSPACE_LOOKUP:

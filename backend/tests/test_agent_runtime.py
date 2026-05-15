@@ -58,6 +58,11 @@ async def workspace(_db_pool):
         user_id,
         ws_id.hex[:12],
     )
+    await _db_pool.execute(
+        "INSERT INTO workspace_members (workspace_id, user_id, role) VALUES ($1, $2, 'owner')",
+        ws_id,
+        user_id,
+    )
     return ws_id
 
 
@@ -77,11 +82,13 @@ async def test_list_files_tool_scopes_by_workspace(workspace: UUID, _db_pool):
         user_id,
     )
 
-    token = agent_runtime._workspace_ctx.set(workspace)
+    workspace_token = agent_runtime._workspace_ctx.set(workspace)
+    user_token = agent_runtime._user_ctx.set(user_id)
     try:
         result = await agent_runtime._list_files.handler({})
     finally:
-        agent_runtime._workspace_ctx.reset(token)
+        agent_runtime._user_ctx.reset(user_token)
+        agent_runtime._workspace_ctx.reset(workspace_token)
 
     payload = json.loads(result["content"][0]["text"])
     names = [r["name"] for r in payload]

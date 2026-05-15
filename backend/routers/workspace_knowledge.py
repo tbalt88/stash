@@ -134,8 +134,8 @@ async def _files_tree(workspace_id: UUID, user_id: UUID) -> dict:
     }
 
 
-async def _list_stashes(workspace_id: UUID) -> list[dict]:
-    stashes = await stash_service.list_workspace_stashes(workspace_id)
+async def _list_stashes(workspace_id: UUID, user_id: UUID) -> list[dict]:
+    stashes = await stash_service.list_workspace_stashes(workspace_id, user_id)
     return [
         {
             "id": str(stash["id"]),
@@ -162,7 +162,7 @@ async def _list_stashes(workspace_id: UUID) -> list[dict]:
 async def list_workspace_skills(workspace_id: UUID, current_user: dict = Depends(get_current_user)):
     if not await workspace_service.is_member(workspace_id, current_user["id"]):
         raise HTTPException(status_code=403, detail="Not a workspace member")
-    return await skill_service.list_skills(workspace_id)
+    return await skill_service.list_skills(workspace_id, current_user["id"])
 
 
 @router.get("/{workspace_id}/skills/{name}")
@@ -171,7 +171,7 @@ async def get_workspace_skill(
 ):
     if not await workspace_service.is_member(workspace_id, current_user["id"]):
         raise HTTPException(status_code=403, detail="Not a workspace member")
-    skill = await skill_service.read_skill(workspace_id, name)
+    skill = await skill_service.read_skill(workspace_id, name, current_user["id"])
     if not skill:
         raise HTTPException(status_code=404, detail="Skill not found")
     return skill
@@ -227,7 +227,7 @@ async def get_workspace_overview(
     sessions, files, stashes = await asyncio.gather(
         _list_sessions(workspace_id, current_user["id"]),
         _files_tree(workspace_id, current_user["id"]),
-        _list_stashes(workspace_id),
+        _list_stashes(workspace_id, current_user["id"]),
     )
     return {"sessions": sessions, "files": files, "stashes": stashes}
 
@@ -250,7 +250,7 @@ async def get_workspace_sidebar(
     sessions, files, stashes = await asyncio.gather(
         _list_sessions(workspace_id, current_user["id"]),
         _files_tree(workspace_id, current_user["id"]),
-        _list_stashes(workspace_id),
+        _list_stashes(workspace_id, current_user["id"]),
     )
     return Response(
         content=json.dumps(

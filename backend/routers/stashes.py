@@ -116,7 +116,7 @@ async def list_stashes(
 ):
     if not await workspace_service.is_member(workspace_id, current_user["id"]):
         raise HTTPException(status_code=403, detail="Not a workspace member")
-    stashes = await stash_service.list_workspace_stashes(workspace_id)
+    stashes = await stash_service.list_workspace_stashes(workspace_id, current_user["id"])
     return {"stashes": [StashResponse(**stash) for stash in stashes]}
 
 
@@ -147,7 +147,12 @@ async def list_object_stashes(
     item_workspace_id = await permission_service.resolve_workspace_id(object_type, object_id)
     if item_workspace_id != workspace_id:
         raise HTTPException(status_code=404, detail="Object not found")
-    stashes = await stash_service.list_object_stashes(workspace_id, object_type, object_id)
+    stashes = await stash_service.list_object_stashes(
+        workspace_id,
+        object_type,
+        object_id,
+        current_user["id"],
+    )
     return {"stashes": [StashResponse(**stash) for stash in stashes]}
 
 

@@ -8,7 +8,13 @@ from fastapi import APIRouter, Depends, Query
 from ..auth import get_current_user
 from ..database import get_pool
 from ..models import UserPageEntry, UserPageListResponse
-from ..services import analytics_service, files_tree_service, memory_service, table_service
+from ..services import (
+    analytics_service,
+    files_tree_service,
+    memory_service,
+    permission_service,
+    table_service,
+)
 
 router = APIRouter(prefix="/api/v1/me", tags=["aggregate"])
 
@@ -91,6 +97,8 @@ async def list_activity(
                  aw.name AS stash_name
           FROM pages p
           JOIN accessible_workspaces aw ON aw.id = p.workspace_id
+          WHERE COALESCE(p.metadata->>'shared_in_stash_id', '') = ''
+            AND """ + permission_service.readable_content_condition("page", "p", 1) + """
         )
         UNION ALL
         (
@@ -103,6 +111,7 @@ async def list_activity(
                  aw.name AS stash_name
           FROM files f
           JOIN accessible_workspaces aw ON aw.id = f.workspace_id
+          WHERE """ + permission_service.readable_content_condition("file", "f", 1) + """
         )
         UNION ALL
         (
