@@ -1,8 +1,8 @@
 import { Callout, CodeBlock, H3, P, Title, Subtitle } from "../components";
 
 const PROMPTS = [
-  { label: "Push knowledge in", prompt: '"Search the web for the latest research on RAG architectures and save a summary to my Stash knowledge base"' },
-  { label: "Search across everything", prompt: '"Check my Stash knowledge base — what do we know about authentication patterns?"' },
+  { label: "Push knowledge in", prompt: '"Search the web for the latest research on RAG architectures and save a summary to our Stash workspace"' },
+  { label: "Search across everything", prompt: '"Search our Stash workspace — what do we know about authentication patterns?"' },
   { label: "Create a report", prompt: '"Create a Stash page summarizing our key findings on database performance"' },
 ];
 
@@ -48,7 +48,7 @@ stash login`}</CodeBlock>
         ))}
       </div>
 
-      <H3>4. Build your knowledge base</H3>
+      <H3>4. Build your workspace</H3>
       <P>
         Sessions stream into searchable sessions. Promote useful outputs into pages, organize
         them with folders, and publish bundles as Stashes.

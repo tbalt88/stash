@@ -149,7 +149,7 @@ function LoggedInHome({
             </h1>
             <p className="mt-3 max-w-[700px] text-[14.5px] leading-[1.6] text-muted">
               A Stash Workspace is the shared container for your team&apos;s agent
-              sessions, Files, and Stashes you publish or hand to another workspace.
+              sessions, Files, and Stashes you publish or add from another workspace.
             </p>
             <div className="mt-5 flex flex-wrap gap-2">
               <Link

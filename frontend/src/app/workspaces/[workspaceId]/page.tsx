@@ -346,7 +346,7 @@ export default function WorkspaceHomePage() {
                   Files. Connect your agents via the Stash CLI and their sessions
                   appear under <span className="font-medium text-foreground">Sessions</span>; your
                   pages, files, and folders live in <span className="font-medium text-foreground">Files</span>.
-                  Bundle any set of pages and sessions into a Stash when you need to publish or hand off context.
+                  Bundle any set of pages and sessions into a Stash when you need to publish or share context.
                 </p>
               </div>
             )}

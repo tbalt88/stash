@@ -40,7 +40,7 @@ const CONCEPTS: { name: string; badge: string; badgeColor: string; desc: React.R
     name: "Search",
     badge: "Cross-cutting",
     badgeColor: "bg-muted/20 text-muted",
-    desc: "Universal cross-resource AI search. Ask a natural language question and get a synthesized answer across pages, tables, sessions, files, and Stashes. Supports workspace scoping and resource type filtering.",
+    desc: "Cross-resource search across pages, tables, sessions, files, and Stashes. Supports workspace, Stash, folder, page, and internal-only scoping.",
   },
 ];
 

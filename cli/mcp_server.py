@@ -535,14 +535,13 @@ def stash_publish_html(
     title: str,
     html: str,
     workspace_id: str = "",
-    audience: str = "link",
+    audience: str = "public",
     folder_id: str = "",
 ) -> str:
-    """Single-call publish: create an HTML page and return a share URL.
+    """Single-call publish: create an HTML page, wrap it in a Stash, and return the Stash URL.
 
     If folder_id is omitted, the page lands in the workspace's auto-created
-    'AI Drafts' folder. audience: 'link' (anyone with URL) or 'public'
-    (also listed in /discover)."""
+    'AI Drafts' folder. audience: 'workspace', 'private', or 'public'."""
     client, default_ws = _client()
     ws = _require_ws(workspace_id or default_ws)
     return _json(
@@ -562,10 +561,10 @@ def stash_publish_markdown(
     title: str,
     markdown: str,
     workspace_id: str = "",
-    audience: str = "link",
+    audience: str = "public",
     folder_id: str = "",
 ) -> str:
-    """Single-call publish: create a markdown page and return a share URL.
+    """Single-call publish: create a markdown page, wrap it in a Stash, and return the Stash URL.
     Same flow as stash_publish_html but for markdown content."""
     client, default_ws = _client()
     ws = _require_ws(workspace_id or default_ws)

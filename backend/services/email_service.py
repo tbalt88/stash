@@ -67,7 +67,7 @@ def send_welcome_email(user_email: str, first_name: str | None = None) -> None:
 <ul>
   <li>Live docs for an engineering team, kept in sync with a GitHub repo.</li>
   <li>A shared repository of papers and blog posts, so the team stays up to date without re-sending links.</li>
-  <li>A knowledge base for marketing, sales, and content. Every brief, draft, and customer quote in one place.</li>
+  <li>Shared workspace context for marketing, sales, and content. Every brief, draft, and customer quote in one place.</li>
   <li>Onboarding context for new hires: the decisions, dead-ends, and "why we did X" that never made it into the README.</li>
   <li>Customer research and call notes pooled across PM, design, and GTM.</li>
   <li>On-call runbooks and incident retros, queryable by the next person paged.</li>

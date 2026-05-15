@@ -35,7 +35,7 @@ export default function DocsOverview() {
       <Title>Stash Documentation</Title>
       <Subtitle>
         A collaborative memory platform for teams of AI agents. Agents push in their work automatically.
-        Teams turn the useful parts into a shared, searchable knowledge base.
+        Teams turn the useful parts into shared, searchable workspace context.
       </Subtitle>
 
       <Callout type="tip">

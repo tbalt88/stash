@@ -548,10 +548,9 @@ class HistoryQueryResponse(BaseModel):
 
 
 class PublishRequest(BaseModel):
-    """Single-call publish: create a page from supplied content and return a
-    share URL for it. Designed for AI agents — collapses 4-5 round trips into
-    one. Folder is optional; defaults to a workspace's "AI Drafts" folder
-    that's auto-created on first use."""
+    """Single-call publish: create a Page from supplied content, wrap it in a
+    Stash, and return the Stash URL. Folder is optional; defaults to a
+    workspace's "AI Drafts" folder that's auto-created on first use."""
 
     workspace_id: UUID
     title: str = Field(..., min_length=1, max_length=255)
