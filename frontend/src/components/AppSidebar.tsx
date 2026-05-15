@@ -32,6 +32,7 @@ import {
   FolderIcon,
   HelpIcon,
   PageIcon,
+  PersonIcon,
   SessionsIcon,
   SettingsIcon,
   StashIcon,
@@ -546,7 +547,7 @@ function SessionUserFolder({
       >
         <ChevronToggle onToggle={() => setOpen((current) => !current)} />
         <span className="flex h-4 w-4 items-center justify-center text-[13px] text-muted">
-          <SessionsIcon />
+          <PersonIcon />
         </span>
         <span className="flex-1 truncate text-muted">{bucket.user}</span>
         <span className="text-[10px] text-muted">{bucket.sessions.length}</span>
