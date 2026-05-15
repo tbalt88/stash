@@ -85,9 +85,15 @@ export default function StashShareModal() {
     setAccess("workspace");
     setShareToDiscover(false);
     setCopiedSlug(null);
-    setSelected(buildInitialSelection(initial));
+    setSelected(buildInitialSelection(initial, null));
     refresh();
   }, [open, initialTab, initial, refresh]);
+
+  useEffect(() => {
+    if (!open || !spine || !initial?.some((item) => item.object_type === "session")) return;
+
+    setSelected((current) => resolveInitialSessions(current, initial, spine));
+  }, [open, initial, spine]);
 
   const rows: SelectableRow[] = useMemo(() => buildRows(spine), [spine]);
   const sessions: SessionRow[] = useMemo(() => buildSessions(spine), [spine]);
@@ -759,18 +765,22 @@ function Row({
   );
 }
 
-function buildInitialSelection(initial: StashItemSpec[] | undefined): SelectedState {
+function buildInitialSelection(
+  initial: StashItemSpec[] | undefined,
+  spine: WorkspaceSidebar | null
+): SelectedState {
   if (!initial?.length) return EMPTY_SELECTED;
   const rows = new Map<string, SelectableRow>();
+  const sessions = new Map<string, SessionRow>();
   for (const item of initial) {
-    if (
-      item.object_type !== "folder" &&
-      item.object_type !== "page" &&
-      item.object_type !== "file" &&
-      item.object_type !== "table"
-    ) {
+    if (item.object_type === "session") {
+      const session = sessionRowFromInitial(item, spine);
+      if (session) sessions.set(session.key, session);
       continue;
     }
+
+    if (!isSelectableRowType(item.object_type)) continue;
+
     const key = `${item.object_type}:${item.object_id}`;
     rows.set(key, {
       key,
@@ -781,7 +791,66 @@ function buildInitialSelection(initial: StashItemSpec[] | undefined): SelectedSt
       group: groupFor(item.object_type),
     });
   }
-  return { rows, sessions: new Map() };
+  return { rows, sessions };
+}
+
+function isSelectableRowType(
+  objectType: StashItemSpec["object_type"]
+): objectType is SelectableRow["object_type"] {
+  return (
+    objectType === "folder" ||
+    objectType === "page" ||
+    objectType === "file" ||
+    objectType === "table"
+  );
+}
+
+function sessionRowFromInitial(
+  item: StashItemSpec,
+  spine: WorkspaceSidebar | null
+): SessionRow | null {
+  const match = spine?.sessions.find(
+    (session) => session.id === item.object_id || session.session_id === item.object_id
+  );
+
+  if (match?.id) {
+    return {
+      key: `session:${match.id}`,
+      object_id: match.id,
+      session_id: match.session_id,
+      label: match.title || item.label_override || `#${match.session_id.slice(0, 12)}`,
+      sub: match.agent_name,
+    };
+  }
+
+  return {
+    key: `session:${item.object_id}`,
+    object_id: item.object_id,
+    session_id: item.object_id,
+    label: item.label_override || `#${item.object_id.slice(0, 12)}`,
+    sub: "",
+  };
+}
+
+function resolveInitialSessions(
+  current: SelectedState,
+  initial: StashItemSpec[],
+  spine: WorkspaceSidebar
+): SelectedState {
+  const resolved = buildInitialSelection(initial, spine);
+  if (resolved.sessions.size === 0) return current;
+
+  const sessions = new Map(current.sessions);
+  for (const initialSession of buildInitialSelection(initial, null).sessions.values()) {
+    const resolvedSession = Array.from(resolved.sessions.values()).find(
+      (session) => session.session_id === initialSession.session_id
+    );
+    if (!resolvedSession) continue;
+    sessions.delete(initialSession.key);
+    sessions.set(resolvedSession.key, resolvedSession);
+  }
+
+  return { rows: current.rows, sessions };
 }
 
 function buildRows(spine: WorkspaceSidebar | null): SelectableRow[] {

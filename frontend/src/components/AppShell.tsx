@@ -37,11 +37,13 @@ function inferShareInitial(pathname: string): StashItemSpec[] | undefined {
   if (fileMatch) return [{ object_type: "file", object_id: fileMatch[1], position: 0 }];
   const sessionMatch = pathname.match(/^\/workspaces\/[^/]+\/sessions\/([^/?#]+)/);
   if (sessionMatch) {
+    const sessionId = decodeURIComponent(sessionMatch[1]);
     return [
       {
         object_type: "session",
-        object_id: decodeURIComponent(sessionMatch[1]),
+        object_id: sessionId,
         position: 0,
+        label_override: `#${sessionId}`,
       },
     ];
   }
@@ -133,6 +135,7 @@ export default function AppShell({ user, onLogout, children }: AppShellProps) {
               <path d="M15 18l-6-6 6-6" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
           </button>
+          <WorkspaceLabel workspace={activeWorkspace} />
           <Breadcrumb activeWorkspace={activeWorkspace} pageCrumbs={breadcrumbs} />
         </div>
 
@@ -260,6 +263,23 @@ function UserMenu({
   );
 }
 
+function WorkspaceLabel({ workspace }: { workspace: Workspace | undefined }) {
+  if (!workspace) return null;
+
+  return (
+    <Link
+      href={`/workspaces/${workspace.id}`}
+      className="ml-1.5 flex min-w-0 items-center gap-1.5 rounded px-1.5 py-1 text-foreground hover:bg-raised"
+      title={workspace.name}
+    >
+      <span className="flex h-4 w-4 items-center justify-center text-[14px] text-muted">
+        <StashIcon />
+      </span>
+      <span className="max-w-[180px] truncate font-medium">{workspace.name}</span>
+    </Link>
+  );
+}
+
 function Breadcrumb({
   activeWorkspace,
   pageCrumbs,
@@ -277,18 +297,12 @@ function Breadcrumb({
   }
 
   return (
-    <span className="ml-1.5 flex min-w-0 items-center gap-1.5 text-muted">
+    <span className="flex min-w-0 items-center gap-1.5 text-muted">
       {items.map((c, i) => {
         const last = i === items.length - 1;
-        const isWorkspace = i === 0;
         return (
           <span key={i} className="flex min-w-0 items-center gap-1">
-            {i > 0 && <span className="text-muted/60">/</span>}
-            {isWorkspace && (
-              <span className="flex h-4 w-4 items-center justify-center text-[14px] text-muted">
-                <StashIcon />
-              </span>
-            )}
+            <span className="text-muted/60">/</span>
             {!last && c.href ? (
               <Link href={c.href} className="truncate hover:text-foreground">
                 {c.label}

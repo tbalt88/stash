@@ -252,7 +252,7 @@ function TableEditorPageInner() {
     if (!confirm("Delete this table and all its data?")) return;
     try {
       await deleteTable(resolvedWorkspaceId, tableId);
-      router.push("/tables");
+      router.push(wsId ? `/workspaces/${wsId}` : "/");
     } catch (err) { setError(err instanceof Error ? err.message : "Failed to delete"); }
   };
 
@@ -482,24 +482,30 @@ function TableEditorPageInner() {
   return (
     <AppShell user={user} onLogout={logout}>
       <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
-        {/* Pages / Tables tab bar */}
+        {/* Files / Table context bar */}
         <div className="flex items-center gap-0 px-4 border-b border-border bg-surface flex-shrink-0">
           <button
             onClick={() => router.push(wsId ? `/workspaces/${wsId}` : "/")}
             className="px-4 py-2.5 text-sm font-medium transition-colors text-dim hover:text-foreground"
           >
-            Pages
+            Files
           </button>
           <button
             className="px-4 py-2.5 text-sm font-medium transition-colors relative text-brand"
           >
-            Tables
+            Table
             <span className="absolute bottom-0 left-0 right-0 h-[2px] bg-brand rounded-t" />
           </button>
         </div>
         {/* Toolbar */}
         <div className="flex items-center gap-2 px-4 py-2.5 border-b border-border bg-surface flex-shrink-0 flex-wrap">
-          <button onClick={() => router.push("/tables")} className="text-muted hover:text-foreground text-sm">&larr;</button>
+          <button
+            onClick={() => router.push(wsId ? `/workspaces/${wsId}` : "/")}
+            className="text-muted hover:text-foreground text-sm"
+            aria-label="Back to Files"
+          >
+            &larr;
+          </button>
           {editingName ? (
             <input value={nameInput} onChange={(e) => setNameInput(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") handleRename(); if (e.key === "Escape") setEditingName(false); }} onBlur={handleRename} className="text-lg font-bold font-display bg-transparent border-b border-brand outline-none text-foreground" autoFocus />
           ) : (
