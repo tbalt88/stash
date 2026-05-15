@@ -316,6 +316,7 @@ async def list_workspace_sessions(workspace_id: UUID, user_id: UUID) -> list[dic
         "SELECT h.session_id, "
         "       s.id::text AS id, "
         "       MAX(h.agent_name) AS agent_name, "
+        "       COALESCE(MAX(s.summary), '') AS summary, "
         "       COUNT(*)::INT AS event_count, "
         "       SUM(LENGTH(h.content))::BIGINT AS size_bytes, "
         "       MIN(h.created_at) AS started_at, "
@@ -325,7 +326,7 @@ async def list_workspace_sessions(workspace_id: UUID, user_id: UUID) -> list[dic
         "WHERE h.workspace_id = $1 AND h.session_id IS NOT NULL "
         f"AND {readable_session_event_condition('h', 2)} "
         "GROUP BY h.session_id, s.id "
-        "ORDER BY last_at DESC",
+        "ORDER BY last_at DESC, agent_name ASC, session_id ASC",
         workspace_id,
         user_id,
     )

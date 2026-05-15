@@ -40,7 +40,7 @@ async def _list_sessions(workspace_id: UUID, user_id: UUID) -> list[dict]:
         {
             "id": s["id"],
             "session_id": s["session_id"],
-            "title": s["session_id"],
+            "title": _auto_session_title(s),
             "agent_name": s["agent_name"] or "",
             "size_bytes": int(s["size_bytes"] or 0),
             "last_at": s["last_at"],
@@ -48,6 +48,17 @@ async def _list_sessions(workspace_id: UUID, user_id: UUID) -> list[dict]:
         }
         for s in sessions
     ]
+
+
+def _auto_session_title(session: dict) -> str:
+    raw = (session.get("summary") or "").strip()
+    if not raw:
+        return session["session_id"]
+
+    first_sentence = raw.split(".")[0].strip()
+    if not first_sentence:
+        return session["session_id"]
+    return first_sentence[:80] if len(first_sentence) > 80 else first_sentence
 
 
 async def _files_tree(workspace_id: UUID, user_id: UUID) -> dict:

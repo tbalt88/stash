@@ -239,12 +239,11 @@ function WorkspaceTree({
           </summary>
         <div className="ml-3 space-y-0.5 border-l border-border pl-2">
             {sessionsDrop?.message ? <DropMessage state={sessionsDrop} /> : null}
-            {spine?.sessions.slice(0, PREVIEW_ITEM_LIMIT).map((s) => (
-              <NavRow
-                key={s.session_id}
-                href={`/workspaces/${workspace.id}/sessions/${encodeURIComponent(s.session_id)}`}
-                icon={<span className="text-muted"><SessionsIcon /></span>}
-                label={s.session_id.length > 22 ? s.session_id.slice(0, 22) + "…" : s.session_id}
+            {groupSidebarSessions((spine?.sessions ?? []).slice(0, PREVIEW_ITEM_LIMIT)).map((group) => (
+              <SessionTreeDetails
+                key={group.dateKey}
+                workspaceId={workspace.id}
+                group={group}
               />
             ))}
             {(!spine || spine.sessions.length === 0) && (
@@ -276,6 +275,150 @@ function fileIconClass(contentType: string | undefined): string {
   if (contentType?.includes("csv")) return "text-emerald-600";
   if (contentType?.includes("html")) return "text-amber-600";
   return "text-muted";
+}
+
+function sessionLabelForSidebar(session: WorkspaceSidebarSession): string {
+  const raw = (session.title || session.session_id).trim();
+  return raw.length > 26 ? `${raw.slice(0, 26)}…` : raw;
+}
+
+type SessionTreeDayGroup = {
+  dateKey: string;
+  label: string;
+  total: number;
+  users: Array<{ user: string; sessions: WorkspaceSidebarSession[] }>;
+};
+
+const UNKNOWN_SESSION_DATE = "Unknown date";
+
+function sessionDateKey(iso: string | null | undefined): string {
+  if (!iso) return UNKNOWN_SESSION_DATE;
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return UNKNOWN_SESSION_DATE;
+  return date.toISOString().slice(0, 10);
+}
+
+function formatSessionDateKey(key: string): string {
+  if (key === UNKNOWN_SESSION_DATE) return key;
+  return new Date(`${key}T12:00:00`).toLocaleDateString(undefined, {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+  });
+}
+
+function groupSidebarSessions(sessions: WorkspaceSidebarSession[]): SessionTreeDayGroup[] {
+  const byDate = new Map<string, Map<string, WorkspaceSidebarSession[]>>();
+  for (const session of sessions) {
+    const dateKey = sessionDateKey(session.last_at || session.updated_at);
+    const user = (session.agent_name || "Unknown user").trim() || "Unknown user";
+    const users = byDate.get(dateKey) ?? new Map<string, WorkspaceSidebarSession[]>();
+    users.set(user, [...(users.get(user) ?? []), session]);
+    byDate.set(dateKey, users);
+  }
+
+  return Array.from(byDate.entries())
+    .sort(([a], [b]) => {
+      if (a === UNKNOWN_SESSION_DATE) return 1;
+      if (b === UNKNOWN_SESSION_DATE) return -1;
+      return b.localeCompare(a);
+    })
+    .map(([dateKey, usersByName]) => {
+      const users = Array.from(usersByName.entries())
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([user, sessionRows]) => ({
+          user,
+          sessions: sessionRows,
+        }));
+      const total = users.reduce((sum, bucket) => sum + bucket.sessions.length, 0);
+      return {
+        dateKey,
+        label: formatSessionDateKey(dateKey),
+        total,
+        users,
+      };
+    });
+}
+
+function SessionTreeDetails({
+  workspaceId,
+  group,
+}: {
+  workspaceId: string;
+  group: SessionTreeDayGroup;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <details open={open} className="text-[12.5px]">
+      <summary
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          setOpen((current) => !current);
+        }}
+        className="page-row flex items-center gap-1 rounded-md px-2 py-1 hover:bg-raised"
+      >
+        <ChevronToggle onToggle={() => setOpen((current) => !current)} />
+        <span className="flex h-4 w-4 items-center justify-center text-[14px] text-muted">
+          <FolderIcon />
+        </span>
+        <span className="flex-1 truncate text-foreground">{group.label}</span>
+        <span className="text-[10.5px] text-muted">{group.total}</span>
+      </summary>
+      <div className="ml-2.5 space-y-0.5 border-l border-border pl-2">
+        {group.users.length === 0 ? (
+          <div className="px-2 py-1 text-[11px] italic text-muted">no sessions</div>
+        ) : (
+          group.users.map((bucket) => (
+            <SessionUserFolder
+              key={`${group.dateKey}-${bucket.user}`}
+              workspaceId={workspaceId}
+              bucket={bucket}
+            />
+          ))
+        )}
+      </div>
+    </details>
+  );
+}
+
+function SessionUserFolder({
+  workspaceId,
+  bucket,
+}: {
+  workspaceId: string;
+  bucket: { user: string; sessions: WorkspaceSidebarSession[] };
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <details open={open} className="text-[12px]">
+      <summary
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          setOpen((current) => !current);
+        }}
+        className="page-row flex items-center gap-1 rounded-md px-2 py-0.5 hover:bg-raised"
+      >
+        <ChevronToggle onToggle={() => setOpen((current) => !current)} />
+        <span className="flex h-4 w-4 items-center justify-center text-[13px] text-muted">
+          <SessionsIcon />
+        </span>
+        <span className="flex-1 truncate text-muted">{bucket.user}</span>
+        <span className="text-[10px] text-muted">{bucket.sessions.length}</span>
+      </summary>
+      <div className="ml-2.5 space-y-0.5 border-l border-border pl-2">
+        {bucket.sessions.map((s) => (
+          <NavRow
+            key={s.session_id}
+            href={`/workspaces/${workspaceId}/sessions/${encodeURIComponent(s.session_id)}`}
+            icon={<span className="text-muted"><SessionsIcon /></span>}
+            label={sessionLabelForSidebar(s)}
+          />
+        ))}
+      </div>
+    </details>
+  );
 }
 
 type StashTreeKind = "session" | "folder" | "page" | "file" | "table" | "other";

@@ -97,7 +97,7 @@ async def list_my_sessions(
         LEFT JOIN users u ON u.id = he.created_by
         WHERE {' AND '.join(where)}
         GROUP BY he.session_id, he.workspace_id, w.name
-        ORDER BY last_event_at DESC
+        ORDER BY last_event_at DESC, COALESCE(MAX(u.display_name), MAX(u.name), MAX(he.agent_name), 'Unknown user') ASC, session_id ASC
         LIMIT {int(limit)}
         """,
         *args,

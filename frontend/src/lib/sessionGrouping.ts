@@ -35,7 +35,17 @@ export function groupSessionsByDayAndUser(sessions: SessionSummary[]): SessionDa
 }
 
 function sortedSessions(sessions: SessionSummary[]): SessionSummary[] {
-  return [...sessions].sort((a, b) => sessionTime(b) - sessionTime(a));
+  return [...sessions].sort((a, b) => {
+    const timeDiff = sessionTime(b) - sessionTime(a);
+    if (timeDiff !== 0) return timeDiff;
+
+    const userA = (a.user_name || a.agent_name || "").trim();
+    const userB = (b.user_name || b.agent_name || "").trim();
+    const userDiff = userA.localeCompare(userB);
+    if (userDiff !== 0) return userDiff;
+
+    return a.session_id.localeCompare(b.session_id);
+  });
 }
 
 function sessionTime(session: SessionSummary): number {
