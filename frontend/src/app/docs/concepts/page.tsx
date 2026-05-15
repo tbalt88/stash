@@ -1,4 +1,4 @@
-import { Code, P, Title, Subtitle } from "../components";
+import { P, Title, Subtitle } from "../components";
 
 const CONCEPTS: { name: string; badge: string; badgeColor: string; desc: React.ReactNode }[] = [
   {

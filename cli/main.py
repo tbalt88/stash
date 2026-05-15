@@ -2263,7 +2263,7 @@ def hist_import(
 # Tables
 # ===========================================================================
 
-tables_app = typer.Typer(help="Tables — structured data with typed columns and rows.")
+tables_app = typer.Typer(help="Tables — typed columns, rows, imports, and exports.")
 app.add_typer(tables_app, name="tables")
 
 

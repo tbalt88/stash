@@ -457,14 +457,6 @@ class StashClient:
     def get_ws_file_text(self, workspace_id: str, file_id: str) -> dict:
         return self._get(f"/api/v1/workspaces/{workspace_id}/files/{file_id}/text")
 
-    # --- Webhooks ---
-
-    def set_webhook(self, workspace_id: str, url: str, secret: str | None = None) -> dict:
-        body: dict = {"url": url}
-        if secret:
-            body["secret"] = secret
-        return self._post(f"/api/v1/workspaces/{workspace_id}/webhooks", json=body)
-
     # --- Tables ---
 
     def create_table(

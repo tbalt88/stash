@@ -18,7 +18,7 @@ const PILLARS = [
     label: "Connect",
     color: "bg-violet-500/8 border-violet-500/20 text-violet-600",
     dot: "bg-violet-500",
-    description: "Share workspaces across your team and hand sessions off between agents.",
+    description: "Publish Stashes so teammates and collaborators can reuse curated context.",
   },
 ];
 
@@ -26,7 +26,7 @@ const QUICK_LINKS = [
   { href: "/docs/quickstart", label: "Quickstart", desc: "Connect your coding agent and start in 5 minutes." },
   { href: "/docs/concepts", label: "Concepts", desc: "What workspaces, agent names, and sessions are." },
   { href: "/docs/cli", label: "CLI", desc: "Push events and manage resources from the terminal." },
-  { href: "/docs/webhooks", label: "Webhooks", desc: "Subscribe to workspace events with HMAC delivery." },
+  { href: "/discover", label: "Discover", desc: "Browse public Stashes shared by other workspaces." },
 ];
 
 export default function DocsOverview() {
