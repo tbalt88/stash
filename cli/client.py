@@ -482,7 +482,7 @@ class StashClient:
 
     def list_table_rows(
         self,
-        workspace_id: str | None,
+        workspace_id: str,
         table_id: str,
         limit: int = 50,
         offset: int = 0,
@@ -490,7 +490,7 @@ class StashClient:
         sort_order: str = "asc",
         filters: str = "",
     ) -> dict:
-        base = f"/api/v1/workspaces/{workspace_id}/tables" if workspace_id else "/api/v1/tables"
+        base = f"/api/v1/workspaces/{workspace_id}/tables"
         params: dict = {"limit": limit, "offset": offset, "sort_order": sort_order}
         if sort_by:
             params["sort_by"] = sort_by
@@ -498,44 +498,44 @@ class StashClient:
             params["filters"] = filters
         return self._get(f"{base}/{table_id}/rows", **params)
 
-    def insert_table_row(self, workspace_id: str | None, table_id: str, data: dict) -> dict:
-        base = f"/api/v1/workspaces/{workspace_id}/tables" if workspace_id else "/api/v1/tables"
+    def insert_table_row(self, workspace_id: str, table_id: str, data: dict) -> dict:
+        base = f"/api/v1/workspaces/{workspace_id}/tables"
         return self._post(f"{base}/{table_id}/rows", json={"data": data})
 
     def insert_table_rows_batch(
-        self, workspace_id: str | None, table_id: str, rows: list[dict]
+        self, workspace_id: str, table_id: str, rows: list[dict]
     ) -> dict:
-        base = f"/api/v1/workspaces/{workspace_id}/tables" if workspace_id else "/api/v1/tables"
+        base = f"/api/v1/workspaces/{workspace_id}/tables"
         return self._post(
             f"{base}/{table_id}/rows/batch", json={"rows": [{"data": r} for r in rows]}
         )
 
     def update_table_row(
-        self, workspace_id: str | None, table_id: str, row_id: str, data: dict
+        self, workspace_id: str, table_id: str, row_id: str, data: dict
     ) -> dict:
-        base = f"/api/v1/workspaces/{workspace_id}/tables" if workspace_id else "/api/v1/tables"
+        base = f"/api/v1/workspaces/{workspace_id}/tables"
         return self._patch(f"{base}/{table_id}/rows/{row_id}", json={"data": data})
 
-    def delete_table_row(self, workspace_id: str | None, table_id: str, row_id: str) -> None:
-        base = f"/api/v1/workspaces/{workspace_id}/tables" if workspace_id else "/api/v1/tables"
+    def delete_table_row(self, workspace_id: str, table_id: str, row_id: str) -> None:
+        base = f"/api/v1/workspaces/{workspace_id}/tables"
         self._delete(f"{base}/{table_id}/rows/{row_id}")
 
     def add_table_column(
         self,
-        workspace_id: str | None,
+        workspace_id: str,
         table_id: str,
         name: str,
         col_type: str = "text",
         options: list | None = None,
     ) -> dict:
-        base = f"/api/v1/workspaces/{workspace_id}/tables" if workspace_id else "/api/v1/tables"
+        base = f"/api/v1/workspaces/{workspace_id}/tables"
         body: dict = {"name": name, "type": col_type}
         if options:
             body["options"] = options
         return self._post(f"{base}/{table_id}/columns", json=body)
 
-    def delete_table_column(self, workspace_id: str | None, table_id: str, column_id: str) -> dict:
-        base = f"/api/v1/workspaces/{workspace_id}/tables" if workspace_id else "/api/v1/tables"
+    def delete_table_column(self, workspace_id: str, table_id: str, column_id: str) -> dict:
+        base = f"/api/v1/workspaces/{workspace_id}/tables"
         return self._request("DELETE", f"{base}/{table_id}/columns/{column_id}").json()
 
     def publish(
