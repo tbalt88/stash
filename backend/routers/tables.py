@@ -13,7 +13,6 @@ from ..models import (
     ColumnAddRequest,
     ColumnReorderRequest,
     ColumnUpdateRequest,
-    PermissionResponse,
     RowBatchCreateRequest,
     RowBatchUpdateRequest,
     RowCreateRequest,
@@ -558,49 +557,3 @@ async def delete_ws_view(
     if not table:
         raise HTTPException(status_code=404, detail="Table or view not found")
     return table
-
-
-# --- Workspace permissions ---
-
-
-@ws_router.get("/{table_id}/permissions", response_model=PermissionResponse)
-async def get_permissions(
-    workspace_id: UUID,
-    table_id: UUID,
-    current_user: dict = Depends(get_current_user),
-):
-    await _check_read(workspace_id, current_user["id"])
-    await _check_ws_table(workspace_id, table_id)
-    perms = await permission_service.get_permissions("table", table_id)
-    return PermissionResponse(**perms)
-
-
-@ws_router.patch("/{table_id}/permissions")
-async def set_visibility(
-    workspace_id: UUID,
-    table_id: UUID,
-    current_user: dict = Depends(get_current_user),
-):
-    await _check_read(workspace_id, current_user["id"])
-    raise HTTPException(status_code=400, detail="Create or update a Stash to change privacy")
-
-
-@ws_router.post("/{table_id}/permissions/share")
-async def add_share(
-    workspace_id: UUID,
-    table_id: UUID,
-    current_user: dict = Depends(get_current_user),
-):
-    await _check_read(workspace_id, current_user["id"])
-    raise HTTPException(status_code=400, detail="Share a Stash instead of sharing a table")
-
-
-@ws_router.delete("/{table_id}/permissions/share/{user_id}", status_code=204)
-async def remove_share(
-    workspace_id: UUID,
-    table_id: UUID,
-    user_id: UUID,
-    current_user: dict = Depends(get_current_user),
-):
-    await _check_read(workspace_id, current_user["id"])
-    raise HTTPException(status_code=400, detail="Share a Stash instead of sharing a table")

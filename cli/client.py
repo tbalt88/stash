@@ -546,27 +546,7 @@ class StashClient:
         base = f"/api/v1/workspaces/{workspace_id}/tables" if workspace_id else "/api/v1/tables"
         return self._request("DELETE", f"{base}/{table_id}/columns/{column_id}").json()
 
-    # ── Unified sharing API (object_type: folder|page|session|table|file|stash) ──
-
-    def get_object_permissions(self, object_type: str, object_id: str) -> dict:
-        return self._get(f"/api/v1/objects/{object_type}/{object_id}/permissions")
-
-    def set_object_visibility(self, object_type: str, object_id: str, visibility: str) -> dict:
-        return self._patch(
-            f"/api/v1/objects/{object_type}/{object_id}/permissions",
-            json={"visibility": visibility},
-        )
-
-    def add_object_share(
-        self, object_type: str, object_id: str, user_id: str, permission: str = "read"
-    ) -> dict:
-        return self._post(
-            f"/api/v1/objects/{object_type}/{object_id}/shares",
-            json={"user_id": user_id, "permission": permission},
-        )
-
-    def remove_object_share(self, object_type: str, object_id: str, user_id: str) -> None:
-        self._delete(f"/api/v1/objects/{object_type}/{object_id}/shares/{user_id}")
+    # ── Stash sharing API (object_type: folder|page|session|table|file|stash) ──
 
     def create_stash_url(self, object_type: str, object_id: str, access: str = "public") -> dict:
         path = f"/api/v1/objects/{object_type}/{object_id}/share-link"

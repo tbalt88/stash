@@ -528,37 +528,6 @@ def stash_whoami() -> str:
 
 
 @mcp.tool()
-def stash_get_permissions(object_type: str, object_id: str) -> str:
-    """Get privacy for any object (folder|page|session|table|file|stash)."""
-    client, _ = _client()
-    return _json(client.get_object_permissions(object_type, object_id))
-
-
-@mcp.tool()
-def stash_set_visibility(object_type: str, object_id: str, visibility: str) -> str:
-    """Deprecated: privacy is managed by Stashes."""
-    client, _ = _client()
-    return _json(client.set_object_visibility(object_type, object_id, visibility))
-
-
-@mcp.tool()
-def stash_add_share(
-    object_type: str, object_id: str, user_id: str, permission: str = "read"
-) -> str:
-    """Grant a specific user access to an object. permission: read | write | admin."""
-    client, _ = _client()
-    return _json(client.add_object_share(object_type, object_id, user_id, permission))
-
-
-@mcp.tool()
-def stash_remove_share(object_type: str, object_id: str, user_id: str) -> str:
-    """Revoke a specific user's access to an object."""
-    client, _ = _client()
-    client.remove_object_share(object_type, object_id, user_id)
-    return _json({"removed": user_id})
-
-
-@mcp.tool()
 def stash_share(object_type: str, object_id: str, access: str = "public") -> str:
     """Create a one-item Stash URL for any object. access: workspace | private | public."""
     client, _ = _client()

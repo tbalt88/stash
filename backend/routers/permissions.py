@@ -7,11 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from ..auth import get_current_user
 from ..config import settings
 from ..models import (
-    PermissionResponse,
-    SetVisibilityRequest,
     ShareLinkResponse,
-    ShareRequest,
-    ShareResponse,
     StashItem,
 )
 from ..services import permission_service, stash_service
@@ -46,50 +42,6 @@ async def _require_can_share(object_type: str, object_id: UUID, user_id: UUID) -
         raise HTTPException(status_code=403, detail="Not allowed to share this object")
 
 
-@router.get("/{object_type}/{object_id}/permissions", response_model=PermissionResponse)
-async def get_permissions(
-    object_type: str,
-    object_id: UUID,
-    current_user: dict = Depends(get_current_user),
-):
-    await _require_can_share(object_type, object_id, current_user["id"])
-    perms = await permission_service.get_permissions(object_type, object_id)
-    return PermissionResponse(**perms)
-
-
-@router.patch("/{object_type}/{object_id}/permissions")
-async def set_visibility(
-    object_type: str,
-    object_id: UUID,
-    req: SetVisibilityRequest,
-    current_user: dict = Depends(get_current_user),
-):
-    await _require_can_share(object_type, object_id, current_user["id"])
-    raise HTTPException(status_code=400, detail="Create or update a Stash to change privacy")
-
-
-@router.post("/{object_type}/{object_id}/shares", response_model=ShareResponse)
-async def add_share(
-    object_type: str,
-    object_id: UUID,
-    req: ShareRequest,
-    current_user: dict = Depends(get_current_user),
-):
-    await _require_can_share(object_type, object_id, current_user["id"])
-    raise HTTPException(status_code=400, detail="Share a Stash instead of sharing individual objects")
-
-
-@router.delete("/{object_type}/{object_id}/shares/{user_id}", status_code=204)
-async def remove_share(
-    object_type: str,
-    object_id: UUID,
-    user_id: UUID,
-    current_user: dict = Depends(get_current_user),
-):
-    await _require_can_share(object_type, object_id, current_user["id"])
-    raise HTTPException(status_code=400, detail="Share a Stash instead of sharing individual objects")
-
-
 @router.post("/{object_type}/{object_id}/share-link", response_model=ShareLinkResponse)
 async def create_stash_url(
     object_type: str,
@@ -99,10 +51,8 @@ async def create_stash_url(
 ):
     """Idempotently mint the URL for the share sheet's "Copy link" button.
 
-    For shareable objects, this auto-creates (or reuses) a one-item Stash and
-    returns /stashes/{slug}.
-    The Stash is just the slugged shell — access is governed by the
-    object's own permissions, not by the Stash.
+    For shareable objects, this auto-creates or updates a one-item Stash and
+    returns /stashes/{slug}. The Stash is the privacy boundary for the link.
 
     The returned URL is always a Stash URL. For non-Stash objects, this creates
     a one-item Stash with the requested access."""

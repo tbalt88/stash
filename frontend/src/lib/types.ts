@@ -89,23 +89,6 @@ export interface WorkspaceTree {
   pages: PageSummary[];
 }
 
-// --- Permissions ---
-
-export interface ObjectPermission {
-  object_type: string;
-  object_id: string;
-  visibility: "workspace" | "private" | "public";
-  shares: Share[];
-}
-
-export interface Share {
-  user_id: string;
-  user_name: string;
-  permission: "read" | "write" | "admin";
-  granted_by: string;
-  created_at: string;
-}
-
 // --- Tables ---
 
 export interface TableColumn {

@@ -547,33 +547,6 @@ class HistoryQueryResponse(BaseModel):
     sources: list[HistoryEventResponse]
 
 
-# --- Stash sharing ---
-
-
-class PermissionResponse(BaseModel):
-    object_type: str
-    object_id: UUID
-    visibility: str
-    shares: list["ShareResponse"] = []
-
-
-class SetVisibilityRequest(BaseModel):
-    visibility: str = Field(..., pattern=r"^(workspace|private|public)$")
-
-
-class ShareRequest(BaseModel):
-    user_id: UUID
-    permission: str = Field("read", pattern=r"^(read|write|admin)$")
-
-
-class ShareResponse(BaseModel):
-    user_id: UUID
-    user_name: str
-    permission: str
-    granted_by: UUID
-    created_at: datetime
-
-
 class ShareLinkResponse(BaseModel):
     """URL the share sheet copies to clipboard.
 

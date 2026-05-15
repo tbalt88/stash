@@ -731,19 +731,45 @@ async def test_nested_page_inherits_outer_folder_stash_access(pool):
 
 
 @pytest.mark.asyncio
-async def test_privacy_mutators_fail_fast(pool):
-    owner_id = await _make_user(pool)
-    ws_id = await _make_workspace(pool, owner_id)
-    page_id = await _make_page(pool, ws_id, owner_id)
+async def test_object_level_permission_mutators_are_not_routes(client: AsyncClient):
+    api_key, _owner = await _register(client)
+    workspace = (
+        await client.post("/api/v1/workspaces", json={"name": "No object shares"}, headers=_auth(api_key))
+    ).json()
+    folder = (
+        await client.post(
+            f"/api/v1/workspaces/{workspace['id']}/folders",
+            json={"name": "Docs"},
+            headers=_auth(api_key),
+        )
+    ).json()
+    page = (
+        await client.post(
+            f"/api/v1/workspaces/{workspace['id']}/pages/new",
+            json={"name": "Plan", "folder_id": folder["id"], "content": "Only Stashes share"},
+            headers=_auth(api_key),
+        )
+    ).json()
+    table = (
+        await client.post(
+            f"/api/v1/workspaces/{workspace['id']}/tables",
+            json={"name": "Decisions", "columns": []},
+            headers=_auth(api_key),
+        )
+    ).json()
 
-    with pytest.raises(ValueError, match="Stashes"):
-        await permission_service.set_visibility("page", page_id, "private")
-
-    with pytest.raises(ValueError, match="Stashes"):
-        await permission_service.set_privacy_visibility("page", page_id, "private", owner_id)
-
-    with pytest.raises(ValueError, match="Stash"):
-        await permission_service.add_share("page", page_id, owner_id, "read", owner_id)
+    routes = [
+        ("PATCH", f"/api/v1/objects/page/{page['id']}/permissions"),
+        ("POST", f"/api/v1/objects/page/{page['id']}/shares"),
+        ("DELETE", f"/api/v1/objects/page/{page['id']}/shares/{_owner['id']}"),
+        ("PATCH", f"/api/v1/workspaces/{workspace['id']}/folders/{folder['id']}/permissions"),
+        ("POST", f"/api/v1/workspaces/{workspace['id']}/folders/{folder['id']}/permissions/share"),
+        ("PATCH", f"/api/v1/workspaces/{workspace['id']}/tables/{table['id']}/permissions"),
+        ("POST", f"/api/v1/workspaces/{workspace['id']}/tables/{table['id']}/permissions/share"),
+    ]
+    for method, path in routes:
+        resp = await client.request(method, path, headers=_auth(api_key), json={})
+        assert resp.status_code == 404
 
 
 @pytest.mark.asyncio

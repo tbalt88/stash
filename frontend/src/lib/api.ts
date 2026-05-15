@@ -3,7 +3,6 @@ import {
   Folder,
   Page,
   WorkspaceTree,
-  ObjectPermission,
   RegisterResponse,
   User,
   UserSearchResult,
@@ -628,83 +627,6 @@ export async function deleteTableView(
   viewId: string
 ): Promise<Table> {
   return apiFetch(`${scope(workspaceId)}/tables/${tableId}/views/${viewId}`, { method: "DELETE" });
-}
-
-// --- Permissions (workspace-only) ---
-
-export async function getPermissions(
-  workspaceId: string,
-  objectType: string,
-  objectId: string
-): Promise<ObjectPermission> {
-  return apiFetch(`/api/v1/workspaces/${workspaceId}/${objectType}s/${objectId}/permissions`);
-}
-
-export async function setVisibility(
-  workspaceId: string,
-  objectType: string,
-  objectId: string,
-  visibility: "workspace" | "private" | "public"
-): Promise<void> {
-  await apiFetch(`/api/v1/workspaces/${workspaceId}/${objectType}s/${objectId}/permissions`, {
-    method: "PATCH",
-    body: JSON.stringify({ visibility }),
-  });
-}
-
-export async function addShare(
-  workspaceId: string,
-  objectType: string,
-  objectId: string,
-  userId: string,
-  permission: "read" | "write" | "admin"
-): Promise<void> {
-  await apiFetch(`/api/v1/workspaces/${workspaceId}/${objectType}s/${objectId}/permissions/share`, {
-    method: "POST",
-    body: JSON.stringify({ user_id: userId, permission }),
-  });
-}
-
-export async function removeShare(
-  workspaceId: string,
-  objectType: string,
-  objectId: string,
-  userId: string
-): Promise<void> {
-  await apiFetch(
-    `/api/v1/workspaces/${workspaceId}/${objectType}s/${objectId}/permissions/share/${userId}`,
-    { method: "DELETE" }
-  );
-}
-
-export async function getObjectPermissions(
-  objectType: string,
-  objectId: string
-): Promise<ObjectPermission> {
-  return apiFetch(`/api/v1/objects/${objectType}/${objectId}/permissions`);
-}
-
-export async function setObjectVisibility(
-  objectType: string,
-  objectId: string,
-  visibility: "workspace" | "private" | "public"
-): Promise<void> {
-  await apiFetch(`/api/v1/objects/${objectType}/${objectId}/permissions`, {
-    method: "PATCH",
-    body: JSON.stringify({ visibility }),
-  });
-}
-
-export async function addObjectShare(
-  objectType: string,
-  objectId: string,
-  userId: string,
-  permission: "read" | "write" | "admin" = "read"
-): Promise<void> {
-  await apiFetch(`/api/v1/objects/${objectType}/${objectId}/shares`, {
-    method: "POST",
-    body: JSON.stringify({ user_id: userId, permission }),
-  });
 }
 
 // --- Files ---

@@ -14,7 +14,6 @@ from ..models import (
     PageCreateRequest,
     PageResponse,
     PageUpdateRequest,
-    PermissionResponse,
     WorkspacePageEntry,
     WorkspacePageListResponse,
     WorkspaceTreeResponse,
@@ -420,49 +419,3 @@ async def delete_page(
     deleted = await files_tree_service.delete_page(page_id, workspace_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Page not found")
-
-
-# --- Folder permissions / sharing ---
-
-
-@router.get("/folders/{folder_id}/permissions", response_model=PermissionResponse)
-async def get_folder_permissions(
-    workspace_id: UUID,
-    folder_id: UUID,
-    current_user: dict = Depends(get_current_user),
-):
-    await _check_ws_access(workspace_id, current_user["id"])
-    await _check_ws_owns_folder(workspace_id, folder_id)
-    perms = await permission_service.get_permissions("folder", folder_id)
-    return PermissionResponse(**perms)
-
-
-@router.patch("/folders/{folder_id}/permissions")
-async def set_folder_visibility(
-    workspace_id: UUID,
-    folder_id: UUID,
-    current_user: dict = Depends(get_current_user),
-):
-    await _check_ws_access(workspace_id, current_user["id"])
-    raise HTTPException(status_code=400, detail="Create or update a Stash to change privacy")
-
-
-@router.post("/folders/{folder_id}/permissions/share")
-async def add_folder_share(
-    workspace_id: UUID,
-    folder_id: UUID,
-    current_user: dict = Depends(get_current_user),
-):
-    await _check_ws_access(workspace_id, current_user["id"])
-    raise HTTPException(status_code=400, detail="Share a Stash instead of sharing a folder")
-
-
-@router.delete("/folders/{folder_id}/permissions/share/{user_id}", status_code=204)
-async def remove_folder_share(
-    workspace_id: UUID,
-    folder_id: UUID,
-    user_id: UUID,
-    current_user: dict = Depends(get_current_user),
-):
-    await _check_ws_access(workspace_id, current_user["id"])
-    raise HTTPException(status_code=400, detail="Share a Stash instead of sharing a folder")
