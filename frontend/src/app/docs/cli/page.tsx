@@ -56,6 +56,15 @@ stash sessions search <query> [--ws ID] [-n 50]
 stash sessions agents [--ws ID]
 stash sessions transcript <session_id> [--ws ID]`}</CodeBlock>
 
+      <H3>Stashes</H3>
+      <CodeBlock>{`stash stashes list [WORKSPACE_ID] [--json]
+stash stashes create <title> [--workspace ID] [--items JSON] [--public] [--discover]
+stash stashes publish <stash_id> [--private|--workspace-access|--discover]
+stash stashes default [stash_id] [--clear] [--workspace ID]
+stash stashes delete <stash_id>
+stash stashes add-external <slug> [--workspace ID]
+stash stashes remove-external <stash_id> [--workspace ID]`}</CodeBlock>
+
       <H3>Tables</H3>
       <CodeBlock>{`stash tables list [--ws ID] [--all] [--personal]
 stash tables create <name> [--ws ID] [--columns JSON]
