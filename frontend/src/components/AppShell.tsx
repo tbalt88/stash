@@ -174,6 +174,7 @@ export default function AppShell({ user, onLogout, children }: AppShellProps) {
             onLogout={onLogout}
             cmdkOpen={cmdkOpen}
             onCmdkOpen={() => setCmdkOpen(true)}
+            activeWorkspaceId={activeWorkspaceId}
           />
         )}
         <main className="flex min-w-0 flex-col overflow-y-auto bg-base">

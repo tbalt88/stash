@@ -105,6 +105,18 @@ Set `EMBEDDING_PROVIDER` to use a third-party embedding provider (otherwise we'l
 
 > Local development? Use `docker compose up -d` (no `-f` flag) — simple setup with hardcoded dev credentials.
 
+### Local seed data
+
+Once PostgreSQL is running, populate a realistic local dataset for UI smoke testing:
+
+```bash
+python scripts/seed_dev_data.py
+```
+
+The seeder creates demo users, one shared workspace, folders/pages, sessions, tables, stashes, and
+sample table/file-collection data when S3 storage is configured. If `S3_*` is not set, file rows are
+skipped with a warning.
+
 ## Privacy
 
 Stash is built for engineering teams working in private repos.
