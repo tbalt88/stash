@@ -59,7 +59,8 @@ export default function CommandPalette({ open, onClose, workspaceId }: CommandPa
     // Local spine fuzzy match (instant)
     const local: Result[] = [];
     if (spine && workspaceId) {
-      spine.wiki.pages.forEach((p) => {
+      const filesTree = spine.files;
+      filesTree.pages.forEach((p) => {
         if (p.name.toLowerCase().includes(q))
           local.push({
             kind: "page",
@@ -77,7 +78,7 @@ export default function CommandPalette({ open, onClose, workspaceId }: CommandPa
             detail: s.agent_name,
           });
       });
-      spine.wiki.folders.forEach((f) => {
+      filesTree.folders.forEach((f) => {
         if (f.name.toLowerCase().includes(q))
           local.push({
             kind: "folder",
@@ -86,7 +87,7 @@ export default function CommandPalette({ open, onClose, workspaceId }: CommandPa
             detail: `${f.page_count} pages · ${f.file_count} files`,
           });
       });
-      spine.wiki.files.forEach((f) => {
+      filesTree.files.forEach((f) => {
         if (f.name.toLowerCase().includes(q))
           local.push({
             kind: "file",
@@ -110,7 +111,7 @@ export default function CommandPalette({ open, onClose, workspaceId }: CommandPa
           kind: "page" as const,
           label: p.name.replace(/\.md$/, ""),
           href: `/workspaces/${workspaceId}/p/${p.id}`,
-          detail: "Wiki page",
+          detail: "Page",
         }));
         setResults((prev) => {
           const ids = new Set(prev.map((r) => r.href));

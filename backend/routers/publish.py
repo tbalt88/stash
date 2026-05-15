@@ -1,16 +1,11 @@
-"""One-call publish endpoint for AI agents.
-
-Collapses the create-page → set-visibility → mint-share-link sequence into a
-single POST. Optionally find-or-creates an "AI Drafts" folder so the agent
-doesn't need to know the workspace's folder structure.
-"""
+"""One-call publish endpoint for AI agents."""
 
 from fastapi import APIRouter, Depends, HTTPException
 
 from ..auth import get_current_user
 from ..config import settings
-from ..models import PublishRequest, PublishResponse
-from ..services import permission_service, stash_service, wiki_service, workspace_service
+from ..models import PublishRequest, PublishResponse, StashItem
+from ..services import files_tree_service, stash_service, workspace_service
 
 router = APIRouter(prefix="/api/v1", tags=["publish"])
 
@@ -26,16 +21,16 @@ async def publish(
         raise HTTPException(status_code=403, detail="Not a workspace member")
 
     if req.folder_id is not None:
-        folder = await wiki_service.get_folder(req.folder_id)
+        folder = await files_tree_service.get_folder(req.folder_id)
         if not folder or folder["workspace_id"] != req.workspace_id:
             raise HTTPException(status_code=404, detail="Folder not found in this workspace")
         target_folder = folder
     else:
-        target_folder = await wiki_service.find_or_create_root_folder(
+        target_folder = await files_tree_service.find_or_create_root_folder(
             req.workspace_id, AI_DRAFTS_FOLDER_NAME, current_user["id"]
         )
 
-    page = await wiki_service.create_page(
+    page = await files_tree_service.create_page(
         workspace_id=req.workspace_id,
         name=req.title,
         created_by=current_user["id"],
@@ -46,14 +41,19 @@ async def publish(
         html_layout=req.html_layout,
     )
 
-    await permission_service.set_visibility("page", page["id"], req.audience)
-
-    stash = await stash_service.find_or_create_share_link_stash(
-        workspace_id=req.workspace_id,
-        owner_id=current_user["id"],
-        object_type="page",
-        object_id=page["id"],
-    )
+    try:
+        stash = await stash_service.create_stash(
+            workspace_id=req.workspace_id,
+            owner_id=current_user["id"],
+            title=req.title,
+            description="",
+            access=req.audience,
+            discoverable=False,
+            cover_image_url=None,
+            items=[StashItem(object_type="page", object_id=page["id"], position=0)],
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
     base = settings.PUBLIC_URL.rstrip("/")
     return PublishResponse(

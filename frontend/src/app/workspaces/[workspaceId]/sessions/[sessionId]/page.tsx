@@ -4,18 +4,15 @@ import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { useBreadcrumbs } from "../../../../../components/BreadcrumbContext";
 import DownloadMenu from "../../../../../components/DownloadMenu";
-import PrivacyTagControl from "../../../../../components/workspace/PrivacyTagControl";
 import { useAuth } from "../../../../../hooks/useAuth";
 import {
   fetchAuthed,
   getSessionEvents,
   getWorkspaceSidebar,
-  getWorkspace,
   listObjectStashes,
   type SessionEvent,
   type WorkspaceStash,
 } from "../../../../../lib/api";
-import type { Workspace } from "../../../../../lib/types";
 
 interface MessageTurn {
   kind: "message";
@@ -95,10 +92,8 @@ export default function SessionViewerPage() {
   const sessionId = decodeURIComponent(params.sessionId as string);
   const { user, loading, logout } = useAuth();
 
-  const [workspace, setWorkspace] = useState<Workspace | null>(null);
   const [agentName, setAgentName] = useState("");
   const [turns, setTurns] = useState<MessageTurn[]>([]);
-  const [sessionRowId, setSessionRowId] = useState("");
   const [containingStashes, setContainingStashes] = useState<WorkspaceStash[]>([]);
   const [error, setError] = useState("");
 
@@ -109,16 +104,13 @@ export default function SessionViewerPage() {
 
   const load = useCallback(async () => {
     try {
-      const [workspace, events, sidebar] = await Promise.all([
-        getWorkspace(workspaceId),
+      const [events, sidebar] = await Promise.all([
         getSessionEvents(workspaceId, sessionId),
         getWorkspaceSidebar(workspaceId),
       ]);
-      setWorkspace(workspace);
       setAgentName(events.find((event) => event.agent_name)?.agent_name ?? "");
       setTurns(events.map(eventToTurn));
       const session = sidebar.sessions.find((item) => item.session_id === sessionId);
-      setSessionRowId(session?.id ?? "");
       setContainingStashes(
         session?.id ? await listObjectStashes(workspaceId, "session", session.id) : []
       );
@@ -143,7 +135,8 @@ export default function SessionViewerPage() {
 
   return (
     <div className="scroll-thin flex-1 overflow-y-auto">
-      <div className="mx-auto max-w-3xl px-12 py-8">
+      <div className="mx-auto grid max-w-5xl gap-8 px-12 py-8 lg:grid-cols-[minmax(0,1fr)_240px]">
+        <main className="min-w-0">
           {/* Title row — chat-style header (matches mockup chat-customer-discovery) */}
           <div className="mb-5 flex items-start justify-between gap-4 border-b border-border pb-4">
             <div className="min-w-0">
@@ -159,22 +152,7 @@ export default function SessionViewerPage() {
                       <span className="text-foreground">{sessionDate}</span>
                     </>
                   ) : null}
-                  {workspace ? <span> · in <span className="text-foreground">{workspace.name}</span></span> : null}
                 </p>
-              )}
-              {containingStashes.length > 0 && (
-                <div className="mt-3 flex flex-wrap items-center gap-1.5">
-                  <span className="text-[11px] uppercase tracking-wider text-muted">In stashes</span>
-                  {containingStashes.map((stash) => (
-                    <a
-                      key={stash.id}
-                      href={`/stashes/${stash.slug}`}
-                      className="rounded-md border border-border-subtle px-2 py-0.5 text-[11px] text-foreground hover:border-brand hover:text-brand"
-                    >
-                      {stash.title}
-                    </a>
-                  ))}
-                </div>
               )}
             </div>
             <div className="flex items-center gap-2">
@@ -215,14 +193,6 @@ export default function SessionViewerPage() {
             </div>
           )}
 
-          {sessionRowId ? (
-            <PrivacyTagControl
-              workspaceId={workspaceId}
-              objectType="session"
-              objectId={sessionRowId}
-            />
-          ) : null}
-
           <div className="flex flex-col">
             {turns.map((turn, i) => {
               const previousTurn = turns[i - 1];
@@ -244,8 +214,42 @@ export default function SessionViewerPage() {
               </div>
             )}
           </div>
+        </main>
+        <StashAside stashes={containingStashes} />
       </div>
     </div>
+  );
+}
+
+function StashAside({ stashes }: { stashes: WorkspaceStash[] }) {
+  return (
+    <aside className="hidden lg:block">
+      <div className="sticky top-16 rounded-lg border border-border-subtle bg-surface p-3">
+        <div className="text-[11px] font-semibold uppercase tracking-wider text-muted">
+          In Stashes
+        </div>
+        {stashes.length > 0 ? (
+          <div className="mt-2 flex flex-col gap-1.5">
+            {stashes.map((stash) => (
+              <a
+                key={stash.id}
+                href={`/stashes/${stash.slug}`}
+                className="rounded-md border border-border-subtle bg-base px-2.5 py-2 text-[12px] text-foreground hover:border-brand hover:text-brand"
+              >
+                <span className="block truncate font-medium">{stash.title}</span>
+                <span className="mt-0.5 block text-[11px] capitalize text-muted">
+                  {stash.access}
+                </span>
+              </a>
+            ))}
+          </div>
+        ) : (
+          <div className="mt-2 text-[12px] leading-relaxed text-muted">
+            This session is not in a Stash yet.
+          </div>
+        )}
+      </div>
+    </aside>
   );
 }
 

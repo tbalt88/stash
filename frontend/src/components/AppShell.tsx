@@ -35,6 +35,16 @@ function inferShareInitial(pathname: string): StashItemSpec[] | undefined {
   if (folderMatch) return [{ object_type: "folder", object_id: folderMatch[1], position: 0 }];
   const fileMatch = pathname.match(/^\/workspaces\/[^/]+\/f\/([^/?#]+)/);
   if (fileMatch) return [{ object_type: "file", object_id: fileMatch[1], position: 0 }];
+  const sessionMatch = pathname.match(/^\/workspaces\/[^/]+\/sessions\/([^/?#]+)/);
+  if (sessionMatch) {
+    return [
+      {
+        object_type: "session",
+        object_id: decodeURIComponent(sessionMatch[1]),
+        position: 0,
+      },
+    ];
+  }
   return undefined;
 }
 
@@ -127,7 +137,7 @@ export default function AppShell({ user, onLogout, children }: AppShellProps) {
                 })
               }
             >
-              New stash
+              Share
             </button>
           )}
           <UserMenu

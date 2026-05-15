@@ -13,17 +13,17 @@ stash settings                     # Interactive settings page (streaming, scope
 stash disconnect                   # Pause event streaming across every plugin
 ```
 
-### Workspaces, wiki, history, tables
+### Workspaces, files, history, tables
 
-### Wiki
+### Files
 ```bash
-stash wiki tree --ws <workspace_id>                               # Show folders and pages
-stash wiki pages --ws <workspace_id>                              # List workspace pages
-stash wiki pages --all                                            # List shared pages across workspaces
-stash wiki create-folder "name" --ws <workspace_id>               # Create a folder
-stash wiki add-page "title" --ws <ws_id> --content "markdown content"
-stash wiki read-page <page_id> --ws <ws_id>                       # Read a page
-stash wiki edit-page <page_id> --ws <ws_id> --content "new content"
+stash files tree --ws <workspace_id>                               # Show folders and pages
+stash pages --ws <workspace_id>                              # List workspace pages
+stash pages --all                                            # List shared pages across workspaces
+stash files create-folder "name" --ws <workspace_id>               # Create a folder
+stash files add-page "title" --ws <ws_id> --content "markdown content"
+stash files read-page <page_id> --ws <ws_id>                       # Read a page
+stash files edit-page <page_id> --ws <ws_id> --content "new content"
 ```
 
 ### History (Agent Event Logs)

@@ -19,7 +19,7 @@ export default function DocsOverview() {
       <P>
         Stash auto-uploads coding agent transcripts to a shared store, indexes them,
         and makes those transcripts accessible to every other coding agent using the repo.
-        Durable knowledge lives in the workspace wiki, and Product Stashes let you
+        Durable knowledge lives in the workspace files, and Product Stashes let you
         publish useful combinations of sessions, pages, and files.
       </P>
 
@@ -157,7 +157,7 @@ export default function DocsOverview() {
               <div className="text-zinc-800 mt-1 space-y-1">
                 <div>6 Things:</div>
                 <div className="pl-2 text-zinc-600 space-y-0.5">
-                  <div>• Page graph: d3-force stabilization, pan/zoom/drag, hover links</div>
+                  <div>• Page tree: d3-force stabilization, pan/zoom/drag, hover links</div>
                   <div>• Notebook navigation: browser back/forward, URL sync</div>
                   <div>• ID-based page links with autocomplete</div>
                   <div>• Fixed embedding space click/drag, loading blink</div>
@@ -205,7 +205,7 @@ export default function DocsOverview() {
                 <div>9 Things:</div>
                 <div className="pl-2 space-y-0.5">
                   <div className="text-zinc-400 text-[11px] mt-1 mb-0.5">From git:</div>
-                  <div className="text-zinc-600">• Page graph: d3-force stabilization, pan/zoom/drag, hover links</div>
+                  <div className="text-zinc-600">• Page tree: d3-force stabilization, pan/zoom/drag, hover links</div>
                   <div className="text-zinc-600">• Notebook navigation: browser back/forward, URL sync</div>
                   <div className="text-zinc-600">• ID-based page links with autocomplete</div>
                   <div className="text-zinc-600">• Fixed embedding space click/drag, loading blink</div>

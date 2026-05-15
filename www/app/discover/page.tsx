@@ -6,7 +6,7 @@ import { APP_URL, fetchCatalog, type PublicStashCard } from "../../lib/discover"
 export const metadata: Metadata = {
   title: "Discover Stashes · Stash",
   description:
-    "Browse public Product Stashes — shared sessions, wiki pages, tables, and files from teams building in the open.",
+    "Browse public Product Stashes — shared sessions, pages, tables, and files from teams building in the open.",
 };
 
 type SearchParams = {
@@ -37,7 +37,7 @@ export default async function DiscoverPage({
           <span className="text-brand">building in the open.</span>
         </h1>
         <p className="mt-6 max-w-[640px] text-[17px] leading-[1.6] text-foreground">
-          Browse sessions, wiki pages, tables, and files from public Product
+          Browse sessions, pages, tables, and files from public Product
           Stashes. Open one to read it without signing in.
         </p>
 

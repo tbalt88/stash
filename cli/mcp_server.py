@@ -92,7 +92,7 @@ def stash_push_event(
     )
 
 
-# ── Folders + pages (wiki) ────────────────────────────────────────
+# ── Files: folders + pages ────────────────────────────────────────
 
 
 @mcp.tool()
@@ -354,12 +354,12 @@ def stash_leave_workspace(workspace_id: str) -> str:
     return _json({"left": workspace_id})
 
 
-# ── Wiki folders ───────────────────────────────────────────────────
+# ── Files folders ──────────────────────────────────────────────────
 
 
 @mcp.tool()
 def stash_read_folder(folder_name: str, stash_id: str = "") -> str:
-    """Read a wiki folder by name. Returns the folder's SKILL.md (if any)
+    """Read a Files folder by name. Returns the folder's SKILL.md (if any)
     + sibling pages, concatenated for agent context."""
     client, default_ws = _client()
     ws = _require_ws(stash_id or default_ws)
@@ -421,7 +421,7 @@ def stash_list_stashes(workspace_id: str = "") -> str:
 def stash_create_stash(
     title: str,
     description: str = "",
-    is_public: bool = False,
+    access: str = "workspace",
     discoverable: bool = False,
     items: str = "[]",
     workspace_id: str = "",
@@ -430,13 +430,12 @@ def stash_create_stash(
     client, default_ws = _client()
     ws = _require_ws(workspace_id or default_ws)
     item_list = json.loads(items) if isinstance(items, str) else items
-    if is_public:
+    if access == "public":
         return _json(
             client.publish_stash(
                 ws,
                 title,
                 description=description,
-                ensure="public",
                 discoverable=discoverable,
                 items=item_list,
             )
@@ -446,8 +445,8 @@ def stash_create_stash(
             ws,
             title,
             description=description,
-            is_public=False,
-            discoverable=False,
+            access=access,
+            discoverable=discoverable,
             items=item_list,
         )
     )
@@ -523,7 +522,7 @@ def stash_whoami() -> str:
     return _json(client.whoami())
 
 
-# ── Sharing (unified ACL + share-link + publish) ──────────────────
+# ── Sharing (Stash URLs + publish) ──────────────────
 
 
 @mcp.tool()
@@ -535,7 +534,7 @@ def stash_get_permissions(object_type: str, object_id: str) -> str:
 
 @mcp.tool()
 def stash_set_visibility(object_type: str, object_id: str, visibility: str) -> str:
-    """Set privacy on an object. Pages, folders, and sessions use privacy tags."""
+    """Deprecated: privacy is managed by Stashes."""
     client, _ = _client()
     return _json(client.set_object_visibility(object_type, object_id, visibility))
 
@@ -558,15 +557,10 @@ def stash_remove_share(object_type: str, object_id: str, user_id: str) -> str:
 
 
 @mcp.tool()
-def stash_share(object_type: str, object_id: str, ensure: str = "link") -> str:
-    """Mint or fetch a share URL for any object. ensure: '' | 'link' | 'public'.
-
-    With ensure='link' (default), the underlying object's visibility is raised
-    to at least 'link' if it isn't already, so the returned URL is guaranteed
-    to be readable to anyone with it. Pass ensure='' to skip the visibility
-    bump (use when you want the URL but plan to set permissions separately)."""
+def stash_share(object_type: str, object_id: str, access: str = "public") -> str:
+    """Create a one-item Stash URL for any object. access: workspace | private | public."""
     client, _ = _client()
-    return _json(client.share_link(object_type, object_id, ensure or None))
+    return _json(client.create_stash_url(object_type, object_id, access))
 
 
 @mcp.tool()

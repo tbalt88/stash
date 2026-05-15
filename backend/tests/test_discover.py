@@ -59,7 +59,7 @@ async def test_discover_lists_discoverable_public_product_stashes(client: AsyncC
     assert private_stash.status_code == 201
 
     public_unlisted = await client.post(
-        f"/api/v1/workspaces/{workspace['id']}/stashes/publish?ensure=public",
+        f"/api/v1/workspaces/{workspace['id']}/stashes/publish",
         json={
             "title": "Public but unlisted",
             "items": [{"object_type": "page", "object_id": public_page["id"]}],
@@ -69,7 +69,7 @@ async def test_discover_lists_discoverable_public_product_stashes(client: AsyncC
     assert public_unlisted.status_code == 201
 
     published = await client.post(
-        f"/api/v1/workspaces/{workspace['id']}/stashes/publish?ensure=public",
+        f"/api/v1/workspaces/{workspace['id']}/stashes/publish",
         json={
             "title": "Public notes",
             "description": "A public Product Stash",
@@ -104,21 +104,23 @@ async def test_discover_opt_in_requires_public_product_stash(client: AsyncClient
     workspace = await _create_workspace(client, api_key, "Private Discover workspace")
     page = await _create_page(client, api_key, workspace["id"], "Private Discover brief")
 
-    link_stash = await client.post(
-        f"/api/v1/workspaces/{workspace['id']}/stashes/publish?ensure=link",
+    workspace_stash = await client.post(
+        f"/api/v1/workspaces/{workspace['id']}/stashes",
         json={
-            "title": "Link-only Discover attempt",
+            "title": "Workspace Discover attempt",
+            "access": "workspace",
             "discoverable": True,
             "items": [{"object_type": "page", "object_id": page["id"]}],
         },
         headers=_auth(api_key),
     )
-    assert link_stash.status_code == 400
+    assert workspace_stash.status_code == 400
 
     private_stash = await client.post(
         f"/api/v1/workspaces/{workspace['id']}/stashes",
         json={
             "title": "Private Discover attempt",
+            "access": "private",
             "discoverable": True,
             "items": [{"object_type": "page", "object_id": page["id"]}],
         },
@@ -136,7 +138,7 @@ async def test_discover_search_filters_product_stashes(client: AsyncClient):
 
     for title, page in (("Alpha launch notes", alpha), ("Beta roadmap", beta)):
         resp = await client.post(
-            f"/api/v1/workspaces/{workspace['id']}/stashes/publish?ensure=public",
+            f"/api/v1/workspaces/{workspace['id']}/stashes/publish",
             json={
                 "title": title,
                 "discoverable": True,

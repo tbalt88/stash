@@ -135,12 +135,10 @@ class Stash:
     # Workspaces
     # =========================================================================
 
-    def create_workspace(
-        self, name: str, description: str = "", is_public: bool = False
-    ) -> dict:
+    def create_workspace(self, name: str, description: str = "") -> dict:
         return self._post(
             "/api/v1/workspaces",
-            json={"name": name, "description": description, "is_public": is_public},
+            json={"name": name, "description": description},
         )
 
     def list_workspaces(self, mine: bool = False) -> list:
@@ -174,80 +172,88 @@ class Stash:
             raise
 
     # =========================================================================
-    # Discover (public catalog)
+    # Discover (public Product Stashes)
     # =========================================================================
 
-    def list_catalog(
+    def list_discover_stashes(
         self,
         query: str = "",
-        category: str = "",
-        tag: str = "",
         sort: str = "trending",
-        cursor: str = "",
+        limit: int = 48,
     ) -> dict:
-        params: dict = {"sort": sort}
+        params: dict = {"sort": sort, "limit": limit}
         if query:
             params["q"] = query
-        if category:
-            params["category"] = category
-        if tag:
-            params["tag"] = tag
-        if cursor:
-            params["cursor"] = cursor
-        return self._get("/api/v1/discover/workspaces", **params)
-
-    def get_public_workspace(self, workspace: str | None = None) -> dict:
-        return self._get(f"/api/v1/discover/workspaces/{self._ws(workspace)}")
-
-    def fork_workspace(self, workspace: str | None = None, name: str = "") -> dict:
-        body: dict = {}
-        if name:
-            body["name"] = name
-        return self._post(f"/api/v1/workspaces/{self._ws(workspace)}/fork", json=body)
+        return self._get("/api/v1/discover/stashes", **params)
 
     # =========================================================================
-    # Views (curated subsets)
+    # Product Stashes
     # =========================================================================
 
-    def list_views(self, workspace: str | None = None) -> list:
-        return self._list(f"/api/v1/workspaces/{self._ws(workspace)}/views", "views")
+    def list_stashes(self, workspace: str | None = None) -> list:
+        return self._list(f"/api/v1/workspaces/{self._ws(workspace)}/stashes", "stashes")
 
-    def create_view(
+    def create_stash(
         self,
         title: str,
         description: str = "",
-        is_public: bool = False,
+        access: str = "workspace",
+        discoverable: bool = False,
+        cover_image_url: str | None = None,
         items: list | None = None,
         workspace: str | None = None,
     ) -> dict:
         return self._post(
-            f"/api/v1/workspaces/{self._ws(workspace)}/views",
+            f"/api/v1/workspaces/{self._ws(workspace)}/stashes",
             json={
                 "title": title,
                 "description": description,
-                "is_public": is_public,
+                "access": access,
+                "discoverable": discoverable,
+                "cover_image_url": cover_image_url,
                 "items": items or [],
             },
         )
 
-    def update_view(self, view_id: str, **fields) -> dict:
-        return self._patch(f"/api/v1/views/{view_id}", json=fields)
+    def publish_stash(
+        self,
+        title: str,
+        description: str = "",
+        discoverable: bool = False,
+        cover_image_url: str | None = None,
+        items: list | None = None,
+        workspace: str | None = None,
+    ) -> dict:
+        return self._post(
+            f"/api/v1/workspaces/{self._ws(workspace)}/stashes/publish",
+            json={
+                "title": title,
+                "description": description,
+                "access": "public",
+                "discoverable": discoverable,
+                "cover_image_url": cover_image_url,
+                "items": items or [],
+            },
+        )
 
-    def delete_view(self, view_id: str) -> None:
-        self._delete(f"/api/v1/views/{view_id}")
+    def update_stash(self, stash_id: str, **fields) -> dict:
+        return self._patch(f"/api/v1/stashes/{stash_id}", json=fields)
 
-    def get_public_view(self, slug: str) -> dict:
-        return self._get(f"/api/v1/views/{slug}")
+    def delete_stash(self, stash_id: str) -> None:
+        self._delete(f"/api/v1/stashes/{stash_id}")
 
-    def get_view_text(self, slug: str) -> str:
-        resp = self._request("GET", f"/api/v1/views/{slug}", params={"format": "text"})
+    def get_public_stash(self, slug: str) -> dict:
+        return self._get(f"/api/v1/stashes/{slug}")
+
+    def get_stash_text(self, slug: str) -> str:
+        resp = self._request("GET", f"/api/v1/stashes/{slug}", params={"format": "text"})
         return resp.text
 
-    def fork_view(self, slug: str, name: str = "") -> dict:
-        body: dict = {}
-        if name:
-            body["name"] = name
-        return self._post(f"/api/v1/views/{slug}/fork", json=body)
+    def add_stash_to_workspace(self, slug: str, workspace: str | None = None) -> dict:
+        return self._post(
+            f"/api/v1/stashes/{slug}/add-to-workspace",
+            json={"workspace_id": self._ws(workspace)},
+        )
 
     # =========================================================================
     # Invite tokens
@@ -297,9 +303,6 @@ class Stash:
 
     def all_pages(self) -> list:
         return self._list("/api/v1/me/pages", "pages")
-
-    def all_decks(self) -> list:
-        return self._list("/api/v1/me/decks", "decks")
 
     def all_events(
         self,
@@ -522,79 +525,6 @@ class Stash:
     def get_file_text(self, file_id: str, workspace: str | None = None) -> dict:
         return self._get(
             f"/api/v1/workspaces/{self._ws(workspace)}/files/{file_id}/text"
-        )
-
-    # =========================================================================
-    # Decks
-    # =========================================================================
-
-    def create_deck(
-        self,
-        name: str,
-        description: str = "",
-        html_content: str = "",
-        deck_type: str = "freeform",
-        workspace: str | None = None,
-    ) -> dict:
-        return self._post(
-            f"/api/v1/workspaces/{self._ws(workspace)}/decks",
-            json={
-                "name": name,
-                "description": description,
-                "html_content": html_content,
-                "deck_type": deck_type,
-            },
-        )
-
-    def list_decks(self, workspace: str | None = None) -> list:
-        return self._list(
-            f"/api/v1/workspaces/{self._ws(workspace)}/decks", "decks"
-        )
-
-    def get_deck(self, deck_id: str, workspace: str | None = None) -> dict:
-        return self._get(
-            f"/api/v1/workspaces/{self._ws(workspace)}/decks/{deck_id}"
-        )
-
-    def update_deck(self, deck_id: str, workspace: str | None = None, **kwargs) -> dict:
-        return self._patch(
-            f"/api/v1/workspaces/{self._ws(workspace)}/decks/{deck_id}", json=kwargs
-        )
-
-    def delete_deck(self, deck_id: str, workspace: str | None = None) -> None:
-        self._delete(f"/api/v1/workspaces/{self._ws(workspace)}/decks/{deck_id}")
-
-    # =========================================================================
-    # Deck shares
-    # =========================================================================
-
-    def create_deck_share(
-        self, deck_id: str, workspace: str | None = None, **kwargs
-    ) -> dict:
-        return self._post(
-            f"/api/v1/workspaces/{self._ws(workspace)}/decks/{deck_id}/shares",
-            json=kwargs,
-        )
-
-    def list_deck_shares(self, deck_id: str, workspace: str | None = None) -> list:
-        return self._list(
-            f"/api/v1/workspaces/{self._ws(workspace)}/decks/{deck_id}/shares",
-            "shares",
-        )
-
-    def update_deck_share(
-        self, deck_id: str, share_id: str, workspace: str | None = None, **kwargs
-    ) -> dict:
-        return self._put(
-            f"/api/v1/workspaces/{self._ws(workspace)}/decks/{deck_id}/shares/{share_id}",
-            json=kwargs,
-        )
-
-    def get_share_analytics(
-        self, deck_id: str, share_id: str, workspace: str | None = None
-    ) -> dict:
-        return self._get(
-            f"/api/v1/workspaces/{self._ws(workspace)}/decks/{deck_id}/shares/{share_id}/analytics"
         )
 
     # =========================================================================

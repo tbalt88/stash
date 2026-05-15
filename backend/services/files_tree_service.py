@@ -1,9 +1,7 @@
-"""Wiki service: folders (nested) + pages, scoped to a workspace.
+"""Files service: folders (nested) + pages, scoped to a workspace.
 
 The hierarchy is Workspace -> Folder* -> Page; folders nest via
-parent_folder_id. Wiki links resolve workspace-wide;
-plain `[[page]]` is first-match by name and `[[a/b/page]]` walks an explicit
-folder path.
+parent_folder_id.
 """
 
 import asyncio
@@ -257,9 +255,6 @@ async def create_page(
     page = dict(row)
     if active:
         _schedule_embed(page["id"], active)
-    if content_type == "markdown" and content:
-        asyncio.create_task(_update_page_links(page["id"], workspace_id, content))
-    asyncio.create_task(_resolve_dangling_links(workspace_id, name, page["id"]))
     return page
 
 
@@ -407,10 +402,6 @@ async def update_page(
                     page["content_type"], page["content_markdown"], page["content_html"]
                 )
                 _schedule_embed(page["id"], active)
-                if page["content_type"] == "markdown":
-                    asyncio.create_task(
-                        _update_page_links(page["id"], workspace_id, page["content_markdown"])
-                    )
             return page
 
         if expected_hash is None:
@@ -564,156 +555,6 @@ async def search_pages_fts(workspace_id: UUID, query: str, limit: int = 10) -> l
         limit,
     )
     return [dict(r) for r in rows]
-
-
-# --- Wiki link parsing and management ---
-
-
-# Matches [[Page Name]], [[folder/Page Name]], [[a/b/Page Name]], all with
-# optional |display alias.
-_WIKI_LINK_RE = re.compile(r"\[\[([^\]|]+)(?:\|[^\]]+)?\]\]")
-
-
-def _extract_wiki_links(content: str) -> list[str]:
-    return list(set(_WIKI_LINK_RE.findall(content)))
-
-
-async def _resolve_link_path(workspace_id: UUID, link: str) -> UUID | None:
-    """Resolve [[a/b/page]] into a page id. Plain page names fall back to a
-    workspace-wide first match. Path components walk the folder chain."""
-    pool = get_pool()
-    parts = [p.strip() for p in link.split("/") if p.strip()]
-    if not parts:
-        return None
-    if len(parts) == 1:
-        row = await pool.fetchrow(
-            "SELECT id FROM pages WHERE workspace_id = $1 AND name = $2 ORDER BY updated_at DESC LIMIT 1",
-            workspace_id,
-            parts[0],
-        )
-        return row["id"] if row else None
-
-    *folder_parts, page_name = parts
-    parent: UUID | None = None
-    for fname in folder_parts:
-        row = await pool.fetchrow(
-            "SELECT id FROM folders "
-            "WHERE workspace_id = $1 AND name = $2 "
-            "AND parent_folder_id IS NOT DISTINCT FROM $3",
-            workspace_id,
-            fname,
-            parent,
-        )
-        if not row:
-            return None
-        parent = row["id"]
-    page = await pool.fetchrow(
-        "SELECT id FROM pages "
-        "WHERE workspace_id = $1 AND folder_id IS NOT DISTINCT FROM $2 AND name = $3",
-        workspace_id,
-        parent,
-        page_name,
-    )
-    return page["id"] if page else None
-
-
-async def _update_page_links(page_id: UUID, workspace_id: UUID, content: str) -> None:
-    """Extract [[wiki links]] from content and refresh the page_links table."""
-    try:
-        pool = get_pool()
-        await pool.execute(
-            "DELETE FROM page_links WHERE source_page_id = $1",
-            page_id,
-        )
-        link_names = _extract_wiki_links(content)
-        if not link_names:
-            return
-        for link in link_names:
-            target_id = await _resolve_link_path(workspace_id, link)
-            if target_id and target_id != page_id:
-                await pool.execute(
-                    "INSERT INTO page_links (source_page_id, target_page_id, link_text) "
-                    "VALUES ($1, $2, $3) ON CONFLICT DO NOTHING",
-                    page_id,
-                    target_id,
-                    link,
-                )
-    except Exception:
-        logger.debug("Failed to update page links for %s", page_id, exc_info=True)
-
-
-async def _resolve_dangling_links(workspace_id: UUID, page_name: str, page_id: UUID) -> None:
-    """When a new page is created, find pages elsewhere in the workspace that
-    reference it by name and create the missing links."""
-    try:
-        pool = get_pool()
-        pattern = f"%[[{page_name}]]%"
-        rows = await pool.fetch(
-            "SELECT id, content_markdown FROM pages "
-            "WHERE workspace_id = $1 AND id != $2 AND content_markdown LIKE $3",
-            workspace_id,
-            page_id,
-            pattern,
-        )
-        for row in rows:
-            await pool.execute(
-                "INSERT INTO page_links (source_page_id, target_page_id, link_text) "
-                "VALUES ($1, $2, $3) ON CONFLICT DO NOTHING",
-                row["id"],
-                page_id,
-                page_name,
-            )
-    except Exception:
-        logger.debug("Failed to resolve dangling links for %s", page_name, exc_info=True)
-
-
-async def get_backlinks(page_id: UUID) -> list[dict]:
-    pool = get_pool()
-    rows = await pool.fetch(
-        "SELECT np.id, np.name, np.workspace_id, pl.link_text, pl.created_at "
-        "FROM page_links pl JOIN pages np ON np.id = pl.source_page_id "
-        "WHERE pl.target_page_id = $1 ORDER BY np.name",
-        page_id,
-    )
-    return [dict(r) for r in rows]
-
-
-async def get_outlinks(page_id: UUID) -> list[dict]:
-    pool = get_pool()
-    rows = await pool.fetch(
-        "SELECT np.id, np.name, np.workspace_id, pl.link_text, pl.created_at "
-        "FROM page_links pl JOIN pages np ON np.id = pl.target_page_id "
-        "WHERE pl.source_page_id = $1 ORDER BY np.name",
-        page_id,
-    )
-    return [dict(r) for r in rows]
-
-
-async def get_workspace_graph(workspace_id: UUID) -> dict:
-    """Full link graph for a workspace's pages: {nodes, edges}."""
-    pool = get_pool()
-    pages = await pool.fetch(
-        "SELECT id, name FROM pages WHERE workspace_id = $1",
-        workspace_id,
-    )
-    nodes = [{"id": str(p["id"]), "name": p["name"]} for p in pages]
-    page_ids = [p["id"] for p in pages]
-    if not page_ids:
-        return {"nodes": nodes, "edges": []}
-    edges_rows = await pool.fetch(
-        "SELECT source_page_id, target_page_id, link_text FROM page_links "
-        "WHERE source_page_id = ANY($1) AND target_page_id = ANY($1)",
-        page_ids,
-    )
-    edges = [
-        {
-            "source": str(e["source_page_id"]),
-            "target": str(e["target_page_id"]),
-            "label": e["link_text"],
-        }
-        for e in edges_rows
-    ]
-    return {"nodes": nodes, "edges": edges}
 
 
 # --- Page embeddings ---

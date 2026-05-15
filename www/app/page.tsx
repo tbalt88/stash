@@ -145,7 +145,7 @@ const HERO_FEED: FeedRow[] = [
     detail: (
       <>
         fixed 401 race on concurrent refresh, linked to{" "}
-        <span className="font-mono text-[11.5px] text-brand">[[auth-patterns]]</span>
+        <span className="font-mono text-[11.5px] text-brand">auth patterns</span>
       </>
     ),
     time: "just now",
@@ -166,7 +166,7 @@ const HERO_FEED: FeedRow[] = [
     detail: (
       <>
         &ldquo;why was the{" "}
-        <span className="font-mono text-[11.5px] text-brand">[[rate-limit]]</span> raised to 500?&rdquo; · 8 sources
+        <span className="font-mono text-[11.5px] text-brand">rate limit</span> raised to 500?&rdquo; · 8 sources
       </>
     ),
     time: "4m",
@@ -175,15 +175,15 @@ const HERO_FEED: FeedRow[] = [
     role: "agent",
     name: "nova",
     action: "updated",
-    target: "wiki · memory-leak-v2",
-    detail: "4 pages linked, 12 backlinks resolved from the session",
+    target: "files · memory-leak-v2",
+    detail: "4 pages organized, 12 session sources attached",
     time: "9m",
   },
   {
     role: "human",
     name: "ari",
     action: "commented",
-    target: "wiki/api-gateway",
+    target: "files/api-gateway",
     detail: "keeping this open; will re-use the worker-pool pattern next week",
     time: "22m",
   },
@@ -568,7 +568,7 @@ function StreamViz() {
   );
 }
 
-function WikiViz() {
+function FilesViz() {
   return (
     <div className="flex flex-col gap-1.5">
       <div className="flex items-center justify-between rounded-md border border-border bg-background px-2 py-1.5 text-[11.5px] text-ink">
@@ -602,7 +602,7 @@ function WikiViz() {
 function SearchViz() {
   const sources: [string, string][] = [
     ["history/rex:14:02", "62%"],
-    ["wiki/auth-patterns", "21%"],
+    ["files/auth-patterns", "21%"],
     ["files/gateway.py", "11%"],
   ];
   return (
@@ -634,16 +634,16 @@ function HowItWorks() {
     },
     {
       n: "02",
-      pill: "Wiki",
-      title: "Teams shape the shared wiki.",
-      body: "Pages, files, and folders stay in the workspace wiki. Sessions remain searchable history, and useful outputs can be promoted into durable pages.",
-      viz: <WikiViz />,
+      pill: "Files",
+      title: "Teams shape durable pages.",
+      body: "Pages, uploads, and folders stay in Files. Sessions remain searchable history, and useful outputs can be promoted into durable pages.",
+      viz: <FilesViz />,
     },
     {
       n: "03",
       pill: "Search",
       title: "Every agent queries the whole team's work.",
-      body: "stash search runs a cross-resource agentic loop over files, history, wiki pages, tables, and Stashes. Your agent answers with sources, not hallucinations.",
+      body: "stash search runs a cross-resource agentic loop over files, history, pages, tables, and Stashes. Your agent answers with sources, not hallucinations.",
       viz: <SearchViz />,
     },
   ];
@@ -653,7 +653,7 @@ function HowItWorks() {
         <div className="flex max-w-[880px] flex-col gap-4">
           <EyebrowDot>How it works</EyebrowDot>
           <h2 className="font-display text-[clamp(32px,4.2vw,52px)] font-bold leading-[1.05] tracking-[-0.03em] text-ink text-balance">
-            Sessions. Wiki. Search.
+            Sessions. Files. Search.
             <br />
             <span className="font-medium text-dim">The asset builds itself.</span>
           </h2>
@@ -691,7 +691,7 @@ function HowItWorks() {
 function SearchDemo() {
   const steps = [
     { t: "scanned team history", ms: "42ms" },
-    { t: "queried wiki graph", ms: "81ms" },
+    { t: "queried files tree", ms: "81ms" },
     { t: "pulled gateway.py blame", ms: "104ms" },
     { t: "reranked 8 sources", ms: "22ms" },
   ];
@@ -706,7 +706,7 @@ function SearchDemo() {
             Stash answers with receipts.
           </h2>
           <p className="max-w-[620px] text-[18px] leading-[1.55] text-dim">
-            stash search runs an agentic loop across files, history, wiki pages,
+            stash search runs an agentic loop across files, history, pages,
             tables, and Stashes. Every answer arrives with sources attached.
           </p>
         </div>
@@ -755,7 +755,7 @@ function SearchDemo() {
                 The change is safe because requests are authenticated and
                 per-tenant, not global.{" "}
                 <span className="font-mono text-[11.5px] text-brand">history/sam:tue-14:22</span>,{" "}
-                <span className="font-mono text-[11.5px] text-brand">wiki/gateway-limits</span>
+                <span className="font-mono text-[11.5px] text-brand">files/gateway-limits</span>
               </p>
             </div>
           </div>
@@ -775,9 +775,9 @@ function Features() {
     },
     {
       i: "W",
-      h: "Wiki pages",
-      p: "Rich collaborative pages with [[backlinks]], page graph, and pgvector semantic search.",
-      tags: ["backlinks", "graph", "semantic"],
+      h: "Files",
+      p: "Rich collaborative pages with Stashes, file tree, and pgvector semantic search.",
+      tags: ["Stashes", "tree", "semantic"],
     },
     {
       i: "S",
@@ -788,19 +788,19 @@ function Features() {
     {
       i: "V",
       h: "Visualizations",
-      p: "See your team's memory as it forms: embedding projections, page graphs, activity timelines, and knowledge-density maps you can actually look at.",
-      tags: ["embeddings", "graph", "timeline"],
+      p: "See your team's memory as it forms: embedding projections, file trees, activity timelines, and knowledge-density maps you can actually look at.",
+      tags: ["embeddings", "tree", "timeline"],
     },
     {
       i: "R",
       h: "Product Stashes",
       p: "Publish sessions, pages, and files together as a polished link anyone can inspect.",
-      tags: ["publish", "sessions", "wiki"],
+      tags: ["publish", "sessions", "files"],
     },
     {
       i: "P",
       h: "HTML pages",
-      p: "Store agent-made reports, dashboards, and documents as first-class wiki pages.",
+      p: "Store agent-made reports, dashboards, and documents as first-class pages.",
       tags: ["html", "reports", "dashboards"],
     },
   ];

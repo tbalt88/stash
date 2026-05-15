@@ -1,4 +1,4 @@
-"""Wiki router: workspace-scoped folders (nested) and pages."""
+"""Files router: workspace-scoped folders (nested) and pages."""
 
 from uuid import UUID
 
@@ -22,14 +22,14 @@ from ..models import (
     WorkspacePageListResponse,
     WorkspaceTreeResponse,
 )
-from ..services import permission_service, wiki_service, workspace_service
-from ..services.wiki_service import (
+from ..services import files_tree_service, permission_service, workspace_service
+from ..services.files_tree_service import (
     DuplicateFolderName,
     DuplicatePageName,
     FolderCycle,
 )
 
-router = APIRouter(prefix="/api/v1/workspaces/{workspace_id}", tags=["wiki"])
+router = APIRouter(prefix="/api/v1/workspaces/{workspace_id}", tags=["files"])
 
 
 async def _check_ws_access(workspace_id: UUID, user_id: UUID) -> None:
@@ -48,13 +48,13 @@ async def _check_ws_write(workspace_id: UUID, user_id: UUID) -> None:
 
 
 async def _check_ws_owns_folder(workspace_id: UUID, folder_id: UUID) -> dict:
-    folder = await wiki_service.get_folder(folder_id)
+    folder = await files_tree_service.get_folder(folder_id)
     if not folder or folder["workspace_id"] != workspace_id:
         raise HTTPException(status_code=404, detail="Folder not found")
     return folder
 
 
-# --- Pages: flat listing for wiki-link autocomplete ---
+# --- Pages: flat listing ---
 
 
 @router.get("/pages", response_model=WorkspacePageListResponse)
@@ -63,7 +63,7 @@ async def list_workspace_pages(
     current_user: dict = Depends(get_current_user),
 ):
     await _check_ws_access(workspace_id, current_user["id"])
-    rows = await wiki_service.list_workspace_pages(workspace_id)
+    rows = await files_tree_service.list_workspace_pages(workspace_id)
     return WorkspacePageListResponse(pages=[WorkspacePageEntry(**r) for r in rows])
 
 
@@ -76,7 +76,7 @@ async def get_workspace_tree(
     current_user: dict = Depends(get_current_user),
 ):
     await _check_ws_access(workspace_id, current_user["id"])
-    tree = await wiki_service.list_workspace_tree(workspace_id)
+    tree = await files_tree_service.list_workspace_tree(workspace_id)
     return WorkspaceTreeResponse(**tree)
 
 
@@ -89,7 +89,7 @@ async def list_folders(
     current_user: dict = Depends(get_current_user),
 ):
     await _check_ws_access(workspace_id, current_user["id"])
-    folders = await wiki_service.list_folders(workspace_id)
+    folders = await files_tree_service.list_folders(workspace_id)
     return FolderListResponse(folders=[FolderResponse(**f) for f in folders])
 
 
@@ -103,7 +103,7 @@ async def create_folder(
     if req.parent_folder_id is not None:
         await _check_ws_owns_folder(workspace_id, req.parent_folder_id)
     try:
-        folder = await wiki_service.create_folder(
+        folder = await files_tree_service.create_folder(
             workspace_id,
             req.name,
             current_user["id"],
@@ -133,7 +133,7 @@ async def get_folder_contents(
 ):
     """Immediate children of a folder — subfolders, pages, files — plus
     the breadcrumb chain from workspace root down to this folder. Powers
-    the unified Wiki tree (sidebar lazy-expand + folder detail page)."""
+    the unified Files tree (sidebar lazy-expand + folder detail page)."""
     await _check_ws_access(workspace_id, current_user["id"])
     folder = await _check_ws_owns_folder(workspace_id, folder_id)
     pool = get_pool()
@@ -219,7 +219,7 @@ async def update_folder(
     if req.parent_folder_id is not None and not req.move_to_root:
         await _check_ws_owns_folder(workspace_id, req.parent_folder_id)
     try:
-        folder = await wiki_service.update_folder(
+        folder = await files_tree_service.update_folder(
             folder_id,
             workspace_id,
             name=req.name,
@@ -242,7 +242,7 @@ async def delete_folder(
     current_user: dict = Depends(get_current_user),
 ):
     await _check_ws_write(workspace_id, current_user["id"])
-    deleted = await wiki_service.delete_folder(folder_id, workspace_id)
+    deleted = await files_tree_service.delete_folder(folder_id, workspace_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Folder not found")
 
@@ -260,7 +260,7 @@ async def create_page(
     if req.folder_id is not None:
         await _check_ws_owns_folder(workspace_id, req.folder_id)
     try:
-        page = await wiki_service.create_page(
+        page = await files_tree_service.create_page(
             workspace_id,
             req.name,
             current_user["id"],
@@ -290,7 +290,7 @@ async def semantic_search_pages(
     query_embedding = await embedding_service.embed_text(q)
     if query_embedding is None:
         raise HTTPException(status_code=500, detail="Failed to embed query")
-    pages = await wiki_service.search_pages_vector(workspace_id, query_embedding, limit)
+    pages = await files_tree_service.search_pages_vector(workspace_id, query_embedding, limit)
     return {"pages": pages}
 
 
@@ -302,7 +302,7 @@ async def search_pages(
     current_user: dict = Depends(get_current_user),
 ):
     await _check_ws_access(workspace_id, current_user["id"])
-    pages = await wiki_service.search_pages_fts(workspace_id, q, limit)
+    pages = await files_tree_service.search_pages_fts(workspace_id, q, limit)
     return {"pages": pages}
 
 
@@ -313,7 +313,7 @@ async def get_page(
     current_user: dict = Depends(get_current_user),
 ):
     await _check_ws_access(workspace_id, current_user["id"])
-    page = await wiki_service.get_page(page_id, workspace_id)
+    page = await files_tree_service.get_page(page_id, workspace_id)
     if not page:
         raise HTTPException(status_code=404, detail="Page not found")
     return PageResponse(**page)
@@ -330,7 +330,7 @@ async def update_page(
     if req.folder_id is not None and not req.move_to_root:
         await _check_ws_owns_folder(workspace_id, req.folder_id)
     try:
-        page = await wiki_service.update_page(
+        page = await files_tree_service.update_page(
             page_id,
             workspace_id,
             current_user["id"],
@@ -356,43 +356,9 @@ async def delete_page(
     current_user: dict = Depends(get_current_user),
 ):
     await _check_ws_write(workspace_id, current_user["id"])
-    deleted = await wiki_service.delete_page(page_id, workspace_id)
+    deleted = await files_tree_service.delete_page(page_id, workspace_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Page not found")
-
-
-# --- Wiki features (backlinks, page graph) ---
-
-
-@router.get("/pages/{page_id}/backlinks")
-async def get_page_backlinks(
-    workspace_id: UUID,
-    page_id: UUID,
-    current_user: dict = Depends(get_current_user),
-):
-    await _check_ws_access(workspace_id, current_user["id"])
-    links = await wiki_service.get_backlinks(page_id)
-    return {"backlinks": links}
-
-
-@router.get("/pages/{page_id}/outlinks")
-async def get_page_outlinks(
-    workspace_id: UUID,
-    page_id: UUID,
-    current_user: dict = Depends(get_current_user),
-):
-    await _check_ws_access(workspace_id, current_user["id"])
-    links = await wiki_service.get_outlinks(page_id)
-    return {"outlinks": links}
-
-
-@router.get("/graph")
-async def get_workspace_graph(
-    workspace_id: UUID,
-    current_user: dict = Depends(get_current_user),
-):
-    await _check_ws_access(workspace_id, current_user["id"])
-    return await wiki_service.get_workspace_graph(workspace_id)
 
 
 # --- Folder permissions / sharing ---

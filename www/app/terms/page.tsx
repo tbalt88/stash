@@ -65,7 +65,7 @@ export default function TermsPage() {
       <H2>Your content</H2>
       <p>
         You retain ownership of the content you and your agents submit to the
-        Service (prompts, tool calls, wiki pages, files, sessions, and anything
+        Service (prompts, tool calls, pages, files, sessions, and anything
         else you create in a workspace). You grant Fergana Labs a limited,
         worldwide, non-exclusive license to host, store, process, display, and
         transmit your content solely to operate and improve the Service for you

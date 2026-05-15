@@ -84,9 +84,9 @@ class StashClient:
 
     # --- Workspaces ---
 
-    def create_workspace(self, name: str, description: str = "", is_public: bool = False) -> dict:
+    def create_workspace(self, name: str, description: str = "") -> dict:
         return self._post("/api/v1/workspaces", json={
-            "name": name, "description": description, "is_public": is_public,
+            "name": name, "description": description,
         })
 
     def list_workspaces(self, mine: bool = False) -> list:

@@ -1,7 +1,7 @@
 """Sessions router: GUI-friendly endpoints for browsing and sharing sessions.
 
 A "session" in Stash is a sequence of `history_events` rows tied by
-session_id. The CLI's `stash share` materializes a session into a wiki page
+session_id. The CLI's `stash share` materializes a session into a page
 from a local .jsonl file. This router provides the same materialize step
 server-side, sourced from the events the workspace already has, so the
 frontend /history page can ship a Share button without involving the CLI.
@@ -14,7 +14,7 @@ from pydantic import BaseModel, Field
 
 from ..auth import get_current_user
 from ..database import get_pool
-from ..services import session_service, storage_service, wiki_service, workspace_service
+from ..services import files_tree_service, session_service, storage_service, workspace_service
 
 router = APIRouter(prefix="/api/v1", tags=["sessions"])
 
@@ -71,6 +71,7 @@ async def list_my_sessions(
           he.session_id,
           he.workspace_id,
           w.name AS workspace_name,
+          COALESCE(MAX(u.display_name), MAX(u.name), MAX(he.agent_name), 'Unknown user') AS user_name,
           MAX(he.agent_name) AS agent_name,
           COUNT(*)::INT AS event_count,
           MIN(he.created_at) AS started_at,
@@ -85,6 +86,7 @@ async def list_my_sessions(
           ) AS first_prompt_preview
         FROM history_events he
         LEFT JOIN workspaces w ON w.id = he.workspace_id
+        LEFT JOIN users u ON u.id = he.created_by
         WHERE {' AND '.join(where)}
         GROUP BY he.session_id, he.workspace_id, w.name
         ORDER BY last_event_at DESC
@@ -159,7 +161,7 @@ async def upload_session_artifact(
 
 
 async def _find_or_create_sessions_folder(workspace_id: UUID, user_id: UUID) -> dict:
-    return await wiki_service.find_or_create_root_folder(
+    return await files_tree_service.find_or_create_root_folder(
         workspace_id, SESSIONS_FOLDER_NAME, user_id
     )
 
@@ -191,7 +193,7 @@ async def materialize_session(
     session_id: str,
     current_user: dict = Depends(get_current_user),
 ):
-    """Idempotent: turn a session_id into a wiki page in the workspace's
+    """Idempotent: turn a session_id into a page in the workspace's
     Sessions folder, returning the page so the frontend can open ShareSheet
     on it. Re-materializing the same session updates the existing page rather
     than spawning duplicates."""
@@ -228,14 +230,14 @@ async def materialize_session(
         session_id,
     )
     if existing:
-        page = await wiki_service.update_page(
+        page = await files_tree_service.update_page(
             existing["id"],
             workspace_id,
             current_user["id"],
             content=content,
         )
     else:
-        page = await wiki_service.create_page(
+        page = await files_tree_service.create_page(
             workspace_id=workspace_id,
             name=page_name,
             content=content,

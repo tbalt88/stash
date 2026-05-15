@@ -16,14 +16,14 @@ from stashai.plugin.state import load_state, reset_stats, save_state
 
 CONTEXT = (
     "You have the `stash` CLI on your PATH. Run `stash --help` to see commands. "
-    "Use it to read transcripts, wiki pages, and history from your team's shared "
+    "Use it to read transcripts, pages, and history from your team's shared "
     "Stash workspace. Your activity in this repo is streamed to that workspace, "
     "so teammates' agents and humans can see what you're working on. "
     "Common reads (all support `--json`): "
     "`stash history search \"<query>\"`, "
     "`stash history query --limit 20`, "
     "`stash history agents`, "
-    "`stash wiki pages --all`."
+    "`stash pages --all`."
 )
 
 SESSION_CONTEXT = (

@@ -19,7 +19,6 @@ import {
   SessionsIcon,
   StashIcon,
   TableIcon,
-  WikiIcon,
 } from "../../../components/StashIcons";
 import { useAuth } from "../../../hooks/useAuth";
 import {
@@ -33,8 +32,8 @@ import {
   updateWorkspace,
   uploadFile,
   type WorkspaceOverview,
+  type WorkspaceFile,
   type WorkspaceStash,
-  type WikiFile,
 } from "../../../lib/api";
 import { useShareModal } from "../../../lib/shareModalContext";
 import type { FileInfo, Folder, Workspace, WorkspaceMember } from "../../../lib/types";
@@ -178,13 +177,14 @@ export default function WorkspaceHomePage() {
     subtitle: `${s.agent_name} · ${formatBytes(s.size_bytes)}`,
   }));
 
-  // Root-level wiki contents only. Nested folders/pages/files surface
+  // Root-level file contents only. Nested folders/pages/files surface
   // through their parent folder's detail page, not here.
-  const rootFolders = (spine?.wiki?.folders ?? []).filter((f) => !f.parent_folder_id);
-  const rootPages = (spine?.wiki?.pages ?? []).filter((p) => !p.folder_id);
-  const rootFiles = (spine?.wiki?.files ?? []).filter((f) => !f.folder_id);
+  const filesTree = spine?.files;
+  const rootFolders = (filesTree?.folders ?? []).filter((f) => !f.parent_folder_id);
+  const rootPages = (filesTree?.pages ?? []).filter((p) => !p.folder_id);
+  const rootFiles = (filesTree?.files ?? []).filter((f) => !f.folder_id);
 
-  const wikiFolderItems: CardItem[] = rootFolders.map((f) => ({
+  const folderItems: CardItem[] = rootFolders.map((f) => ({
     href: `/workspaces/${workspaceId}/folders/${f.id}`,
     icon: <FolderIcon />,
     title: f.name,
@@ -196,13 +196,13 @@ export default function WorkspaceHomePage() {
       .filter(Boolean)
       .join(" · ") || "Empty folder",
   }));
-  const wikiPageItems: CardItem[] = rootPages.map((p) => ({
+  const pageItems: CardItem[] = rootPages.map((p) => ({
     href: `/workspaces/${workspaceId}/p/${p.id}`,
     icon: <PageIcon />,
     title: p.name.replace(/\.md$/, ""),
     subtitle: "Page",
   }));
-  const wikiFileItems: CardItem[] = rootFiles.slice(0, 12).map((f) => {
+  const fileItems: CardItem[] = rootFiles.slice(0, 12).map((f) => {
     const isCsvLinked = f.content_type?.includes("csv") && f.linked_table_id;
     return {
       href: isCsvLinked
@@ -222,10 +222,10 @@ export default function WorkspaceHomePage() {
         : `${f.content_type || "file"} · ${formatBytes(f.size_bytes)}`,
     };
   });
-  const wikiItems = [...wikiFolderItems, ...wikiPageItems, ...wikiFileItems];
-  const totalFolders = spine?.wiki?.folders.length ?? 0;
-  const totalPages = spine?.wiki?.pages.length ?? 0;
-  const totalFiles = spine?.wiki?.files.length ?? 0;
+  const filesItems = [...folderItems, ...pageItems, ...fileItems];
+  const totalFolders = filesTree?.folders.length ?? 0;
+  const totalPages = filesTree?.pages.length ?? 0;
+  const totalFiles = filesTree?.files.length ?? 0;
 
   return (
     <>
@@ -344,7 +344,7 @@ export default function WorkspaceHomePage() {
                   Drop in anything above — a link, a note, or a file — and we&apos;ll file it into the
                   Hopper folder for you. Connect your agents via the Stash CLI and their sessions
                   appear under <span className="font-medium text-foreground">Sessions</span>; your
-                  pages, files, and folders live in the <span className="font-medium text-foreground">Wiki</span>.
+                  pages, files, and folders live in <span className="font-medium text-foreground">Files</span>.
                   Bundle any set of pages and sessions into a Product Stash when you need to publish or hand off context.
                 </p>
               </div>
@@ -354,7 +354,6 @@ export default function WorkspaceHomePage() {
           <SectionHeader
             icon={<SessionsIcon />}
             title="Sessions"
-            subtitle="episodic"
             trailing={`${spine?.sessions.length ?? 0} transcript${
               spine?.sessions.length === 1 ? "" : "s"
             }`}
@@ -365,11 +364,10 @@ export default function WorkspaceHomePage() {
             <EmptyState text="No sessions yet. Push agent transcripts via the CLI." />
           )}
 
-          {/* Wiki */}
+          {/* Files */}
           <SectionHeader
-            icon={<WikiIcon />}
-            title="Wiki"
-            subtitle="structured"
+            icon={<FileIcon />}
+            title="Files"
             trailing={`${totalFolders} folder${totalFolders === 1 ? "" : "s"} · ${
               totalPages
             } page${totalPages === 1 ? "" : "s"} · ${totalFiles} file${
@@ -391,7 +389,7 @@ export default function WorkspaceHomePage() {
                 onClick={() => fileInputRef.current?.click()}
                 className="rounded-md border border-border bg-base px-2.5 py-1 text-[12px] text-foreground hover:bg-raised"
               >
-                + Upload file
+                + Add page or file
               </button>
               <button
                 onClick={async () => {
@@ -402,7 +400,7 @@ export default function WorkspaceHomePage() {
                 }}
                 className="rounded-md border border-border bg-base px-2.5 py-1 text-[12px] text-foreground hover:bg-raised"
               >
-                + New page
+                + Add page
               </button>
               <button
                 onClick={async () => {
@@ -419,10 +417,45 @@ export default function WorkspaceHomePage() {
               </button>
             </div>
           )}
-          {wikiItems.length > 0 ? (
-            <CardGrid items={wikiItems} hover="brand" />
+          {filesItems.length > 0 ? (
+            <CardGrid items={filesItems} hover="brand" />
           ) : (
-            <EmptyState text="Upload PDFs, sheets, or create wiki pages." />
+            <EmptyState text="Upload files or create pages." />
+          )}
+
+          <SectionHeader
+            icon={<StashIcon />}
+            title="Stashes"
+            trailing={`${stashes.length} stash${stashes.length === 1 ? "" : "es"}`}
+          />
+          {isMember && (
+            <button
+              onClick={() =>
+                shareModal.open({
+                  workspaceId,
+                  workspaceName: workspace?.name,
+                  tab: "new",
+                })
+              }
+              className="mt-2 rounded-md bg-[var(--color-brand-600)] px-3 py-1.5 text-[13px] font-medium text-white hover:bg-[var(--color-brand-700)]"
+            >
+              + Add stash
+            </button>
+          )}
+          {stashes.length > 0 ? (
+            <CardGrid
+              items={stashes.slice(0, 8).map((stash) => ({
+                href: `/stashes/${stash.slug}`,
+                icon: <StashIcon />,
+                title: stash.title,
+                subtitle: `${stash.access} · ${stash.items.length} item${
+                  stash.items.length === 1 ? "" : "s"
+                }`,
+              }))}
+              hover="indigo"
+            />
+          ) : (
+            <EmptyState text="Create a Stash to bundle sessions and files." />
           )}
         </div>
       </div>
@@ -434,22 +467,17 @@ export default function WorkspaceHomePage() {
 function SectionHeader({
   icon,
   title,
-  subtitle,
   trailing,
 }: {
   icon: React.ReactNode;
   title: string;
-  subtitle: string;
   trailing: string;
 }) {
   return (
     <div className="mt-8 flex items-baseline justify-between">
       <h2 className="flex items-baseline gap-2 font-display text-xl font-semibold text-foreground">
         <span className="inline-flex text-[22px] text-muted">{icon}</span>
-        <span>
-          {title}{" "}
-          <span className="text-[12px] font-normal italic text-muted">· {subtitle}</span>
-        </span>
+        <span>{title}</span>
       </h2>
       <span className="text-[11.5px] text-muted">{trailing}</span>
     </div>
@@ -549,8 +577,9 @@ function addFolderToSpine(
 ) {
   setSpine((current) => {
     if (!current) return current;
+    if (!current.files) return current;
     const folders = [
-      ...current.wiki.folders,
+      ...current.files.folders,
       {
         id: folder.id,
         name: folder.name,
@@ -561,7 +590,7 @@ function addFolderToSpine(
       },
     ].sort((a, b) => a.name.localeCompare(b.name));
 
-    return { ...current, wiki: { ...current.wiki, folders } };
+    return { ...current, files: { ...current.files, folders } };
   });
 }
 
@@ -571,7 +600,8 @@ function addFileToSpine(
 ) {
   setSpine((current) => {
     if (!current) return current;
-    const nextFile: WikiFile = {
+    if (!current.files) return current;
+    const nextFile: WorkspaceFile = {
       id: file.id,
       name: file.name,
       folder_id: file.folder_id ?? null,
@@ -584,9 +614,9 @@ function addFileToSpine(
 
     return {
       ...current,
-      wiki: {
-        ...current.wiki,
-        files: [nextFile, ...current.wiki.files],
+      files: {
+        ...current.files,
+        files: [nextFile, ...current.files.files],
       },
     };
   });

@@ -59,7 +59,7 @@ To collaborate with teammates in a shared workspace:
 4. Each person runs `stash connect` and joins the workspace
 
 Now everyone's activity streams to the same workspace. You can:
-- Collaborate on shared wiki pages
+- Collaborate on shared pages
 - Query each other's activity (`stash history query --ws <workspace_id>`)
 
 ---
@@ -106,7 +106,7 @@ The plugin also gives Claude access to the rest of the `stash` CLI. Key commands
 stash history search "database migration" --ws <workspace_id>   # Full-text search events
 stash history query --ws <workspace_id> --limit 20              # Recent events
 stash history query --all --limit 20                             # Cross-workspace events
-stash wiki pages --all                                           # List all wiki pages
+stash pages --all                                           # List all pages
 stash workspaces list                                     # List your workspaces
 ```
 

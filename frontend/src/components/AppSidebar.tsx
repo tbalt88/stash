@@ -5,8 +5,8 @@ import { useCallback, useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import {
   type FolderContents,
+  type WorkspaceFile,
   type WorkspaceSidebar,
-  type WikiFile,
 } from "../lib/api";
 import {
   getCachedFolderContents,
@@ -28,7 +28,6 @@ import {
   SettingsIcon,
   StashIcon,
   TableIcon,
-  WikiIcon,
 } from "./StashIcons";
 
 interface AppSidebarProps {
@@ -42,7 +41,7 @@ interface WorkspaceNode extends Workspace {
   shared?: boolean;
 }
 
-type SidebarSection = "sessions" | "wiki";
+type SidebarSection = "sessions" | "files" | "stashes";
 
 const OPEN_WORKSPACES_KEY = "stash_sidebar_open_workspaces";
 const OPEN_SECTIONS_KEY = "stash_sidebar_open_sections";
@@ -166,6 +165,12 @@ function WorkspaceTree({
         </Link>
       </summary>
       <div className="ml-3 space-y-0.5 border-l border-border pl-2">
+        <NavRow
+          href={`/workspaces/${workspace.id}`}
+          icon={<StashIcon />}
+          label="Home"
+          active={pathname === `/workspaces/${workspace.id}`}
+        />
         <details
           open={openSections.sessions}
           onToggle={(e) => onSectionOpenChange("sessions", e.currentTarget.open)}
@@ -204,11 +209,17 @@ function WorkspaceTree({
           </div>
         </details>
 
-        <WikiBlock
+        <FilesBlock
           workspace={workspace}
           spine={spine}
-          open={openSections.wiki}
-          onOpenChange={(nextOpen) => onSectionOpenChange("wiki", nextOpen)}
+          open={openSections.files}
+          onOpenChange={(nextOpen) => onSectionOpenChange("files", nextOpen)}
+        />
+        <StashesBlock
+          workspace={workspace}
+          spine={spine}
+          open={openSections.stashes}
+          onOpenChange={(nextOpen) => onSectionOpenChange("stashes", nextOpen)}
         />
       </div>
     </details>
@@ -227,7 +238,7 @@ function FileNavRow({
   file,
 }: {
   workspaceId: string;
-  file: Pick<WikiFile, "id" | "name" | "content_type" | "linked_table_id">;
+  file: Pick<WorkspaceFile, "id" | "name" | "content_type" | "linked_table_id">;
 }) {
   const isCsvLinked =
     file.content_type?.includes("csv") && file.linked_table_id;
@@ -331,7 +342,7 @@ function FolderTreeNode({
   );
 }
 
-function WikiBlock({
+function FilesBlock({
   workspace,
   spine,
   open,
@@ -342,9 +353,10 @@ function WikiBlock({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
-  const folders = spine?.wiki.folders ?? [];
-  const pages = spine?.wiki.pages ?? [];
-  const files = spine?.wiki.files ?? [];
+  const tree = spine?.files;
+  const folders = tree?.folders ?? [];
+  const pages = tree?.pages ?? [];
+  const files = tree?.files ?? [];
   const rootFolders = folders.filter((f) => !f.parent_folder_id);
   const rootPages = pages.filter((p) => !p.folder_id);
   const rootFiles = files.filter((f) => !f.folder_id);
@@ -364,9 +376,9 @@ function WikiBlock({
       >
         <ChevronToggle onToggle={() => onOpenChange(!open)} />
         <span className="flex h-4 w-4 items-center justify-center text-[14px] text-muted">
-          <WikiIcon />
+          <FileIcon />
         </span>
-        <span className="flex-1 truncate font-medium text-foreground">Wiki</span>
+        <span className="flex-1 truncate font-medium text-foreground">Files</span>
         <span className="text-[10.5px] text-muted">{total}</span>
       </summary>
       <div className="ml-3 space-y-0.5 border-l border-border pl-2">
@@ -397,19 +409,73 @@ function WikiBlock({
   );
 }
 
+function StashesBlock({
+  workspace,
+  spine,
+  open,
+  onOpenChange,
+}: {
+  workspace: WorkspaceNode;
+  spine: WorkspaceSidebar | null;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const stashes = spine?.stashes ?? [];
+  return (
+    <details
+      open={open}
+      onToggle={(e) => onOpenChange(e.currentTarget.open)}
+      className="text-[13px]"
+    >
+      <summary
+        onClick={(e) => {
+          e.preventDefault();
+          onOpenChange(!open);
+        }}
+        className="page-row flex items-center gap-1 rounded-md px-2 py-1 hover:bg-raised"
+      >
+        <ChevronToggle onToggle={() => onOpenChange(!open)} />
+        <span className="flex h-4 w-4 items-center justify-center text-[14px] text-muted">
+          <StashIcon />
+        </span>
+        <span className="flex-1 truncate font-medium text-foreground">Stashes</span>
+        <span className="text-[10.5px] text-muted">{stashes.length}</span>
+      </summary>
+      <div className="ml-3 space-y-0.5 border-l border-border pl-2">
+        {stashes.slice(0, 12).map((stash) => (
+          <NavRow
+            key={stash.id}
+            href={`/stashes/${stash.slug}`}
+            icon={<StashIcon />}
+            label={stash.title}
+            trailing={
+              stash.is_external ? <span className="text-[10px] text-muted">ext</span> : null
+            }
+          />
+        ))}
+        {stashes.length === 0 ? (
+          <div className="px-2 py-1 text-[11px] italic text-muted">empty</div>
+        ) : null}
+      </div>
+    </details>
+  );
+}
+
 export default function AppSidebar({ user, onCmdkOpen }: AppSidebarProps) {
   const pathname = usePathname();
   const userId = user?.id;
   const cachedWorkspaces = readCachedWorkspaces(userId);
   const activeTreeMatch = pathname.match(
-    /^\/workspaces\/([^/]+)\/(sessions|folders|p|f)(?:\/|$)/
+    /^\/workspaces\/([^/]+)\/(sessions|folders|p|f|stashes)(?:\/|$)/
   );
   const activeTreeWorkspaceId = activeTreeMatch?.[1] ?? null;
   const activeTreeSection: SidebarSection | null =
     activeTreeMatch?.[2] === "sessions"
       ? "sessions"
+      : activeTreeMatch?.[2] === "stashes"
+        ? "stashes"
       : activeTreeMatch
-        ? "wiki"
+        ? "files"
         : null;
   const [mine, setMine] = useState<Workspace[]>(cachedWorkspaces?.mine ?? []);
   const [shared, setShared] = useState<Workspace[]>(cachedWorkspaces?.shared ?? []);
@@ -478,7 +544,8 @@ export default function AppSidebar({ user, onCmdkOpen }: AppSidebarProps) {
   function getOpenSections(workspaceId: string): Record<SidebarSection, boolean> {
     return {
       sessions: sectionOpen(workspaceId, "sessions"),
-      wiki: sectionOpen(workspaceId, "wiki"),
+      files: sectionOpen(workspaceId, "files"),
+      stashes: sectionOpen(workspaceId, "stashes"),
     };
   }
 
@@ -536,15 +603,6 @@ export default function AppSidebar({ user, onCmdkOpen }: AppSidebarProps) {
             ⌘K
           </span>
         </button>
-        <Link
-          href="/workspaces/new"
-          className="mt-0.5 flex w-full items-center gap-2 rounded-md px-2 py-1 text-foreground hover:bg-raised"
-        >
-          <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M12 5v14M5 12h14" />
-          </svg>
-          New workspace
-        </Link>
         <NavRow
           href="/discover"
           icon={<DiscoverIcon />}
@@ -585,8 +643,16 @@ export default function AppSidebar({ user, onCmdkOpen }: AppSidebarProps) {
         </>
       )}
 
-      <div className="mt-4 px-3 pb-1">
+      <div className="mt-4 flex items-center justify-between px-3 pb-1">
         <span className="text-[11px] font-semibold tracking-wide text-muted">MY WORKSPACES</span>
+        <Link
+          href="/workspaces/new"
+          className="rounded p-0.5 text-muted hover:bg-raised hover:text-foreground"
+          title="New workspace"
+          aria-label="New workspace"
+        >
+          +
+        </Link>
       </div>
       <nav className="px-1 text-[13.5px]">
         {mine.map((s) => (

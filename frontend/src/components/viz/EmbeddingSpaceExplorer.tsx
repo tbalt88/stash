@@ -10,13 +10,13 @@ interface Props {
 
 const SOURCE_COLORS: Record<string, string> = {
   history_events: "#8B5CF6",  // violet — agent
-  pages: "#22C55E",           // green — wiki
+  pages: "#22C55E",           // green — files
   table_rows: "#3B82F6",      // blue
 };
 
 const SOURCE_LABELS: Record<string, string> = {
   history_events: "History",
-  pages: "Wiki",
+  pages: "Files",
   table_rows: "Tables",
 };
 

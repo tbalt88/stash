@@ -156,12 +156,12 @@ export default function CLIPage() {
         ]}
       />
 
-      <H2>Wiki</H2>
+      <H2>Files</H2>
 
       <CommandRef
-        command="stash wiki pages"
+        command="stash pages"
         args="[--ws ID] [--all]"
-        description="List wiki pages in the current workspace."
+        description="List pages in the current workspace."
         params={[
           { name: "--ws", type: "string", desc: "Workspace ID override." },
           { name: "--all", type: "flag", desc: "Include pages from all workspaces." },
@@ -169,7 +169,7 @@ export default function CLIPage() {
       />
 
       <CommandRef
-        command="stash wiki tree"
+        command="stash files tree"
         args="[--ws ID]"
         description="Show the folder and page tree for a workspace."
         params={[
@@ -178,9 +178,9 @@ export default function CLIPage() {
       />
 
       <CommandRef
-        command="stash wiki create-folder"
+        command="stash files create-folder"
         args="<name> [--ws ID] [--parent FOLDER_ID]"
-        description="Create a folder in the wiki."
+        description="Create a folder in the files."
         params={[
           { name: "<name>", type: "string", desc: "Folder name.", required: true },
           { name: "--ws", type: "string", desc: "Workspace ID override." },
@@ -189,9 +189,9 @@ export default function CLIPage() {
       />
 
       <CommandRef
-        command="stash wiki add-page"
+        command="stash files add-page"
         args="<name> [--ws ID] [--folder FOLDER_ID] [--content '...']"
-        description="Add a new page to the wiki."
+        description="Add a new page to the files."
         params={[
           { name: "<name>", type: "string", desc: "Page title.", required: true },
           { name: "--folder", type: "string", desc: "Folder ID." },
@@ -200,9 +200,9 @@ export default function CLIPage() {
       />
 
       <CommandRef
-        command="stash wiki read-page"
+        command="stash files read-page"
         args="<page_id> [--ws ID]"
-        description="Read a wiki page."
+        description="Read a page."
         params={[
           { name: "<page_id>", type: "string", desc: "ID of the page.", required: true },
           { name: "--ws", type: "string", desc: "Workspace ID override." },
@@ -210,9 +210,9 @@ export default function CLIPage() {
       />
 
       <CommandRef
-        command="stash wiki edit-page"
+        command="stash files edit-page"
         args="<page_id> [--ws ID] --content '...'"
-        description="Update a wiki page. Reads from stdin if --content is not given."
+        description="Update a page. Reads from stdin if --content is not given."
         params={[
           { name: "<page_id>", type: "string", desc: "ID of the page.", required: true },
           { name: "--ws", type: "string", desc: "Workspace ID override." },

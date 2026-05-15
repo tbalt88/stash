@@ -81,65 +81,130 @@ export default async function StashPage({
   if (!data) notFound();
 
   const { stash, workspace_name, items } = data;
+  const groups = groupStashItems(items);
+  const fileCount = (groups.folder?.length ?? 0) + (groups.page?.length ?? 0) + (groups.file?.length ?? 0);
+  const sessionCount = (groups.session?.length ?? 0) + (groups.history?.length ?? 0);
+  const tableCount = groups.table?.length ?? 0;
 
   return (
-    <main className="mx-auto max-w-[900px] px-7 py-12">
-      <header className="border-b border-border-subtle pb-8">
-        <p className="font-mono text-[11px] uppercase tracking-wider text-muted">
-          A Stash from {workspace_name}
-        </p>
-        <h1 className="mt-3 font-display text-[clamp(32px,4vw,48px)] font-black leading-[1.05] tracking-[-0.03em] text-ink">
-          {stash.title}
-        </h1>
-        {stash.description ? (
-          <p className="mt-4 max-w-[680px] text-[16px] leading-[1.6] text-foreground">
-            {stash.description}
-          </p>
-        ) : null}
-        <div className="mt-6 flex items-center justify-between gap-4">
-          <p className="font-mono text-[11px] uppercase tracking-wider text-muted">
-            {items.length} item{items.length === 1 ? "" : "s"} · viewed {stash.view_count} time
-            {stash.view_count === 1 ? "" : "s"}
-          </p>
+    <main className="min-h-screen bg-background">
+      <div className="border-b border-border-subtle bg-surface">
+        <div className="mx-auto flex max-w-[1180px] items-center justify-between gap-4 px-7 py-3">
+          <div className="min-w-0">
+            <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-muted">
+              {workspace_name}
+            </p>
+            <h1 className="truncate font-display text-[20px] font-bold text-ink">
+              {stash.title}
+            </h1>
+          </div>
           <AddToWorkspaceButton slug={stash.slug} sourceWorkspaceId={stash.workspace_id} />
         </div>
-      </header>
+      </div>
 
-      <nav className="mt-8 rounded-lg border border-border-subtle bg-raised/30 p-4">
-        <p className="font-mono text-[11px] uppercase tracking-wider text-muted">In this Stash</p>
-        <ol className="mt-2 space-y-1">
-          {items.map((it, i) => (
-            <li key={`${it.object_type}-${it.object_id}`} className="text-[14px]">
-              <a href={`#item-${i}`} className="text-ink hover:text-brand">
-                <span className="font-mono text-[11px] uppercase text-muted mr-2">
-                  {it.object_type}
-                </span>
-                {it.label}
+      <div className="mx-auto grid max-w-[1180px] gap-8 px-7 py-8 lg:grid-cols-[220px_minmax(0,1fr)]">
+        <aside className="hidden lg:block">
+          <nav className="sticky top-6 space-y-1 text-[13px]">
+            <a href="#home" className="block rounded-md px-2 py-1.5 font-medium text-foreground hover:bg-raised">
+              Home
+            </a>
+            {fileCount > 0 ? (
+              <a href="#files" className="block rounded-md px-2 py-1.5 text-dim hover:bg-raised hover:text-foreground">
+                Files
               </a>
-            </li>
-          ))}
-        </ol>
-      </nav>
+            ) : null}
+            {sessionCount > 0 ? (
+              <a href="#sessions" className="block rounded-md px-2 py-1.5 text-dim hover:bg-raised hover:text-foreground">
+                Sessions
+              </a>
+            ) : null}
+            {tableCount > 0 ? (
+              <a href="#tables" className="block rounded-md px-2 py-1.5 text-dim hover:bg-raised hover:text-foreground">
+                Tables
+              </a>
+            ) : null}
+          </nav>
+        </aside>
 
-      <div className="mt-10 space-y-12">
-        {items.map((it, i) => (
-          <Item key={`${it.object_type}-${it.object_id}`} idx={i} item={it} />
-        ))}
+        <div className="min-w-0">
+          <section id="home" className="scroll-mt-8 border-b border-border-subtle pb-8">
+            <p className="font-mono text-[11px] uppercase tracking-wider text-muted">
+              Public Stash · {items.length} item{items.length === 1 ? "" : "s"} · viewed{" "}
+              {stash.view_count} time{stash.view_count === 1 ? "" : "s"}
+            </p>
+            <h2 className="mt-3 font-display text-[clamp(32px,4vw,48px)] font-black leading-[1.05] text-ink">
+              Home
+            </h2>
+            <div className="mt-5 max-w-[760px] rounded-lg border border-border-subtle bg-surface p-5">
+              <p className="font-mono text-[11px] uppercase tracking-wider text-muted">
+                About this Stash
+              </p>
+              <p className="mt-2 whitespace-pre-wrap text-[15px] leading-[1.7] text-foreground">
+                {stash.description || "No description yet."}
+              </p>
+            </div>
+            <div className="mt-5 grid gap-2 sm:grid-cols-3">
+              <SummaryStat label="Files" value={fileCount} />
+              <SummaryStat label="Sessions" value={sessionCount} />
+              <SummaryStat label="Tables" value={tableCount} />
+            </div>
+          </section>
+
+          <StashSection id="files" title="Files" items={[...(groups.folder ?? []), ...(groups.page ?? []), ...(groups.file ?? [])]} />
+          <StashSection id="sessions" title="Sessions" items={[...(groups.session ?? []), ...(groups.history ?? [])]} />
+          <StashSection id="tables" title="Tables" items={groups.table ?? []} />
+        </div>
       </div>
     </main>
   );
 }
 
-function Item({ idx, item }: { idx: number; item: StashItemInlined }) {
+function groupStashItems(items: StashItemInlined[]): Partial<Record<StashItemInlined["object_type"], StashItemInlined[]>> {
+  const groups: Partial<Record<StashItemInlined["object_type"], StashItemInlined[]>> = {};
+  for (const item of items) {
+    groups[item.object_type] = [...(groups[item.object_type] ?? []), item];
+  }
+  return groups;
+}
+
+function SummaryStat({ label, value }: { label: string; value: number }) {
   return (
-    <section id={`item-${idx}`} className="scroll-mt-12">
+    <div className="rounded-md border border-border-subtle bg-base px-3 py-2">
+      <div className="font-mono text-[10px] uppercase tracking-wider text-muted">{label}</div>
+      <div className="mt-1 text-[20px] font-semibold text-ink">{value}</div>
+    </div>
+  );
+}
+
+function StashSection({ id, title, items }: { id: string; title: string; items: StashItemInlined[] }) {
+  if (items.length === 0) return null;
+  return (
+    <section id={id} className="scroll-mt-8 border-b border-border-subtle py-8 last:border-b-0">
+      <div className="mb-5 flex items-center justify-between gap-3">
+        <h2 className="font-display text-[24px] font-bold text-ink">{title}</h2>
+        <span className="font-mono text-[10px] uppercase tracking-wider text-muted">
+          {items.length}
+        </span>
+      </div>
+      <div className="space-y-7">
+        {items.map((item) => (
+          <Item key={`${item.object_type}-${item.object_id}`} item={item} />
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function Item({ item }: { item: StashItemInlined }) {
+  return (
+    <section id={`item-${item.object_type}-${item.object_id}`} className="scroll-mt-12">
       <div className="mb-3 flex items-center gap-2">
         <span className="rounded border border-border-subtle px-2 py-0.5 font-mono text-[10px] uppercase text-muted">
           {item.object_type}
         </span>
         <h2 className="font-display text-[20px] font-bold text-ink">{item.label}</h2>
       </div>
-      <div className="rounded-lg border border-border-subtle bg-raised/20 p-5">
+      <div className="rounded-lg border border-border-subtle bg-surface p-5">
         <ItemBody item={item} />
       </div>
     </section>

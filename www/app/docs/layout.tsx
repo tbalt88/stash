@@ -36,7 +36,7 @@ const NAV: NavSection[] = [
           { href: "/docs/cli#first-time-setup", label: "First-time setup" },
           { href: "/docs/cli#authentication", label: "Authentication" },
           { href: "/docs/cli#workspaces", label: "Workspaces" },
-          { href: "/docs/cli#wiki", label: "Wiki" },
+          { href: "/docs/cli#files", label: "Files" },
           { href: "/docs/cli#history", label: "History" },
           { href: "/docs/cli#tables", label: "Tables" },
           { href: "/docs/cli#files", label: "Files" },

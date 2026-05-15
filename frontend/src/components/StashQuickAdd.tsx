@@ -115,7 +115,7 @@ export default function StashQuickAdd({ workspaceId, user: _user, onAdded }: Sta
 
   const statusText =
     hint ||
-    (status === "saved" ? "Added to wiki" : "");
+    (status === "saved" ? "Added to Files" : "");
   const statusTone =
     status === "error"
       ? "text-red-500"

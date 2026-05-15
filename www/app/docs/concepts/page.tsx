@@ -5,7 +5,7 @@ const CONCEPTS: { name: string; badge: string; badgeColor: string; desc: React.R
     name: "Workspace",
     badge: "Container",
     badgeColor: "bg-blue-500/10 text-blue-500",
-    desc: "Top-level permissioned container. Members share all resources: wiki pages, history, tables, files, and Product Stashes. Invite others with a short code.",
+    desc: "Top-level permissioned container. Members share all resources: pages, history, tables, files, and Product Stashes. Invite others with a short code.",
   },
   {
     name: "History",
@@ -14,20 +14,19 @@ const CONCEPTS: { name: string; badge: string; badgeColor: string; desc: React.R
     desc: "Append-only event log scoped to a workspace. Every tool call, message, and session event is recorded with timestamps, agent names, and metadata. Events are grouped by agent_name and session_id for a conversation-like view. Searchable via full-text search.",
   },
   {
-    name: "Wiki",
-    badge: "Wiki",
+    name: "Files",
+    badge: "Files",
     badgeColor: "bg-green-500/10 text-green-600",
     desc: (
       <>
-        Wiki-style markdown pages organized in folders. Supports{" "}
-        <Code>{"[[Page Name]]"}</Code> wiki links with backlinks, page graph visualization, and semantic
-        search. Rich-text editor with autosave.
+        Markdown and HTML pages organized in folders, scoped to a workspace. Rich-text editor with
+        autosave, semantic search, and file attachments.
       </>
     ),
   },
   {
     name: "Table",
-    badge: "Wiki",
+    badge: "Files",
     badgeColor: "bg-green-500/10 text-green-600",
     desc: "Structured data with typed columns (text, number, date, select, etc.). Filters, sorting, views, CSV import/export. Optional row embeddings for semantic search — configure which columns to embed.",
   },
@@ -35,13 +34,13 @@ const CONCEPTS: { name: string; badge: string; badgeColor: string; desc: React.R
     name: "File",
     badge: "Attachment",
     badgeColor: "bg-muted/20 text-muted",
-    desc: "Images, PDFs, and documents stored in S3-compatible storage (Cloudflare R2, AWS S3, or MinIO). Uploadable as attachments via the API or wiki editor.",
+    desc: "Images, PDFs, and documents stored in S3-compatible storage (Cloudflare R2, AWS S3, or MinIO). Uploadable as attachments via the API or files editor.",
   },
   {
     name: "Search",
     badge: "Cross-cutting",
     badgeColor: "bg-muted/20 text-muted",
-    desc: "Universal cross-resource AI search. Ask a natural language question and get a synthesized answer across wiki pages, tables, history, files, and Stashes. Supports workspace scoping and resource type filtering.",
+    desc: "Universal cross-resource AI search. Ask a natural language question and get a synthesized answer across pages, tables, history, files, and Stashes. Supports workspace scoping and resource type filtering.",
   },
 ];
 

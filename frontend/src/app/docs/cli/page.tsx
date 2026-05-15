@@ -40,14 +40,14 @@ stash config [key] [value]              # View or update any config value`}</Cod
         CI and scripts.
       </Callout>
 
-      <H3>Wiki</H3>
-      <CodeBlock>{`stash wiki tree [--ws ID]
-stash wiki folders [--ws ID]
-stash wiki create-folder <name> [--ws ID] [--parent FOLDER_ID]
-stash wiki pages [--ws ID] [--all]
-stash wiki add-page <name> [--ws ID] [--folder FOLDER_ID] [--content "..."]
-stash wiki read-page <page_id> [--ws ID]
-stash wiki edit-page <page_id> --content "..."`}</CodeBlock>
+      <H3>Files</H3>
+      <CodeBlock>{`stash files tree [--ws ID]
+stash files folders [--ws ID]
+stash files create-folder <name> [--ws ID] [--parent FOLDER_ID]
+stash files pages [--ws ID] [--all]
+stash files add-page <name> [--ws ID] [--folder FOLDER_ID] [--content "..."]
+stash files read-page <page_id> [--ws ID]
+stash files edit-page <page_id> --content "..."`}</CodeBlock>
 
       <H3>History</H3>
       <CodeBlock>{`stash history push <content> [--ws ID] [--agent cli] [--type message]

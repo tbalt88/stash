@@ -1,4 +1,4 @@
-"""Workspace knowledge router: overview, sessions, wiki, and skills."""
+"""Workspace knowledge router: overview, sessions, files, stashes, and skills."""
 
 import asyncio
 import json
@@ -16,6 +16,7 @@ from ..services import (
     ask_service,
     memory_service,
     skill_service,
+    stash_service,
     workspace_service,
 )
 
@@ -25,7 +26,7 @@ router = APIRouter(prefix="/api/v1/workspaces", tags=["workspaces"])
 # ---------------------------------------------------------------------------
 # Overview + Sidebar — the per-workspace view shapes
 #
-# `/overview` is what the workspace home page loads: sessions + wiki. `/sidebar`
+# `/overview` is what the workspace home page loads: sessions + files + stashes. `/sidebar`
 # is a smaller payload for the nav tree, served with an ETag so it can be
 # cached cheaply across navigation.
 # ---------------------------------------------------------------------------
@@ -48,13 +49,8 @@ async def _list_sessions(workspace_id: UUID) -> list[dict]:
     ]
 
 
-async def _wiki_tree(workspace_id: UUID) -> dict:
-    """One unified Wiki tree — folders, pages, and files for the workspace.
-
-    No Drive/Skill split. A folder is a folder regardless of whether it
-    contains a SKILL.md. The frontend builds the tree from parent_folder_id
-    and folder_id; the spine is just the flat row set.
-    """
+async def _files_tree(workspace_id: UUID) -> dict:
+    """One unified file tree: folders, pages, and uploaded files."""
     pool = get_pool()
     folder_rows, page_rows, file_rows = await asyncio.gather(
         pool.fetch(
@@ -113,6 +109,25 @@ async def _wiki_tree(workspace_id: UUID) -> dict:
         ],
         "files": file_payload,
     }
+
+
+async def _list_stashes(workspace_id: UUID) -> list[dict]:
+    stashes = await stash_service.list_workspace_stashes(workspace_id)
+    return [
+        {
+            "id": str(stash["id"]),
+            "workspace_id": str(stash["workspace_id"]),
+            "slug": stash["slug"],
+            "title": stash["title"],
+            "description": stash["description"],
+            "access": stash["access"],
+            "discoverable": stash["discoverable"],
+            "is_external": stash["is_external"],
+            "item_count": len(stash.get("items", [])),
+            "updated_at": stash["updated_at"],
+        }
+        for stash in stashes
+    ]
 
 
 # ---------------------------------------------------------------------------
@@ -179,21 +194,19 @@ async def ask_workspace(
 async def get_workspace_overview(
     workspace_id: UUID, current_user: dict = Depends(get_current_user)
 ):
-    """{sessions, wiki} for the workspace home page.
+    """{sessions, files, stashes} for the workspace home page.
 
-    `wiki` is the flat folder + page + file row set; the frontend builds the tree
+    `files` is the flat folder + page + file row set; the frontend builds the tree
     from parent_folder_id.
     """
     await _check_overview_access(workspace_id, current_user["id"])
 
-    sessions, wiki = await asyncio.gather(
+    sessions, files, stashes = await asyncio.gather(
         _list_sessions(workspace_id),
-        _wiki_tree(workspace_id),
+        _files_tree(workspace_id),
+        _list_stashes(workspace_id),
     )
-    return {
-        "sessions": sessions,
-        "wiki": wiki,
-    }
+    return {"sessions": sessions, "files": files, "stashes": stashes}
 
 
 @router.get("/{workspace_id}/sidebar")
@@ -202,7 +215,7 @@ async def get_workspace_sidebar(
     request: Request,
     current_user: dict = Depends(get_current_user),
 ):
-    """Lighter payload for the nav sidebar: just sessions + wiki. Carries an
+    """Lighter payload for the nav sidebar: sessions + files + stashes. Carries an
     ETag derived from the workspace's mutation timestamps so navigation
     between workspaces hits 304 instead of re-fetching."""
     await _check_overview_access(workspace_id, current_user["id"])
@@ -211,12 +224,16 @@ async def get_workspace_sidebar(
     if request.headers.get("if-none-match") == etag:
         return Response(status_code=304, headers={"ETag": etag})
 
-    sessions, wiki = await asyncio.gather(
+    sessions, files, stashes = await asyncio.gather(
         _list_sessions(workspace_id),
-        _wiki_tree(workspace_id),
+        _files_tree(workspace_id),
+        _list_stashes(workspace_id),
     )
     return Response(
-        content=json.dumps({"sessions": sessions, "wiki": wiki}, default=_json_default),
+        content=json.dumps(
+            {"sessions": sessions, "files": files, "stashes": stashes},
+            default=_json_default,
+        ),
         media_type="application/json",
         headers={"ETag": etag, "Cache-Control": "private, max-age=15"},
     )
@@ -240,11 +257,12 @@ async def _sidebar_etag(workspace_id: UUID) -> str:
           (SELECT MAX(updated_at) FROM folders WHERE workspace_id = $1)          AS d,
           (SELECT MAX(GREATEST(finished_at, started_at)) FROM sessions
             WHERE workspace_id = $1)                                              AS s,
+          (SELECT MAX(updated_at) FROM stashes WHERE workspace_id = $1)            AS st,
           (SELECT updated_at FROM workspaces WHERE id = $1)                       AS w
         """,
         workspace_id,
     )
-    raw = "|".join(str(row[k] or "") for k in ("p", "f", "d", "s", "w"))
+    raw = "|".join(str(row[k] or "") for k in ("p", "f", "d", "s", "st", "w"))
     return f'W/"{_short_hash(raw)}"'
 
 

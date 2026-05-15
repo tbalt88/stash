@@ -69,11 +69,12 @@ const sharedWorkspace = {
 
 const emptySidebar = {
   sessions: [],
-  wiki: {
+  files: {
     folders: [],
     pages: [],
     files: [],
   },
+  stashes: [],
 };
 
 function detailsFor(label: string): HTMLDetailsElement {
@@ -105,7 +106,8 @@ describe("AppSidebar tree expansion", () => {
     expect(screen.getByText("Activity").closest("a")).toHaveAttribute("href", "/activity");
     expect(detailsFor("Demo Stash")).not.toHaveAttribute("open");
     expect(detailsFor("Sessions")).not.toHaveAttribute("open");
-    expect(detailsFor("Wiki")).not.toHaveAttribute("open");
+    expect(detailsFor("Files")).not.toHaveAttribute("open");
+    expect(detailsFor("Stashes")).not.toHaveAttribute("open");
     expect(getWorkspaceSidebar).not.toHaveBeenCalled();
   });
 
@@ -145,7 +147,8 @@ describe("AppSidebar tree expansion", () => {
 
     await waitFor(() => expect(detailsFor("Demo Stash")).toHaveAttribute("open"));
     expect(detailsFor("Sessions")).toHaveAttribute("open");
-    expect(detailsFor("Wiki")).not.toHaveAttribute("open");
+    expect(detailsFor("Files")).not.toHaveAttribute("open");
+    expect(detailsFor("Stashes")).not.toHaveAttribute("open");
     expect(getWorkspaceSidebar).toHaveBeenCalledWith("ws-1");
   });
 
@@ -158,7 +161,8 @@ describe("AppSidebar tree expansion", () => {
 
     expect(detailsFor("Demo Stash")).not.toHaveAttribute("open");
     expect(detailsFor("Sessions")).not.toHaveAttribute("open");
-    expect(detailsFor("Wiki")).not.toHaveAttribute("open");
+    expect(detailsFor("Files")).not.toHaveAttribute("open");
+    expect(detailsFor("Stashes")).not.toHaveAttribute("open");
     expect(getWorkspaceSidebar).not.toHaveBeenCalled();
   });
 
@@ -171,7 +175,7 @@ describe("AppSidebar tree expansion", () => {
 
     await waitFor(() => expect(detailsFor("Demo Stash")).toHaveAttribute("open"));
     expect(detailsFor("Sessions")).not.toHaveAttribute("open");
-    expect(detailsFor("Wiki")).toHaveAttribute("open");
+    expect(detailsFor("Files")).toHaveAttribute("open");
     expect(localStorage.getItem("stash_sidebar_open_workspaces")).toBeNull();
     expect(localStorage.getItem("stash_sidebar_open_sections")).toBeNull();
   });

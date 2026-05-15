@@ -161,7 +161,7 @@ export default function FolderDetailPage() {
             </button>
           </div>
 
-          {/* Contents grid — same card style as the workspace home Wiki section */}
+          {/* Contents grid — same card style as the workspace home Files section */}
           {contents && (
             <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
               {contents.subfolders.map((sub) => (

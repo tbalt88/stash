@@ -50,9 +50,9 @@ stash login`}</CodeBlock>
 
       <H3>4. Build your knowledge base</H3>
       <P>
-        Sessions stream into searchable history. Promote useful outputs into wiki pages, organize
+        Sessions stream into searchable history. Promote useful outputs into pages, organize
         them with folders, and connect related pages with{" "}
-        <code className="text-brand font-mono text-[13px]">[[backlinks]]</code>.
+        <code className="text-brand font-mono text-[13px]">Stashes</code>.
       </P>
     </>
   );

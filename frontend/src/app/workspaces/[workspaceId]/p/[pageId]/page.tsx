@@ -1,26 +1,22 @@
 "use client";
 
 import { useParams, useRouter } from "next/navigation";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useBreadcrumbs } from "../../../../../components/BreadcrumbContext";
 import DownloadMenu, { downloadBlob } from "../../../../../components/DownloadMenu";
 import { PageIcon } from "../../../../../components/StashIcons";
 import HtmlPageView from "../../../../../components/workspace/HtmlPageView";
 import MarkdownEditor, { type SaveStatus } from "../../../../../components/workspace/MarkdownEditor";
-import PrivacyTagControl from "../../../../../components/workspace/PrivacyTagControl";
 import { useAuth } from "../../../../../hooks/useAuth";
 import {
   getFolderContents,
   getPage,
-  getWorkspace,
   listObjectStashes,
-  listWorkspacePages,
   updatePage,
   type FolderBreadcrumb,
   type WorkspaceStash,
-  type WorkspacePageEntry,
 } from "../../../../../lib/api";
-import type { Page, Workspace } from "../../../../../lib/types";
+import type { Page } from "../../../../../lib/types";
 
 function wrapHtml(title: string, body: string): string {
   return `<!doctype html><html><head><meta charset="utf-8"><title>${escapeHtml(
@@ -41,14 +37,11 @@ export default function StashPageView() {
   const pageId = params.pageId as string;
   const { user, loading, logout } = useAuth();
 
-  const [workspace, setWorkspace] = useState<Workspace | null>(null);
   const [page, setPage] = useState<Page | null>(null);
   const [folderChain, setFolderChain] = useState<FolderBreadcrumb[]>([]);
-  const [pageIndex, setPageIndex] = useState<WorkspacePageEntry[]>([]);
   const [containingStashes, setContainingStashes] = useState<WorkspaceStash[]>([]);
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("saved");
   const [error, setError] = useState("");
-  const confirmedSharedEdit = useRef(false);
 
   useBreadcrumbs(
     [
@@ -63,14 +56,8 @@ export default function StashPageView() {
 
   const load = useCallback(async () => {
     try {
-      const [workspace, p, index] = await Promise.all([
-        getWorkspace(workspaceId),
-        getPage(workspaceId, pageId),
-        listWorkspacePages(workspaceId).catch(() => [] as WorkspacePageEntry[]),
-      ]);
-      setWorkspace(workspace);
+      const p = await getPage(workspaceId, pageId);
       setPage(p);
-      setPageIndex(index);
       setContainingStashes(await listObjectStashes(workspaceId, "page", pageId));
       if (p.folder_id) {
         const contents = await getFolderContents(workspaceId, p.folder_id);
@@ -95,26 +82,9 @@ export default function StashPageView() {
     [workspaceId, pageId]
   );
 
-  const confirmSharedEdit = useCallback(() => {
-    if (containingStashes.length === 0) return true;
-    if (confirmedSharedEdit.current) return true;
-    const names = containingStashes.map((stash) => stash.title).join(", ");
-    const ok = window.confirm(
-      `This page is included in ${containingStashes.length} Stash${
-        containingStashes.length === 1 ? "" : "es"
-      }: ${names}. Changes will update those public Stash links. Continue editing?`
-    );
-    if (ok) confirmedSharedEdit.current = true;
-    return ok;
-  }, [containingStashes]);
-
   useEffect(() => {
     if (user) load();
   }, [user, load]);
-
-  useEffect(() => {
-    confirmedSharedEdit.current = false;
-  }, [pageId]);
 
   useEffect(() => {
     if (!loading && !user) router.push("/login");
@@ -136,7 +106,8 @@ export default function StashPageView() {
   return (
     <div className="scroll-thin flex-1 overflow-y-auto">
       <div className="h-16 w-full bg-gradient-to-r from-[var(--color-brand-200)] via-[var(--color-brand-100)] to-amber-100" />
-        <div className="mx-auto -mt-6 max-w-3xl px-12 pb-20">
+        <div className="mx-auto -mt-6 grid max-w-5xl gap-8 px-12 pb-20 lg:grid-cols-[minmax(0,1fr)_240px]">
+          <main className="min-w-0">
           <div className="flex h-12 w-12 items-center justify-center text-5xl text-muted">
             <PageIcon />
           </div>
@@ -148,7 +119,6 @@ export default function StashPageView() {
               {updatedAt && (
                 <span>
                   Last edited {updatedAt}
-                  {workspace ? <span> in <span className="text-foreground">{workspace.name}</span></span> : null}
                 </span>
               )}
               {page && page.content_type !== "html" && (
@@ -165,20 +135,6 @@ export default function StashPageView() {
                 </span>
               )}
             </div>
-            {containingStashes.length > 0 && (
-              <div className="flex flex-wrap items-center gap-1.5">
-                <span className="text-[11px] uppercase tracking-wider text-muted">In stashes</span>
-                {containingStashes.map((stash) => (
-                  <a
-                    key={stash.id}
-                    href={`/stashes/${stash.slug}`}
-                    className="rounded-md border border-border-subtle px-2 py-0.5 text-[11px] text-foreground hover:border-brand hover:text-brand"
-                  >
-                    {stash.title}
-                  </a>
-                ))}
-              </div>
-            )}
             {page && (
               <DownloadMenu
                 options={[
@@ -215,17 +171,6 @@ export default function StashPageView() {
             </div>
           )}
 
-          {containingStashes.length > 0 && page?.content_type !== "html" ? (
-            <div className="mt-4 rounded-lg border border-amber-300 bg-amber-50 px-4 py-2 text-[13px] leading-relaxed text-amber-800">
-              This page appears in {containingStashes.length} Stash
-              {containingStashes.length === 1 ? "" : "es"}. Edits update those shared links.
-            </div>
-          ) : null}
-
-          {page ? (
-            <PrivacyTagControl workspaceId={workspaceId} objectType="page" objectId={page.id} />
-          ) : null}
-
           <article className="mt-8 text-[15px] leading-relaxed text-foreground">
             {page ? (
               page.content_type === "html" ? (
@@ -237,11 +182,8 @@ export default function StashPageView() {
               ) : (
                 <MarkdownEditor
                   workspaceId={workspaceId}
-                  folderPath={folderChain.map((c) => c.name)}
                   file={page}
-                  pageIndex={pageIndex}
                   onSave={handleSave}
-                  confirmSave={confirmSharedEdit}
                   onSaveStatusChange={setSaveStatus}
                   onNavigateInternal={(href) => router.push(href)}
                 />
@@ -250,7 +192,41 @@ export default function StashPageView() {
               <p className="text-muted">Loading…</p>
             )}
           </article>
+          </main>
+          <StashAside stashes={containingStashes} />
         </div>
       </div>
+  );
+}
+
+function StashAside({ stashes }: { stashes: WorkspaceStash[] }) {
+  return (
+    <aside className="mt-20 hidden lg:block">
+      <div className="sticky top-16 rounded-lg border border-border-subtle bg-surface p-3">
+        <div className="text-[11px] font-semibold uppercase tracking-wider text-muted">
+          In Stashes
+        </div>
+        {stashes.length > 0 ? (
+          <div className="mt-2 flex flex-col gap-1.5">
+            {stashes.map((stash) => (
+              <a
+                key={stash.id}
+                href={`/stashes/${stash.slug}`}
+                className="rounded-md border border-border-subtle bg-base px-2.5 py-2 text-[12px] text-foreground hover:border-brand hover:text-brand"
+              >
+                <span className="block truncate font-medium">{stash.title}</span>
+                <span className="mt-0.5 block text-[11px] capitalize text-muted">
+                  {stash.access}
+                </span>
+              </a>
+            ))}
+          </div>
+        ) : (
+          <div className="mt-2 text-[12px] leading-relaxed text-muted">
+            This page is not in a Stash yet.
+          </div>
+        )}
+      </div>
+    </aside>
   );
 }

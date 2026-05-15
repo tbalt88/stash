@@ -37,17 +37,15 @@ from claude_agent_sdk import (
 from ..config import settings
 from ..models import StashItem
 from . import (
+    files_tree_service,
     memory_service,
     permission_service,
     skill_service,
     stash_service,
     table_service,
-    wiki_service,
 )
 
 logger = logging.getLogger(__name__)
-
-_VISIBILITY_RANK = {"private": 0, "inherit": 0, "link": 1, "public": 2}
 
 _workspace_ctx: contextvars.ContextVar[UUID | None] = contextvars.ContextVar(
     "stash_workspace_id", default=None
@@ -111,7 +109,7 @@ def _stash_to_dict(stash: dict) -> dict:
         "slug": stash["slug"],
         "title": stash["title"],
         "description": stash["description"],
-        "is_public": bool(stash["is_public"]),
+        "access": stash["access"],
         "discoverable": bool(stash["discoverable"]),
         "view_count": stash["view_count"],
         "items": [_stash_item_to_dict(item) for item in stash.get("items", [])],
@@ -129,13 +127,6 @@ async def _parse_stash_items(raw_items: list[dict], workspace_id: UUID) -> list[
         if item_workspace_id != workspace_id:
             raise ValueError("Stash items must be in the active workspace")
     return items
-
-
-async def _make_stash_items_public(items: list[StashItem]) -> None:
-    for item in items:
-        current = await permission_service.get_visibility(item.object_type, item.object_id)
-        if _VISIBILITY_RANK.get(current, 0) < _VISIBILITY_RANK["public"]:
-            await permission_service.set_visibility(item.object_type, item.object_id, "public")
 
 
 # --- Tool implementations --------------------------------------------------
@@ -173,7 +164,7 @@ async def _search_history(args: dict) -> dict:
 
 @tool(
     "read_page",
-    "Read the full markdown body of a wiki page by id.",
+    "Read the full markdown body of a page by id.",
     {
         "type": "object",
         "properties": {"page_id": {"type": "string"}},
@@ -182,7 +173,7 @@ async def _search_history(args: dict) -> dict:
 )
 async def _read_page(args: dict) -> dict:
     workspace_id = _current_workspace()
-    page = await wiki_service.get_page(UUID(args["page_id"]), workspace_id)
+    page = await files_tree_service.get_page(UUID(args["page_id"]), workspace_id)
     if not page:
         return _text_result(json.dumps({"error": "not found"}))
     return _text_result(
@@ -198,7 +189,7 @@ async def _read_page(args: dict) -> dict:
 
 @tool(
     "grep_pages",
-    "Full-text search across wiki pages in this Stash Workspace. Returns page id + snippet.",
+    "Full-text search across pages in this Stash Workspace. Returns page id + snippet.",
     {
         "type": "object",
         "properties": {
@@ -210,7 +201,7 @@ async def _read_page(args: dict) -> dict:
 )
 async def _grep_pages(args: dict) -> dict:
     workspace_id = _current_workspace()
-    rows = await wiki_service.search_pages_fts(
+    rows = await files_tree_service.search_pages_fts(
         workspace_id, args.get("pattern", ""), limit=int(args.get("limit", 10))
     )
     out = [
@@ -358,7 +349,11 @@ async def _list_stashes(args: dict) -> dict:
         "properties": {
             "title": {"type": "string"},
             "description": {"type": "string", "default": ""},
-            "is_public": {"type": "boolean", "default": False},
+            "access": {
+                "type": "string",
+                "enum": ["workspace", "private", "public"],
+                "default": "workspace",
+            },
             "discoverable": {"type": "boolean", "default": False},
             "items": {
                 "type": "array",
@@ -384,19 +379,17 @@ async def _list_stashes(args: dict) -> dict:
 async def _create_stash(args: dict) -> dict:
     workspace_id = _current_workspace()
     user_id = _current_user()
-    is_public = bool(args.get("is_public", False))
+    access = args.get("access") or "workspace"
     discoverable = bool(args.get("discoverable", False))
-    if discoverable and not is_public:
+    if discoverable and access != "public":
         return _text_result(json.dumps({"error": "Discover Stashes must be public"}))
     items = await _parse_stash_items(args.get("items") or [], workspace_id)
-    if is_public:
-        await _make_stash_items_public(items)
     stash = await stash_service.create_stash(
         workspace_id=workspace_id,
         owner_id=user_id,
         title=args["title"],
         description=args.get("description") or "",
-        is_public=is_public,
+        access=access,
         discoverable=discoverable,
         cover_image_url=None,
         items=items,
@@ -413,7 +406,10 @@ async def _create_stash(args: dict) -> dict:
             "stash_id": {"type": "string"},
             "title": {"type": "string"},
             "description": {"type": "string"},
-            "is_public": {"type": "boolean"},
+            "access": {
+                "type": "string",
+                "enum": ["workspace", "private", "public"],
+            },
             "discoverable": {"type": "boolean"},
             "items": {
                 "type": "array",
@@ -445,21 +441,12 @@ async def _update_stash(args: dict) -> dict:
     items = None
     if "items" in args:
         items = await _parse_stash_items(args.get("items") or [], workspace_id)
-    if args.get("is_public") is True:
-        publish_items = items
-        if publish_items is None:
-            existing = await stash_service.get_stash(stash_id)
-            if not existing:
-                return _text_result(json.dumps({"error": "not found"}))
-            publish_items = [StashItem(**item) for item in existing["items"]]
-        await _make_stash_items_public(publish_items)
-
     stash = await stash_service.update_stash(
         stash_id,
         user_id,
         title=args.get("title"),
         description=args.get("description"),
-        is_public=args.get("is_public"),
+        access=args.get("access"),
         discoverable=args.get("discoverable"),
         items=items,
     )

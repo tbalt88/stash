@@ -45,7 +45,7 @@ export default function NewWorkspacePage() {
         </h1>
         <p className="mt-3 text-[15px] leading-relaxed text-foreground/80">
           A Stash Workspace is your team&apos;s shared home for agent work: sessions,
-          wiki pages, folders, files, and the stashes you publish from them.
+          Files, folders, and the Stashes you publish from them.
         </p>
 
         <form onSubmit={submit} className="mt-8 flex flex-col gap-4">
@@ -109,7 +109,7 @@ export default function NewWorkspacePage() {
               from your CLI / MCP integration.
             </li>
             <li>
-              ▦ <strong className="text-foreground">Wiki files</strong> — drop PDFs, slides, sheets;
+              ▦ <strong className="text-foreground">Files</strong> — drop PDFs, slides, sheets;
               text gets extracted and indexed for the Ask agent.
             </li>
           </ul>

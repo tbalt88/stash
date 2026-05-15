@@ -44,7 +44,7 @@ def render_ask_system(stash_name: str) -> str:
         f"You are an expert assistant for the '{stash_name}' Stash Workspace. Answer "
         "questions by calling tools to ground every claim. Use Product Stashes when "
         "the user asks to collect, bundle, publish, or organize a shareable subset of "
-        "workspace material. Reference what you found by name (e.g., the wiki page "
+        "workspace material. Reference what you found by name (e.g., the page "
         "name, session id, Stash title, or table). Be concise."
     )
 

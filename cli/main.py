@@ -1,4 +1,4 @@
-"""Stash CLI — command-line interface for workspaces, wiki pages, tables, history, and search."""
+"""Stash CLI — command-line interface for workspaces, files, tables, history, and search."""
 
 from __future__ import annotations
 
@@ -31,7 +31,7 @@ from .formatting import console, output_json, print_members, print_user, print_w
 
 app = typer.Typer(
     name="stash",
-    help="Stash CLI — workspaces, Product Stashes, wiki pages, tables, history.",
+    help="Stash CLI — workspaces, Product Stashes, files, tables, history.",
 )
 
 
@@ -670,7 +670,7 @@ def browse(
     """Browse the public Stash catalog. Works from any directory — no workspace binding required."""
     with _client() as c:
         try:
-            data = c.list_catalog(query=query, sort=sort)
+            data = c.list_discover_stashes(query=query, sort=sort)
         except StashError as e:
             _err(e)
 
@@ -1007,7 +1007,6 @@ def share_session(
             ws,
             title=page_title,
             description="Shared session artifact",
-            ensure="public",
             items=stash_items,
         )
 
@@ -1170,7 +1169,6 @@ def upload(
                 ws,
                 title=root_name,
                 description=f"Uploaded from {target.name}",
-                ensure="public",
                 items=stash_items,
             )
             stash = bundle["stash"]
@@ -1179,7 +1177,7 @@ def upload(
                 ws,
                 title=root_name,
                 description=f"Uploaded from {target.name}",
-                is_public=False,
+                access="workspace",
                 items=stash_items,
             )
 
@@ -1242,7 +1240,7 @@ def stashes_list(
         console.print("[dim]No Product Stashes in this workspace.[/dim]")
         return
     for v in data:
-        flag = "[green]public[/green]" if v["is_public"] else "[dim]private[/dim]"
+        flag = f"[cyan]{v['access']}[/cyan]"
         console.print(
             f"[bold]{v['title']}[/bold]  {flag}  /stashes/{v['slug']}  "
             f"[dim]({len(v['items'])} items, viewed {v['view_count']}x)[/dim]"
@@ -1278,7 +1276,6 @@ def stashes_create(
                     ws_id,
                     title=title,
                     description=description,
-                    ensure="public",
                     discoverable=discover,
                     items=items,
                 )
@@ -1288,7 +1285,7 @@ def stashes_create(
                     ws_id,
                     title=title,
                     description=description,
-                    is_public=False,
+                    access="workspace",
                     discoverable=False,
                     items=items,
                 )
@@ -1297,44 +1294,46 @@ def stashes_create(
     if _use_json(as_json):
         output_json(stash)
         return
-    flag = "[green]published[/green]" if stash["is_public"] else "[yellow]private[/yellow]"
+    flag = f"[cyan]{stash['access']}[/cyan]"
     if stash.get("discoverable"):
         flag = f"{flag} [cyan]discover[/cyan]"
     console.print(f"[green]Created Product Stash[/green] '{stash['title']}'  {flag}")
     console.print(f"  ID: {stash['id']}  Slug: {stash['slug']}")
-    if stash["is_public"]:
+    if stash["access"] == "public":
         console.print(f"  Public URL: [cyan]{_web_app_url()}/stashes/{stash['slug']}[/cyan]")
 
 
 @stashes_app.command("publish")
 def stashes_publish(
     stash_id: str = typer.Argument(...),
-    unpublish: bool = typer.Option(False, "--unpublish", help="Make the Product Stash private."),
+    private: bool = typer.Option(False, "--private", help="Make the Product Stash private."),
+    workspace: bool = typer.Option(False, "--workspace-access", help="Make the Product Stash workspace-visible."),
     discover: bool = typer.Option(
         False, "--discover", help="List the public Product Stash in Discover."
     ),
 ):
-    """Toggle a Product Stash's public flag."""
-    if unpublish and discover:
-        console.print("[red]--discover cannot be used with --unpublish.[/red]")
+    """Change a Product Stash's access level."""
+    if discover and (private or workspace):
+        console.print("[red]--discover requires public access.[/red]")
         raise typer.Exit(1)
+    access = "private" if private else "workspace" if workspace else "public"
     with _client() as c:
         try:
             stash = c.update_stash(
                 stash_id,
-                is_public=not unpublish,
-                discoverable=False if unpublish else discover,
+                access=access,
+                discoverable=False if access != "public" else discover,
             )
         except StashError as e:
             _err(e)
-    if stash["is_public"]:
+    if stash["access"] == "public":
         label = "Published to Discover" if stash.get("discoverable") else "Published"
         console.print(
             f"[green]{label}[/green] '{stash['title']}' -> "
             f"[cyan]{_web_app_url()}/stashes/{stash['slug']}[/cyan]"
         )
     else:
-        console.print(f"[yellow]Unpublished[/yellow] '{stash['title']}'")
+        console.print(f"[yellow]{stash['access'].title()}[/yellow] '{stash['title']}'")
 
 
 @stashes_app.command("delete")
@@ -1493,14 +1492,14 @@ def invite_revoke(
 
 
 # ===========================================================================
-# Wiki: folders (nestable) + pages
+# Files: folders (nestable) + pages
 # ===========================================================================
 
-wiki_app = typer.Typer(help="Wiki — nested folders and markdown/HTML pages.")
-app.add_typer(wiki_app, name="wiki")
+files_app = typer.Typer(help="Files — nested folders and markdown/HTML pages.")
+app.add_typer(files_app, name="files")
 
 
-@wiki_app.command("tree")
+@files_app.command("tree")
 def wiki_tree(
     workspace_id: str = typer.Option(None, "--ws"),
     as_json: bool = typer.Option(False, "--json"),
@@ -1530,7 +1529,7 @@ def wiki_tree(
         console.print(f"  {p['name']}  (id: {str(p['id'])[:8]})")
 
 
-@wiki_app.command("folders")
+@files_app.command("folders")
 def wiki_folders(
     workspace_id: str = typer.Option(None, "--ws"),
     as_json: bool = typer.Option(False, "--json"),
@@ -1557,7 +1556,7 @@ def wiki_folders(
                 console.print(f"  {f['name']}  (id: {str(f['id'])[:8]}){parent}")
 
 
-@wiki_app.command("create-folder")
+@files_app.command("create-folder")
 def wiki_create_folder(
     name: str = typer.Argument(...),
     workspace_id: str = typer.Option(None, "--ws"),
@@ -1577,7 +1576,7 @@ def wiki_create_folder(
         console.print(f"[green]Folder '{data['name']}' created.[/green]  ID: {data['id']}")
 
 
-@wiki_app.command("pages")
+@files_app.command("pages")
 def wiki_pages(
     workspace_id: str = typer.Option(None, "--ws"),
     all_: bool = typer.Option(False, "--all", help="list pages across every workspace"),
@@ -1602,14 +1601,14 @@ def wiki_pages(
             console.print(f"  {label}{ws}  (id: {str(p['id'])[:8]})")
 
 
-@wiki_app.command("search")
+@files_app.command("search")
 def wiki_search(
     query: str = typer.Argument(..., help="Search query."),
     workspace_id: str = typer.Option(None, "--ws"),
     limit: int = typer.Option(20, "-n", "--limit"),
     as_json: bool = typer.Option(False, "--json"),
 ):
-    """Full-text search across wiki pages in a workspace."""
+    """Full-text search across pages in a workspace."""
     ws = workspace_id or _resolve_workspace()
     with _client() as c:
         try:
@@ -1649,7 +1648,7 @@ def _prepend_attachments(
     return f"{block}\n\n{content}" if content else block
 
 
-@wiki_app.command("add-page")
+@files_app.command("add-page")
 def wiki_add_page(
     name: str = typer.Argument(...),
     workspace_id: str = typer.Option(None, "--ws"),
@@ -1714,7 +1713,7 @@ def wiki_add_page(
         )
 
 
-@wiki_app.command("read-page")
+@files_app.command("read-page")
 def wiki_read_page(
     page_id: str = typer.Argument(...),
     workspace_id: str = typer.Option(None, "--ws"),
@@ -1737,7 +1736,7 @@ def wiki_read_page(
             console.print(data.get("content_markdown", ""))
 
 
-@wiki_app.command("edit-page")
+@files_app.command("edit-page")
 def wiki_edit_page(
     page_id: str = typer.Argument(...),
     content: str = typer.Option(None, "--content"),
@@ -2134,7 +2133,6 @@ def hist_share(
             ws,
             title=page_title,
             description="Shared session transcript",
-            ensure="public",
             items=[{"object_type": "folder", "object_id": folder["id"]}],
         )
 
@@ -2996,7 +2994,7 @@ Common reads (all support `--json`):
 - `stash history search "<query>"` — full-text search across transcripts
 - `stash history query --limit 20` — latest events
 - `stash history agents` — who's been active
-- `stash wiki pages --all` — shared wiki pages across workspaces
+- `stash files pages --all` — shared pages across workspaces
 
 Common writes:
 - `stash share --title "..."` — share this session as a public artifact with a shareable link
@@ -3738,14 +3736,14 @@ def share_object_cmd(
         ..., help="workspace|folder|page|session|table|file|history|stash"
     ),
     object_id: str = typer.Argument(..., help="UUID of the object"),
-    ensure: str = typer.Option(
-        "link", "--ensure", help="Raise visibility to at least this level: ''|'link'|'public'"
+    access: str = typer.Option(
+        "public", "--access", help="workspace | private | public"
     ),
 ):
-    """Mint a share URL for any object. Idempotent."""
+    """Mint a Stash URL for any object."""
     cfg = load_config()
     c = StashClient(cfg["base_url"], cfg.get("api_key", ""))
-    result = c.share_link(object_type, object_id, ensure or None)
+    result = c.create_stash_url(object_type, object_id, access)
     console.print(result["url"])
 
 
@@ -3755,13 +3753,11 @@ def visibility_cmd(
         ..., help="workspace|folder|page|session|table|file|history|stash"
     ),
     object_id: str = typer.Argument(..., help="UUID of the object"),
-    level: str = typer.Argument(..., help="inherit|private|link|public"),
+    level: str = typer.Argument(..., help="workspace|private|public"),
 ):
-    """Set privacy for an object. Pages, folders, and sessions are backed by privacy tags."""
-    cfg = load_config()
-    c = StashClient(cfg["base_url"], cfg.get("api_key", ""))
-    c.set_object_visibility(object_type, object_id, level)
-    console.print(f"[green]✓[/green] {object_type} {object_id[:8]}… → {level}")
+    """Object privacy is mediated by Stashes."""
+    console.print("[red]Create or update a Stash to change privacy.[/red]")
+    raise typer.Exit(1)
 
 
 @app.command("publish")
@@ -3772,11 +3768,11 @@ def publish_cmd(
     folder_id: str = typer.Option(
         None, "--folder", "-f", help="Defaults to auto-created 'AI Drafts' folder"
     ),
-    audience: str = typer.Option("link", "--audience", help="link | public"),
+    audience: str = typer.Option("public", "--audience", help="workspace | private | public"),
 ):
     """Publish a local file as a Stash page and print the share URL.
 
-    Single call: creates the page, sets visibility, mints the share-link.
+    Single call: creates the page, wraps it in a Stash, and prints the Stash URL.
     Mirrors what an agent does via the MCP `stash_publish_html` tool."""
     p = Path(file_path)
     if not p.exists():
@@ -3804,7 +3800,7 @@ def publish_cmd(
 # Skills (markdown folders containing SKILL.md frontmatter)
 # ===========================================================================
 
-skill_app = typer.Typer(help="Skills — wiki folders with a SKILL.md frontmatter file.")
+skill_app = typer.Typer(help="Skills — Files folders with a SKILL.md frontmatter file.")
 app.add_typer(skill_app, name="skill")
 
 
@@ -3857,7 +3853,7 @@ def skill_add(
     stash_id: str = typer.Argument(...),
     folder: str = typer.Argument(..., help="Local folder containing a SKILL.md file."),
 ):
-    """Upload a local skill folder (must contain a SKILL.md) into a stash as a wiki folder."""
+    """Upload a local skill folder (must contain a SKILL.md) into a stash as a Files folder."""
     src = Path(folder)
     if not src.is_dir():
         console.print(f"[red]Not a folder: {folder}[/red]")
@@ -3871,7 +3867,7 @@ def skill_add(
     c = StashClient(cfg["base_url"], cfg.get("api_key", ""))
     folder_name = src.name
     try:
-        # Reach for the existing wiki endpoints — skills are just wiki folders.
+        # Skills are represented as folders containing markdown pages.
         new_folder = c.create_folder(stash_id, folder_name)
         folder_id = new_folder["id"]
         for md_file in sorted(src.glob("*.md")):

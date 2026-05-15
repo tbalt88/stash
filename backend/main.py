@@ -17,6 +17,7 @@ from .routers import (
     aggregate,
     discover,
     files,
+    files_tree,
     memory,
     permissions,
     publish,
@@ -26,7 +27,6 @@ from .routers import (
     tables,
     transcripts,
     users,
-    wiki,
     workspace_knowledge,
     workspaces,
 )
@@ -102,7 +102,7 @@ app.include_router(workspace_knowledge.router)
 app.include_router(discover.router)
 app.include_router(stashes.ws_router)
 app.include_router(stashes.public_router)
-app.include_router(wiki.router)
+app.include_router(files_tree.router)
 app.include_router(memory.ws_router)
 app.include_router(tables.ws_router)
 app.include_router(files.ws_router)

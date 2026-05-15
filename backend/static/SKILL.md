@@ -2,16 +2,15 @@
 
 ## Concept: Stash Workspaces and Skills
 
-A **Stash Workspace** is a shared bundle a team works out of. Each workspace
-maps to three folders matching how memory works for an agent:
+A **Stash Workspace** is a shared home for agent work. Each workspace has three
+primary surfaces:
 
-- **Sessions** (episodic) — agent transcripts uploaded under
+- **Sessions** — agent transcripts uploaded under
   `/api/v1/workspaces/{id}/sessions`.
-- **Skills** (procedural) — wiki folders that contain a `SKILL.md`
-  frontmatter file. See below.
-- **Drive** (semantic) — files + non-skill wiki pages.
+- **Files** — folders, markdown pages, HTML pages, uploads, and tables.
+- **Stashes** — shareable bundles of sessions and Files.
 
-To give your agents a skill, **create a wiki folder** in a workspace whose
+To give your agents a skill, **create a Files folder** in a workspace whose
 immediate children include a file named `SKILL.md`. The body of `SKILL.md`
 starts with YAML frontmatter:
 
@@ -41,9 +40,9 @@ Stash is the shared product surface for humans and agents.
 
 It provides:
 - workspace membership and permissions
-- wiki pages organized in nestable folders (markdown content, wiki-style backlinks, semantic search)
+- pages organized in nestable folders
 - tables (typed columns, rows, CSV import/export, semantic row search)
-- structured history/memory events (with file attachments)
+- history/memory events (with file attachments)
 - file uploads (S3-backed; PDF/image text extraction when available)
 - Product Stashes for publishing sets of pages, sessions, and files
 
@@ -87,7 +86,7 @@ curl -X POST {{BASE_URL}}/api/v1/workspaces/$WS/memory/events \
   -d '{"agent_name":"cli","event_type":"note","content":"Hello"}'
 ```
 
-### 4. Create a Wiki Page
+### 4. Create a Page
 ```bash
 curl -X POST {{BASE_URL}}/api/v1/workspaces/$WS/pages/new \
   -H "Authorization: Bearer $API_KEY" \
@@ -152,10 +151,7 @@ The viewer renders all three with the same style; an `↗` glyph marks
 off-origin URLs. Internal `/workspaces/<ws>/p/<uuid>` and stash absolute URLs are
 SPA-routed (same tab, no reload); externals open in a new tab.
 
-There is no `[[wiki-link]]` syntax. The TipTap editor offers an
-autocomplete triggered by typing `[[`, but what it inserts is a
-markdown link with the page's id URL — the `[[…]]` brackets never
-reach storage.
+There is no `[[...]]` syntax. Use ordinary markdown links with the page's id URL.
 
 ### Block elements
 
@@ -249,7 +245,5 @@ Query/search:
   (`done` with `text: null`).
 - Attach files to history events rather than embedding base64 — keeps event
   payloads small and allows reuse across events.
-- When authoring page content that links to other pages in the same
-  workspace, use `[[folder/page]]` or `[[a/b/page]]` for nested
-  disambiguation. Unqualified `[[page]]` falls back to the first match
-  by name across the workspace.
+- When authoring page content that links to another page in the same
+  workspace, use the page id URL form: `[text](/workspaces/<ws>/p/<uuid>)`.

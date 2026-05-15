@@ -7,8 +7,6 @@ import {
   HistoryWithWorkspace,
   Folder,
   Page,
-  PageGraph,
-  PageLink,
   WorkspaceTree,
   ObjectPermission,
   RegisterResponse,
@@ -273,7 +271,7 @@ export interface PublicStashCard {
   updated_at: string;
 }
 
-// --- Wiki: folders (nested) and pages ---
+// --- Files: folders (nested) and pages ---
 
 export async function getWorkspaceTree(workspaceId: string): Promise<WorkspaceTree> {
   return apiFetch(`/api/v1/workspaces/${workspaceId}/tree`);
@@ -298,7 +296,7 @@ export async function createFolder(
 }
 
 // Quick-add drops (notes, links, files) all funnel into a single "Hopper"
-// folder at the wiki root. We auto-create it on first use so the user
+// folder at the Files root. We auto-create it on first use so the user
 // doesn't have to set anything up.
 const HOPPER_FOLDER_NAME = "Hopper";
 const hopperCache = new Map<string, string>();
@@ -457,8 +455,7 @@ export async function searchHistoryEvents(
 
 // --- Aggregate (cross-workspace) ---
 
-// Cross-workspace flat page list, used by wiki-link autocomplete to resolve
-// links to pages outside the active workspace.
+// Cross-workspace flat page list for page pickers and search surfaces.
 export async function listAllPages(): Promise<{ pages: UserPageEntry[] }> {
   return apiFetch("/api/v1/me/pages");
 }
@@ -784,7 +781,7 @@ export async function setVisibility(
   workspaceId: string,
   objectType: string,
   objectId: string,
-  visibility: "inherit" | "private" | "public"
+  visibility: "workspace" | "private" | "public"
 ): Promise<void> {
   await apiFetch(`/api/v1/workspaces/${workspaceId}/${objectType}s/${objectId}/permissions`, {
     method: "PATCH",
@@ -827,7 +824,7 @@ export async function getObjectPermissions(
 export async function setObjectVisibility(
   objectType: string,
   objectId: string,
-  visibility: "inherit" | "private" | "link" | "public"
+  visibility: "workspace" | "private" | "public"
 ): Promise<void> {
   await apiFetch(`/api/v1/objects/${objectType}/${objectId}/permissions`, {
     method: "PATCH",
@@ -898,6 +895,7 @@ export interface SessionSummary {
   session_id: string;
   workspace_id: string | null;
   workspace_name: string | null;
+  user_name: string | null;
   agent_name: string | null;
   event_count: number;
   started_at: string;
@@ -947,7 +945,7 @@ export interface CreatedStash {
   title: string;
   description: string;
   owner_id: string;
-  is_public: boolean;
+  access: "workspace" | "private" | "public";
   discoverable: boolean;
   view_count: number;
   items: StashItemSpec[];
@@ -968,15 +966,15 @@ export async function createStash(
   workspaceId: string,
   title: string,
   items: StashItemSpec[],
-  opts: { description?: string } = {}
+  opts: { description?: string; access?: "workspace" | "private" | "public"; discoverable?: boolean } = {}
 ): Promise<CreatedStash> {
   return apiFetch(`/api/v1/workspaces/${workspaceId}/stashes`, {
     method: "POST",
     body: JSON.stringify({
       title,
       description: opts.description ?? "",
-      is_public: false,
-      discoverable: false,
+      access: opts.access ?? "workspace",
+      discoverable: opts.discoverable ?? false,
       cover_image_url: null,
       items: items.map((it, i) => ({
         object_type: it.object_type,
@@ -992,15 +990,14 @@ export async function publishStash(
   workspaceId: string,
   title: string,
   items: StashItemSpec[],
-  opts: { description?: string; ensure?: "link" | "public"; discoverable?: boolean } = {}
+  opts: { description?: string; discoverable?: boolean } = {}
 ): Promise<PublishedStashResult> {
-  const ensure = opts.ensure ?? "link";
-  return apiFetch(`/api/v1/workspaces/${workspaceId}/stashes/publish?ensure=${ensure}`, {
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/stashes/publish`, {
     method: "POST",
     body: JSON.stringify({
       title,
       description: opts.description ?? "",
-      is_public: ensure === "public",
+      access: "public",
       discoverable: opts.discoverable ?? false,
       cover_image_url: null,
       items: items.map((it, i) => ({
@@ -1020,7 +1017,7 @@ export interface WorkspaceStash {
   title: string;
   description: string;
   owner_id: string;
-  is_public: boolean;
+  access: "workspace" | "private" | "public";
   discoverable: boolean;
   cover_image_url: string | null;
   view_count: number;
@@ -1090,7 +1087,7 @@ export async function removeExternalStash(
   });
 }
 
-// --- Workspace-wide page index (used by wiki-link autocomplete + click-resolve) ---
+// --- Workspace-wide page index ---
 
 export interface WorkspacePageEntry {
   id: string;
@@ -1112,34 +1109,7 @@ export async function listWorkspacePages(
   return data.pages;
 }
 
-
-// --- Wiki: Backlinks, Outlinks, Page Graph, Semantic Search ---
-
-export async function getBacklinks(
-  workspaceId: string,
-  pageId: string
-): Promise<PageLink[]> {
-  const data = await apiFetch<{ backlinks: PageLink[] }>(
-    `/api/v1/workspaces/${workspaceId}/pages/${pageId}/backlinks`
-  );
-  return data.backlinks;
-}
-
-export async function getOutlinks(
-  workspaceId: string,
-  pageId: string
-): Promise<PageLink[]> {
-  const data = await apiFetch<{ outlinks: PageLink[] }>(
-    `/api/v1/workspaces/${workspaceId}/pages/${pageId}/outlinks`
-  );
-  return data.outlinks;
-}
-
-export async function getWorkspaceGraph(
-  workspaceId: string
-): Promise<PageGraph> {
-  return apiFetch<PageGraph>(`/api/v1/workspaces/${workspaceId}/graph`);
-}
+// --- Page semantic search ---
 
 export async function semanticSearchPages(
   workspaceId: string,
@@ -1255,7 +1225,7 @@ export async function getSessionEvents(
   return res.events;
 }
 
-// --- Workspace overview, sessions, wiki, and skills ---
+// --- Workspace overview, sessions, files, and stashes ---
 
 export interface WorkspaceSidebarSession {
   id: string | null;
@@ -1267,9 +1237,9 @@ export interface WorkspaceSidebarSession {
   updated_at: string;
 }
 
-// Unified Wiki — one tree, no Drive/Skill split. Folders, pages, and files
+// Unified Files tree. Folders, pages, and files
 // each carry their parent so the frontend can build the hierarchy.
-export interface WikiFolder {
+export interface WorkspaceFolder {
   id: string;
   name: string;
   parent_folder_id: string | null;
@@ -1277,12 +1247,12 @@ export interface WikiFolder {
   file_count: number;
   has_skill: boolean;
 }
-export interface WikiPage {
+export interface WorkspacePage {
   id: string;
   name: string;
   folder_id: string | null;
 }
-export interface WikiFile {
+export interface WorkspaceFile {
   id: string;
   name: string;
   folder_id: string | null;
@@ -1292,14 +1262,29 @@ export interface WikiFile {
   created_at: string;
   linked_table_id?: string | null;
 }
-export interface WorkspaceWiki {
-  folders: WikiFolder[];
-  pages: WikiPage[];
-  files: WikiFile[];
+export interface WorkspaceFiles {
+  folders: WorkspaceFolder[];
+  pages: WorkspacePage[];
+  files: WorkspaceFile[];
 }
+
+export interface WorkspaceSidebarStash {
+  id: string;
+  workspace_id: string;
+  slug: string;
+  title: string;
+  description: string;
+  access: "workspace" | "private" | "public";
+  discoverable: boolean;
+  is_external: boolean;
+  item_count: number;
+  updated_at: string;
+}
+
 export interface WorkspaceOverview {
   sessions: WorkspaceSidebarSession[];
-  wiki: WorkspaceWiki;
+  files: WorkspaceFiles;
+  stashes?: WorkspaceSidebarStash[];
 }
 
 export async function getWorkspaceOverview(workspaceId: string): Promise<WorkspaceOverview> {
@@ -1308,7 +1293,8 @@ export async function getWorkspaceOverview(workspaceId: string): Promise<Workspa
 
 export interface WorkspaceSidebar {
   sessions: WorkspaceSidebarSession[];
-  wiki: WorkspaceWiki;
+  files: WorkspaceFiles;
+  stashes?: WorkspaceSidebarStash[];
 }
 
 // In-memory store for the last ETag seen per workspace, so navigating between
@@ -1351,7 +1337,7 @@ export interface FolderContents {
   breadcrumbs: FolderBreadcrumb[];
   subfolders: FolderSubfolder[];
   pages: { id: string; name: string }[];
-  files: Omit<WikiFile, "folder_id">[];
+  files: Omit<WorkspaceFile, "folder_id">[];
 }
 
 export async function getFolderContents(

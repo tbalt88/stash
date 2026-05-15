@@ -158,9 +158,8 @@ async def download_ws_file(
 ):
     """Permanent, shareable URL → 302s to a freshly-signed S3 GET.
 
-    Signed S3 URLs expire after an hour, so we can't embed them in page
-    markdown. This endpoint's URL is stable, and wiki pages can link to
-    it; each click re-signs and redirects.
+    Signed S3 URLs expire after an hour, so page markdown embeds this stable
+    endpoint; each click re-signs and redirects.
     """
     await _check_member(workspace_id, current_user["id"])
     pool = get_pool()
@@ -196,12 +195,6 @@ async def get_ws_file_text(
         "status": row["extraction_status"],
         "error": row["extraction_error"],
     }
-
-
-# PATCH /files/{id} removed: the only field it edited was `public_in_share`,
-# which is gone in the unified sharing model. To make a file shareable now,
-# mint a share-link via POST /api/v1/workspaces/{ws}/shares with
-# target_type='file'.
 
 
 @ws_router.delete("/{file_id}", status_code=204)

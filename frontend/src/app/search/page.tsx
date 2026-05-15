@@ -160,7 +160,7 @@ function SearchPageInner() {
 
   const folderOptions = useMemo(() => {
     if (!selectedWorkspaceId) return [];
-    return sidebars[selectedWorkspaceId]?.wiki.folders ?? [];
+    return sidebars[selectedWorkspaceId]?.files.folders ?? [];
   }, [selectedWorkspaceId, sidebars]);
 
   const handleSearch = useCallback(async () => {

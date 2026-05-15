@@ -23,6 +23,7 @@ _TEST_DB_URL = os.getenv(
     "TEST_DATABASE_URL",
     "postgresql://stash:stash@localhost:5432/stash_test",
 )
+os.environ["TEST_DATABASE_URL"] = _TEST_DB_URL
 os.environ["DATABASE_URL"] = _TEST_DB_URL
 
 from backend import database as db_module  # noqa: E402
@@ -94,14 +95,11 @@ _TRUNCATE_TABLES = [
     "webhooks",
     "documents",
     "files",
-    "privacy_tag_objects",
-    "privacy_tag_members",
-    "privacy_tags",
+    "stash_members",
     "external_stashes",
     "stash_items",
     "stashes",
     "history_events",
-    "page_links",
     "pages",
     "folders",
     "table_rows",

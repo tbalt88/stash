@@ -149,8 +149,7 @@ function LoggedInHome({
             </h1>
             <p className="mt-3 max-w-[700px] text-[14.5px] leading-[1.6] text-muted">
               A Stash Workspace is the shared container for your team&apos;s agent
-              sessions, wiki pages, and files. Stashes are the published bundles
-              you publish or hand to another workspace.
+              sessions, Files, and Stashes you publish or hand to another workspace.
             </p>
             <div className="mt-5 flex flex-wrap gap-2">
               <Link
@@ -218,7 +217,7 @@ function LoggedInHome({
                 ))}
               </div>
             ) : (
-              <EmptyState text="Create your first workspace to collect sessions, wiki pages, and files." />
+              <EmptyState text="Create your first workspace to collect sessions, Files, and Stashes." />
             )}
 
             <div className="mt-8">
@@ -264,7 +263,7 @@ function LoggedInHome({
 
             <ActivityPanel
               title="Recent pages"
-              empty="No wiki pages yet."
+              empty="No pages yet."
               items={data.recentPages.map((page) => ({
                 id: page.id,
                 href: `/workspaces/${page.workspace_id}/p/${page.id}`,

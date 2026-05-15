@@ -8,16 +8,15 @@ from fastapi import APIRouter, Depends, Query
 from ..auth import get_current_user
 from ..database import get_pool
 from ..models import UserPageEntry, UserPageListResponse
-from ..services import analytics_service, memory_service, table_service, wiki_service
+from ..services import analytics_service, files_tree_service, memory_service, table_service
 
 router = APIRouter(prefix="/api/v1/me", tags=["aggregate"])
 
 
 @router.get("/pages", response_model=UserPageListResponse)
 async def list_all_pages(current_user: dict = Depends(get_current_user)):
-    """Every page across every workspace the user is a member of, with the
-    folder path so wiki-link autocomplete can resolve `[[a/b/page]]`."""
-    rows = await wiki_service.list_user_pages(current_user["id"])
+    """Every page across every workspace the user is a member of."""
+    rows = await files_tree_service.list_user_pages(current_user["id"])
     return UserPageListResponse(pages=[UserPageEntry(**r) for r in rows])
 
 

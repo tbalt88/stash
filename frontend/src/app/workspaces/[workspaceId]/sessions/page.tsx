@@ -57,6 +57,11 @@ export default function StashSessionsPage() {
     });
   }, [sessions, query]);
 
+  const grouped = useMemo(() => {
+    if (!filtered) return null;
+    return groupSessions(filtered);
+  }, [filtered]);
+
   if (loading)
     return <div className="flex h-screen items-center justify-center text-muted">Loading…</div>;
   if (!user) return null;
@@ -97,29 +102,52 @@ export default function StashSessionsPage() {
             />
           </div>
 
-          {filtered && (
-            <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
-              {filtered.map((s) => (
-                <Link
-                  key={s.session_id}
-                  href={`/workspaces/${workspaceId}/sessions/${encodeURIComponent(s.session_id)}`}
-                  className="flex items-center gap-3 rounded-lg border border-border bg-base p-3 text-left transition-colors hover:border-[var(--color-brand-200)] hover:bg-[var(--color-brand-50)]"
-                >
-                  <span className="flex h-7 w-7 items-center justify-center text-2xl text-muted">
-                    <SessionsIcon />
-                  </span>
-                  <div className="min-w-0">
-                    <div className="truncate text-[13.5px] font-semibold text-foreground">
-                      {sessionTitle(s)}
-                    </div>
-                    <div className="truncate text-[11.5px] text-muted">
-                      {sessionSubtitle(s)}
-                    </div>
+          {grouped && (
+            <div className="space-y-7">
+              {grouped.map((day) => (
+                <section key={day.key}>
+                  <div className="mb-2 flex items-center gap-3">
+                    <h2 className="font-display text-[16px] font-semibold text-foreground">
+                      {day.label}
+                    </h2>
+                    <span className="font-mono text-[10px] uppercase tracking-wider text-muted">
+                      {day.count} session{day.count === 1 ? "" : "s"}
+                    </span>
                   </div>
-                </Link>
+                  <div className="space-y-4">
+                    {day.users.map((bucket) => (
+                      <div key={`${day.key}:${bucket.user}`}>
+                        <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted">
+                          {bucket.user}
+                        </div>
+                        <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+                          {bucket.sessions.map((s) => (
+                            <Link
+                              key={s.session_id}
+                              href={`/workspaces/${workspaceId}/sessions/${encodeURIComponent(s.session_id)}`}
+                              className="flex items-center gap-3 rounded-lg border border-border bg-base p-3 text-left transition-colors hover:border-[var(--color-brand-200)] hover:bg-[var(--color-brand-50)]"
+                            >
+                              <span className="flex h-7 w-7 items-center justify-center text-2xl text-muted">
+                                <SessionsIcon />
+                              </span>
+                              <div className="min-w-0">
+                                <div className="truncate text-[13.5px] font-semibold text-foreground">
+                                  {sessionTitle(s)}
+                                </div>
+                                <div className="truncate text-[11.5px] text-muted">
+                                  {sessionSubtitle(s)}
+                                </div>
+                              </div>
+                            </Link>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </section>
               ))}
-              {filtered.length === 0 && (
-                <div className="col-span-full rounded-lg border border-dashed border-border bg-surface/30 px-4 py-6 text-center text-[12.5px] text-muted">
+              {filtered?.length === 0 && (
+                <div className="rounded-lg border border-dashed border-border bg-surface/30 px-4 py-6 text-center text-[12.5px] text-muted">
                   {sessions && sessions.length === 0
                     ? "No sessions yet."
                     : "No sessions match your search."}
@@ -130,6 +158,53 @@ export default function StashSessionsPage() {
         </div>
       </div>
   );
+}
+
+type SessionDayGroup = {
+  key: string;
+  label: string;
+  count: number;
+  users: { user: string; sessions: SessionSummary[] }[];
+};
+
+function groupSessions(sessions: SessionSummary[]): SessionDayGroup[] {
+  const days = new Map<string, Map<string, SessionSummary[]>>();
+  for (const session of sessions) {
+    const dayKey = sessionDayKey(session.last_event_at || session.started_at);
+    const user = session.user_name || session.agent_name || "Unknown user";
+    if (!days.has(dayKey)) days.set(dayKey, new Map());
+    const users = days.get(dayKey)!;
+    users.set(user, [...(users.get(user) ?? []), session]);
+  }
+
+  return Array.from(days.entries()).map(([key, users]) => {
+    const buckets = Array.from(users.entries()).map(([user, rows]) => ({
+      user,
+      sessions: rows,
+    }));
+    return {
+      key,
+      label: formatSessionDay(key),
+      count: buckets.reduce((sum, bucket) => sum + bucket.sessions.length, 0),
+      users: buckets,
+    };
+  });
+}
+
+function sessionDayKey(iso: string | null): string {
+  if (!iso) return "Unknown date";
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "Unknown date";
+  return date.toISOString().slice(0, 10);
+}
+
+function formatSessionDay(key: string): string {
+  if (key === "Unknown date") return key;
+  return new Date(`${key}T12:00:00`).toLocaleDateString(undefined, {
+    weekday: "long",
+    month: "short",
+    day: "numeric",
+  });
 }
 
 function sessionTitle(s: SessionSummary): string {

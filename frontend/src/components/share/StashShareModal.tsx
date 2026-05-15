@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  createStash,
   publishStash,
   deleteStash,
   getWorkspaceSidebar,
@@ -14,7 +15,7 @@ import {
 import { useShareModal } from "../../lib/shareModalContext";
 
 type Tab = "new" | "manage";
-type Visibility = "link" | "public";
+type StashAccess = "workspace" | "private" | "public";
 
 type RowGroup = "Folders" | "Pages" | "Files" | "Tables";
 type GroupKey = "Sessions" | RowGroup;
@@ -59,7 +60,7 @@ export default function StashShareModal() {
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<SelectedState>(EMPTY_SELECTED);
   const [title, setTitle] = useState("");
-  const [visibility, setVisibility] = useState<Visibility>("link");
+  const [access, setAccess] = useState<StashAccess>("workspace");
   const [shareToDiscover, setShareToDiscover] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
@@ -81,7 +82,7 @@ export default function StashShareModal() {
     setSearch("");
     setError("");
     setTitle("");
-    setVisibility("link");
+    setAccess("workspace");
     setShareToDiscover(false);
     setCopiedSlug(null);
     setSelected(buildInitialSelection(initial));
@@ -197,12 +198,16 @@ export default function StashShareModal() {
         });
       }
       const finalTitle = title.trim() || defaultTitle;
-      const result = await publishStash(workspaceId, finalTitle, items, {
-        ensure: visibility,
-        discoverable: visibility === "public" && shareToDiscover,
-      });
-      await navigator.clipboard.writeText(result.url).catch(() => {});
-      setCopiedSlug(result.stash.slug);
+      const stash =
+        access === "public"
+          ? (await publishStash(workspaceId, finalTitle, items, {
+              discoverable: shareToDiscover,
+            })).stash
+          : await createStash(workspaceId, finalTitle, items, { access });
+      if (stash.access === "public") {
+        await navigator.clipboard.writeText(absoluteUrl(`/stashes/${stash.slug}`)).catch(() => {});
+      }
+      setCopiedSlug(stash.slug);
       setSelected(EMPTY_SELECTED);
       setTitle("");
       setShareToDiscover(false);
@@ -282,10 +287,10 @@ export default function StashShareModal() {
             title={title}
             setTitle={setTitle}
             placeholderTitle={defaultTitle}
-            visibility={visibility}
-            setVisibility={(next) => {
-              setVisibility(next);
-              if (next === "link") setShareToDiscover(false);
+            access={access}
+            setAccess={(next) => {
+              setAccess(next);
+              if (next !== "public") setShareToDiscover(false);
             }}
             shareToDiscover={shareToDiscover}
             setShareToDiscover={setShareToDiscover}
@@ -359,8 +364,8 @@ function NewShareTab(props: {
   title: string;
   setTitle: (v: string) => void;
   placeholderTitle: string;
-  visibility: Visibility;
-  setVisibility: (v: Visibility) => void;
+  access: StashAccess;
+  setAccess: (v: StashAccess) => void;
   shareToDiscover: boolean;
   setShareToDiscover: (v: boolean) => void;
   submitting: boolean;
@@ -383,8 +388,8 @@ function NewShareTab(props: {
     title,
     setTitle,
     placeholderTitle,
-    visibility,
-    setVisibility,
+    access,
+    setAccess,
     shareToDiscover,
     setShareToDiscover,
     submitting,
@@ -522,19 +527,20 @@ function NewShareTab(props: {
             />
           </label>
           <label className="flex flex-col gap-1">
-            <span className="font-medium text-foreground">Who can open</span>
+            <span className="font-medium text-foreground">Stash access</span>
             <select
-              value={visibility}
-              onChange={(e) => setVisibility(e.target.value as Visibility)}
+              value={access}
+              onChange={(e) => setAccess(e.target.value as StashAccess)}
               className="rounded-md border border-border bg-surface px-2 py-1.5"
             >
-              <option value="link">Anyone with the link</option>
+              <option value="workspace">Everyone in this workspace</option>
+              <option value="private">Only invited people</option>
               <option value="public">Public on the web</option>
             </select>
           </label>
         </div>
 
-        {visibility === "public" && (
+        {access === "public" && (
           <label className="mb-2 flex items-start gap-2 rounded-md border border-border-subtle bg-surface px-3 py-2 text-[12px]">
             <input
               type="checkbox"
@@ -614,8 +620,7 @@ function ManageTab(props: {
                   </div>
                   <div className="mt-0.5 text-[11px] text-muted">
                     {v.items.length} item{v.items.length === 1 ? "" : "s"} ·{" "}
-                    {v.is_external ? "External" : "Native"} ·{" "}
-                    {v.is_public ? "Public" : "Anyone with the link"} ·{" "}
+                    {v.is_external ? "External" : "Native"} · {accessLabel(v.access)} ·{" "}
                     {v.discoverable ? "Discover · " : ""}
                     {v.view_count} view{v.view_count === 1 ? "" : "s"}
                   </div>
@@ -781,7 +786,8 @@ function buildInitialSelection(initial: StashItemSpec[] | undefined): SelectedSt
 
 function buildRows(spine: WorkspaceSidebar | null): SelectableRow[] {
   if (!spine) return [];
-  const folders = spine.wiki.folders.map<SelectableRow>((f) => ({
+  const tree = spine.files;
+  const folders = tree.folders.map<SelectableRow>((f) => ({
     key: `folder:${f.id}`,
     object_type: "folder",
     object_id: f.id,
@@ -794,7 +800,7 @@ function buildRows(spine: WorkspaceSidebar | null): SelectableRow[] {
       .join(" · ") || "Empty",
     group: "Folders",
   }));
-  const pages = spine.wiki.pages.map<SelectableRow>((p) => ({
+  const pages = tree.pages.map<SelectableRow>((p) => ({
     key: `page:${p.id}`,
     object_type: "page",
     object_id: p.id,
@@ -804,7 +810,7 @@ function buildRows(spine: WorkspaceSidebar | null): SelectableRow[] {
   }));
   const files: SelectableRow[] = [];
   const tables: SelectableRow[] = [];
-  for (const f of spine.wiki.files) {
+  for (const f of tree.files) {
     // CSV-backed files double as tables — surface them as "Tables" so the
     // user shares the structured Stash rather than the raw blob.
     if (f.linked_table_id) {
@@ -868,4 +874,10 @@ function titleCase(s: string): string {
 function absoluteUrl(path: string): string {
   if (typeof window === "undefined") return path;
   return `${window.location.origin}${path}`;
+}
+
+function accessLabel(access: StashAccess): string {
+  if (access === "public") return "Public";
+  if (access === "private") return "Private";
+  return "Workspace";
 }

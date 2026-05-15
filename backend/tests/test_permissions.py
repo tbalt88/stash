@@ -1,10 +1,11 @@
-"""Tests for the permission service — visibility modes and write-access logic."""
+"""Tests for Stash-mediated content access."""
 
 import uuid
 
 import pytest
 
-from backend.services import permission_service
+from backend.models import StashItem
+from backend.services import permission_service, stash_service
 
 from .conftest import unique_name
 
@@ -38,6 +39,15 @@ async def _make_workspace(pool, creator_id):
         creator_id,
     )
     return ws_id
+
+
+async def _add_workspace_member(pool, workspace_id, user_id, role="editor"):
+    await pool.execute(
+        "INSERT INTO workspace_members (workspace_id, user_id, role) VALUES ($1, $2, $3)",
+        workspace_id,
+        user_id,
+        role,
+    )
 
 
 async def _make_folder(pool, workspace_id, created_by, name="folder", parent_folder_id=None):
@@ -77,7 +87,7 @@ async def _make_session(pool, workspace_id, created_by, session_id="session-1"):
 
 async def _make_table(pool, workspace_id, created_by, name="table"):
     row = await pool.fetchrow(
-        "INSERT INTO tables (workspace_id, name, created_by) " "VALUES ($1, $2, $3) RETURNING id",
+        "INSERT INTO tables (workspace_id, name, created_by) VALUES ($1, $2, $3) RETURNING id",
         workspace_id,
         name,
         created_by,
@@ -85,8 +95,41 @@ async def _make_table(pool, workspace_id, created_by, name="table"):
     return row["id"]
 
 
+async def _make_history_event(pool, workspace_id, created_by):
+    return await pool.fetchval(
+        "INSERT INTO history_events (workspace_id, created_by, agent_name, event_type, content) "
+        "VALUES ($1, $2, 'agent', 'message', 'hello') RETURNING id",
+        workspace_id,
+        created_by,
+    )
+
+
+async def _make_stash(workspace_id, owner_id, access, object_type, object_id):
+    return await stash_service.create_stash(
+        workspace_id=workspace_id,
+        owner_id=owner_id,
+        title=f"{access} Stash",
+        description="",
+        access=access,
+        discoverable=False,
+        cover_image_url=None,
+        items=[StashItem(object_type=object_type, object_id=object_id)],
+    )
+
+
+async def _add_stash_member(pool, stash_id, user_id, granted_by, permission="read"):
+    await pool.execute(
+        "INSERT INTO stash_members (stash_id, user_id, permission, granted_by) "
+        "VALUES ($1, $2, $3, $4)",
+        stash_id,
+        user_id,
+        permission,
+        granted_by,
+    )
+
+
 @pytest.mark.asyncio
-async def test_owner_has_access(pool):
+async def test_owner_has_read_and_write_access(pool):
     user_id = await _make_user(pool)
     ws_id = await _make_workspace(pool, user_id)
     folder_id = await _make_folder(pool, ws_id, user_id)
@@ -98,60 +141,33 @@ async def test_owner_has_access(pool):
 
 
 @pytest.mark.asyncio
-async def test_member_read_inherit(pool):
+async def test_workspace_member_can_read_unstashed_content(pool):
     owner_id = await _make_user(pool)
     member_id = await _make_user(pool)
     ws_id = await _make_workspace(pool, owner_id)
-    await pool.execute(
-        "INSERT INTO workspace_members (workspace_id, user_id, role) VALUES ($1, $2, 'editor')",
-        ws_id,
-        member_id,
-    )
+    await _add_workspace_member(pool, ws_id, member_id)
     folder_id = await _make_folder(pool, ws_id, owner_id)
 
     assert await permission_service.check_access("folder", folder_id, member_id, workspace_id=ws_id)
 
 
 @pytest.mark.asyncio
-async def test_member_cannot_write_without_share(pool):
-    """Members get read access by default but writing requires an explicit share."""
+async def test_workspace_member_cannot_write_unstashed_content(pool):
     owner_id = await _make_user(pool)
     member_id = await _make_user(pool)
     ws_id = await _make_workspace(pool, owner_id)
-    await pool.execute(
-        "INSERT INTO workspace_members (workspace_id, user_id, role) VALUES ($1, $2, 'editor')",
-        ws_id,
-        member_id,
-    )
+    await _add_workspace_member(pool, ws_id, member_id)
     folder_id = await _make_folder(pool, ws_id, owner_id)
 
     result = await permission_service.check_access(
         "folder", folder_id, member_id, workspace_id=ws_id, require_write=True
     )
+
     assert not result
 
 
 @pytest.mark.asyncio
-async def test_member_can_write_with_share(pool):
-    owner_id = await _make_user(pool)
-    member_id = await _make_user(pool)
-    ws_id = await _make_workspace(pool, owner_id)
-    await pool.execute(
-        "INSERT INTO workspace_members (workspace_id, user_id, role) VALUES ($1, $2, 'editor')",
-        ws_id,
-        member_id,
-    )
-    folder_id = await _make_folder(pool, ws_id, owner_id)
-
-    await permission_service.add_share("folder", folder_id, member_id, "write", owner_id)
-    result = await permission_service.check_access(
-        "folder", folder_id, member_id, workspace_id=ws_id, require_write=True
-    )
-    assert result
-
-
-@pytest.mark.asyncio
-async def test_non_member_denied(pool):
+async def test_non_member_cannot_read_unstashed_content(pool):
     owner_id = await _make_user(pool)
     stranger_id = await _make_user(pool)
     ws_id = await _make_workspace(pool, owner_id)
@@ -163,208 +179,142 @@ async def test_non_member_denied(pool):
 
 
 @pytest.mark.asyncio
-async def test_public_visibility_readable_by_anyone(pool):
+async def test_public_stash_makes_page_anonymously_readable(pool):
     owner_id = await _make_user(pool)
-    stranger_id = await _make_user(pool)
     ws_id = await _make_workspace(pool, owner_id)
-    folder_id = await _make_folder(pool, ws_id, owner_id)
-
-    await permission_service.set_visibility("folder", folder_id, "public")
-    assert await permission_service.check_access("folder", folder_id, stranger_id)
-
-
-@pytest.mark.asyncio
-async def test_private_visibility_denies_member(pool):
-    owner_id = await _make_user(pool)
-    member_id = await _make_user(pool)
-    ws_id = await _make_workspace(pool, owner_id)
-    await pool.execute(
-        "INSERT INTO workspace_members (workspace_id, user_id, role) VALUES ($1, $2, 'editor')",
-        ws_id,
-        member_id,
-    )
-    folder_id = await _make_folder(pool, ws_id, owner_id)
-
-    await permission_service.set_visibility("folder", folder_id, "private")
-    assert not await permission_service.check_access(
-        "folder", folder_id, member_id, workspace_id=ws_id
-    )
-
-
-@pytest.mark.asyncio
-async def test_private_tag_keeps_creator_access(pool):
-    owner_id = await _make_user(pool)
-    member_id = await _make_user(pool)
-    ws_id = await _make_workspace(pool, owner_id)
-    await pool.execute(
-        "INSERT INTO workspace_members (workspace_id, user_id, role) VALUES ($1, $2, 'editor')",
-        ws_id,
-        member_id,
-    )
     page_id = await _make_page(pool, ws_id, owner_id)
 
-    await permission_service.set_privacy_visibility("page", page_id, "private", owner_id)
+    await _make_stash(ws_id, owner_id, "public", "page", page_id)
+
+    assert await permission_service.check_access("page", page_id, None)
+    assert await permission_service.get_visibility("page", page_id) == "public"
+
+
+@pytest.mark.asyncio
+async def test_private_stash_hides_page_from_workspace_member(pool):
+    owner_id = await _make_user(pool)
+    member_id = await _make_user(pool)
+    ws_id = await _make_workspace(pool, owner_id)
+    await _add_workspace_member(pool, ws_id, member_id)
+    page_id = await _make_page(pool, ws_id, owner_id)
+
+    await _make_stash(ws_id, owner_id, "private", "page", page_id)
 
     assert await permission_service.check_access("page", page_id, owner_id, workspace_id=ws_id)
+    assert not await permission_service.check_access("page", page_id, member_id, workspace_id=ws_id)
+    assert await permission_service.get_visibility("page", page_id) == "private"
+
+
+@pytest.mark.asyncio
+async def test_private_stash_member_can_read_and_write_with_permission(pool):
+    owner_id = await _make_user(pool)
+    reader_id = await _make_user(pool)
+    writer_id = await _make_user(pool)
+    ws_id = await _make_workspace(pool, owner_id)
+    page_id = await _make_page(pool, ws_id, owner_id)
+    stash = await _make_stash(ws_id, owner_id, "private", "page", page_id)
+
+    await _add_stash_member(pool, stash["id"], reader_id, owner_id, "read")
+    await _add_stash_member(pool, stash["id"], writer_id, owner_id, "write")
+
+    assert await permission_service.check_access("page", page_id, reader_id)
+    assert not await permission_service.check_access("page", page_id, reader_id, require_write=True)
+    assert await permission_service.check_access("page", page_id, writer_id, require_write=True)
+
+
+@pytest.mark.asyncio
+async def test_private_stash_partitions_items_from_workspace_and_public_stashes(pool):
+    owner_id = await _make_user(pool)
+    ws_id = await _make_workspace(pool, owner_id)
+    page_id = await _make_page(pool, ws_id, owner_id)
+
+    await _make_stash(ws_id, owner_id, "private", "page", page_id)
+
+    with pytest.raises(ValueError, match="private Stashes"):
+        await _make_stash(ws_id, owner_id, "workspace", "page", page_id)
+
+
+@pytest.mark.asyncio
+async def test_folder_partition_blocks_descendant_page_conflicts(pool):
+    owner_id = await _make_user(pool)
+    ws_id = await _make_workspace(pool, owner_id)
+    folder_id = await _make_folder(pool, ws_id, owner_id)
+    page_id = await _make_page(pool, ws_id, owner_id, folder_id=folder_id)
+
+    await _make_stash(ws_id, owner_id, "private", "folder", folder_id)
+
+    with pytest.raises(ValueError, match="private Stashes"):
+        await _make_stash(ws_id, owner_id, "public", "page", page_id)
+
+
+@pytest.mark.asyncio
+async def test_page_partition_blocks_ancestor_folder_conflicts(pool):
+    owner_id = await _make_user(pool)
+    ws_id = await _make_workspace(pool, owner_id)
+    folder_id = await _make_folder(pool, ws_id, owner_id)
+    page_id = await _make_page(pool, ws_id, owner_id, folder_id=folder_id)
+
+    await _make_stash(ws_id, owner_id, "private", "page", page_id)
+
+    with pytest.raises(ValueError, match="private Stashes"):
+        await _make_stash(ws_id, owner_id, "workspace", "folder", folder_id)
+
+
+@pytest.mark.asyncio
+async def test_page_inherits_folder_stash_access(pool):
+    owner_id = await _make_user(pool)
+    member_id = await _make_user(pool)
+    ws_id = await _make_workspace(pool, owner_id)
+    await _add_workspace_member(pool, ws_id, member_id)
+    folder_id = await _make_folder(pool, ws_id, owner_id)
+    page_id = await _make_page(pool, ws_id, owner_id, folder_id=folder_id)
+
+    await _make_stash(ws_id, owner_id, "private", "folder", folder_id)
+
     assert not await permission_service.check_access("page", page_id, member_id, workspace_id=ws_id)
 
 
 @pytest.mark.asyncio
-async def test_session_privacy_tag_limits_workspace_members(pool):
+async def test_nested_page_inherits_outer_folder_stash_access(pool):
     owner_id = await _make_user(pool)
     member_id = await _make_user(pool)
     ws_id = await _make_workspace(pool, owner_id)
-    await pool.execute(
-        "INSERT INTO workspace_members (workspace_id, user_id, role) VALUES ($1, $2, 'editor')",
-        ws_id,
-        member_id,
-    )
-    session_row_id = await _make_session(pool, ws_id, owner_id)
-
-    await permission_service.set_privacy_visibility("session", session_row_id, "private", owner_id)
-
-    assert await permission_service.check_access(
-        "session", session_row_id, owner_id, workspace_id=ws_id
-    )
-    assert not await permission_service.check_access(
-        "session", session_row_id, member_id, workspace_id=ws_id
-    )
-
-
-@pytest.mark.asyncio
-async def test_table_visibility_uses_privacy_tags(pool):
-    owner_id = await _make_user(pool)
-    member_id = await _make_user(pool)
-    ws_id = await _make_workspace(pool, owner_id)
-    await pool.execute(
-        "INSERT INTO workspace_members (workspace_id, user_id, role) VALUES ($1, $2, 'editor')",
-        ws_id,
-        member_id,
-    )
-    table_id = await _make_table(pool, ws_id, owner_id)
-
-    await permission_service.set_visibility("table", table_id, "private")
-
-    tag = await pool.fetchrow(
-        "SELECT pt.access FROM privacy_tags pt "
-        "JOIN privacy_tag_objects pto ON pto.tag_id = pt.id "
-        "WHERE pto.object_type = 'table' AND pto.object_id = $1",
-        table_id,
-    )
-
-    assert tag["access"] == "members"
-    assert not await permission_service.check_access(
-        "table", table_id, member_id, workspace_id=ws_id
-    )
-
-
-@pytest.mark.asyncio
-async def test_history_share_uses_privacy_tag_members(pool):
-    owner_id = await _make_user(pool)
-    reader_id = await _make_user(pool)
-    ws_id = await _make_workspace(pool, owner_id)
-    event_id = await pool.fetchval(
-        "INSERT INTO history_events (workspace_id, created_by, agent_name, event_type, content) "
-        "VALUES ($1, $2, 'agent', 'message', 'hello') RETURNING id",
-        ws_id,
-        owner_id,
-    )
-
-    await permission_service.set_visibility("history", event_id, "private")
-    await permission_service.add_share("history", event_id, reader_id, "read", owner_id)
-
-    tag_member = await pool.fetchrow(
-        "SELECT ptm.permission FROM privacy_tag_members ptm "
-        "JOIN privacy_tag_objects pto ON pto.tag_id = ptm.tag_id "
-        "WHERE pto.object_type = 'history' AND pto.object_id = $1 AND ptm.user_id = $2",
-        event_id,
-        reader_id,
-    )
-
-    assert tag_member["permission"] == "read"
-    assert await permission_service.check_access("history", event_id, reader_id)
-
-
-@pytest.mark.asyncio
-async def test_page_inherits_folder_visibility_for_link_readers(pool):
-    owner_id = await _make_user(pool)
-    ws_id = await _make_workspace(pool, owner_id)
-    folder_id = await _make_folder(pool, ws_id, owner_id)
-    inherited_page_id = await _make_page(
-        pool, ws_id, owner_id, folder_id=folder_id, name="inherited"
-    )
-    private_page_id = await _make_page(pool, ws_id, owner_id, folder_id=folder_id, name="private")
-
-    await permission_service.set_visibility("folder", folder_id, "link")
-    await permission_service.set_visibility("page", private_page_id, "private")
-
-    assert await permission_service.check_access("page", inherited_page_id, None)
-    assert not await permission_service.check_access("page", private_page_id, None)
-
-
-@pytest.mark.asyncio
-async def test_page_inherits_folder_shares_for_authenticated_readers(pool):
-    owner_id = await _make_user(pool)
-    reader_id = await _make_user(pool)
-    ws_id = await _make_workspace(pool, owner_id)
-    folder_id = await _make_folder(pool, ws_id, owner_id)
-    page_id = await _make_page(pool, ws_id, owner_id, folder_id=folder_id)
-
-    await permission_service.set_visibility("folder", folder_id, "private")
-    await permission_service.add_share("folder", folder_id, reader_id, "read", owner_id)
-
-    assert await permission_service.check_access("page", page_id, reader_id)
-
-
-@pytest.mark.asyncio
-async def test_private_folder_hides_inherited_pages_from_workspace_members(pool):
-    owner_id = await _make_user(pool)
-    member_id = await _make_user(pool)
-    ws_id = await _make_workspace(pool, owner_id)
-    await pool.execute(
-        "INSERT INTO workspace_members (workspace_id, user_id, role) VALUES ($1, $2, 'editor')",
-        ws_id,
-        member_id,
-    )
-    folder_id = await _make_folder(pool, ws_id, owner_id)
-    page_id = await _make_page(pool, ws_id, owner_id, folder_id=folder_id)
-
-    await permission_service.set_visibility("folder", folder_id, "private")
-
-    assert not await permission_service.check_access("page", page_id, member_id)
-
-
-@pytest.mark.asyncio
-async def test_nested_folder_inherits_outer_folder_visibility(pool):
-    """A nested folder's pages inherit visibility from the closest folder
-    ancestor that has an explicit setting. A private outer folder hides
-    everything beneath it even when the inner folder is left at 'inherit'."""
-    owner_id = await _make_user(pool)
-    member_id = await _make_user(pool)
-    ws_id = await _make_workspace(pool, owner_id)
-    await pool.execute(
-        "INSERT INTO workspace_members (workspace_id, user_id, role) VALUES ($1, $2, 'editor')",
-        ws_id,
-        member_id,
-    )
+    await _add_workspace_member(pool, ws_id, member_id)
     outer = await _make_folder(pool, ws_id, owner_id, name="outer")
     inner = await _make_folder(pool, ws_id, owner_id, name="inner", parent_folder_id=outer)
     page_id = await _make_page(pool, ws_id, owner_id, folder_id=inner)
 
-    await permission_service.set_visibility("folder", outer, "private")
+    await _make_stash(ws_id, owner_id, "private", "folder", outer)
 
     assert not await permission_service.check_access("page", page_id, member_id)
 
 
 @pytest.mark.asyncio
-async def test_history_resolves_to_history_events_workspace(pool):
+async def test_privacy_mutators_fail_fast(pool):
     owner_id = await _make_user(pool)
     ws_id = await _make_workspace(pool, owner_id)
-    event_id = await pool.fetchval(
-        "INSERT INTO history_events (workspace_id, created_by, agent_name, event_type, content) "
-        "VALUES ($1, $2, 'agent', 'message', 'hello') RETURNING id",
-        ws_id,
-        owner_id,
-    )
+    page_id = await _make_page(pool, ws_id, owner_id)
 
+    with pytest.raises(ValueError, match="Stashes"):
+        await permission_service.set_visibility("page", page_id, "private")
+
+    with pytest.raises(ValueError, match="Stashes"):
+        await permission_service.set_privacy_visibility("page", page_id, "private", owner_id)
+
+    with pytest.raises(ValueError, match="Stash"):
+        await permission_service.add_share("page", page_id, owner_id, "read", owner_id)
+
+
+@pytest.mark.asyncio
+async def test_resolve_workspace_for_content_types(pool):
+    owner_id = await _make_user(pool)
+    ws_id = await _make_workspace(pool, owner_id)
+    page_id = await _make_page(pool, ws_id, owner_id)
+    session_id = await _make_session(pool, ws_id, owner_id)
+    table_id = await _make_table(pool, ws_id, owner_id)
+    event_id = await _make_history_event(pool, ws_id, owner_id)
+
+    assert await permission_service.resolve_workspace_id("page", page_id) == ws_id
+    assert await permission_service.resolve_workspace_id("session", session_id) == ws_id
+    assert await permission_service.resolve_workspace_id("table", table_id) == ws_id
     assert await permission_service.resolve_workspace_id("history", event_id) == ws_id

@@ -116,7 +116,7 @@ class StashItem(BaseModel):
 class StashCreateRequest(BaseModel):
     title: str = Field(..., min_length=1, max_length=160)
     description: str = Field("", max_length=2000)
-    is_public: bool = False
+    access: str = Field("workspace", pattern=r"^(workspace|private|public)$")
     discoverable: bool = False
     cover_image_url: str | None = None
     items: list[StashItem] = Field(default_factory=list)
@@ -125,7 +125,7 @@ class StashCreateRequest(BaseModel):
 class StashUpdateRequest(BaseModel):
     title: str | None = Field(None, min_length=1, max_length=160)
     description: str | None = Field(None, max_length=2000)
-    is_public: bool | None = None
+    access: str | None = Field(None, pattern=r"^(workspace|private|public)$")
     discoverable: bool | None = None
     cover_image_url: str | None = None
     items: list[StashItem] | None = None
@@ -138,7 +138,7 @@ class StashResponse(BaseModel):
     title: str
     description: str
     owner_id: UUID
-    is_public: bool
+    access: str
     discoverable: bool
     cover_image_url: str | None = None
     view_count: int
@@ -238,7 +238,7 @@ class RedeemInviteAuthedRequest(BaseModel):
     token: str = Field(..., min_length=8, max_length=128)
 
 
-# --- Wiki: folders (nested) and pages ---
+# --- Files: folders (nested) and pages ---
 
 
 class FolderCreateRequest(BaseModel):
@@ -331,12 +331,12 @@ class WorkspaceTreeResponse(BaseModel):
 
 
 class WorkspacePageEntry(BaseModel):
-    """Flat reference to a page for wiki-link lookups.
+    """Flat reference to a page for workspace-wide search and pickers.
 
     folder_path is the chain of folder names from the workspace root down to
     the immediate parent — empty for root pages, ['Architecture', 'API'] for
     a page nested two folders deep. Used to render and resolve
-    `[[folder/page]]` wiki links.
+    Folder path is included so callers can display disambiguated page names.
     """
 
     id: UUID
@@ -526,25 +526,18 @@ class HistoryQueryResponse(BaseModel):
     sources: list[HistoryEventResponse]
 
 
-# --- Object Permissions ---
+# --- Stash sharing ---
 
 
 class PermissionResponse(BaseModel):
     object_type: str
     object_id: UUID
-    visibility: str  # inherit, private, link, public
+    visibility: str
     shares: list["ShareResponse"] = []
-    tags: list["PrivacyTagResponse"] = []
-
-
-class PrivacyTagResponse(BaseModel):
-    id: UUID
-    name: str
-    access: str
 
 
 class SetVisibilityRequest(BaseModel):
-    visibility: str = Field(..., pattern=r"^(inherit|private|link|public)$")
+    visibility: str = Field(..., pattern=r"^(workspace|private|public)$")
 
 
 class ShareRequest(BaseModel):
@@ -583,7 +576,7 @@ class PublishRequest(BaseModel):
     content: str = ""
     content_type: str = Field("markdown", pattern=r"^(markdown|html)$")
     html_layout: str = Field("responsive", pattern=r"^(responsive|fixed-aspect)$")
-    audience: str = Field("link", pattern=r"^(link|public)$")
+    audience: str = Field("public", pattern=r"^(workspace|private|public)$")
     folder_id: UUID | None = None
 
 

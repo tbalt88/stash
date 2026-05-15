@@ -38,7 +38,7 @@ export interface WorkspaceMember {
   joined_at: string;
 }
 
-// --- Wiki: folders (nested) and pages ---
+// --- Files: folders (nested) and pages ---
 
 export type PageContentType = "markdown" | "html";
 
@@ -131,15 +131,8 @@ export interface HistoryEventWithContext extends HistoryEvent {
 export interface ObjectPermission {
   object_type: string;
   object_id: string;
-  visibility: "inherit" | "private" | "link" | "public";
+  visibility: "workspace" | "private" | "public";
   shares: Share[];
-  tags: PrivacyTag[];
-}
-
-export interface PrivacyTag {
-  id: string;
-  name: string;
-  access: "workspace" | "members" | "public";
 }
 
 export interface Share {
@@ -221,21 +214,6 @@ export interface Attachment {
   file_id: string;
   name: string;
   content_type: string;
-}
-
-// --- Wiki / Page Links ---
-
-export interface PageLink {
-  id: string;
-  name: string;
-  workspace_id: string;
-  link_text: string;
-  created_at: string;
-}
-
-export interface PageGraph {
-  nodes: { id: string; name: string }[];
-  edges: { source: string; target: string; label: string }[];
 }
 
 // --- Dashboard Visualizations ---

@@ -18,7 +18,7 @@ import pytest
 import pytest_asyncio
 
 from backend.models import StashItem
-from backend.services import agent_runtime, permission_service, prompts, stash_service
+from backend.services import agent_runtime, prompts, stash_service
 
 
 def test_tool_catalog_matches_prompts_set():
@@ -29,8 +29,7 @@ def test_tool_catalog_matches_prompts_set():
 
 
 def test_recipient_tool_set_is_subset_of_full():
-    """Recipient (share-link) tool set is intentionally narrower than the
-    full stash toolset."""
+    """Recipient tool set is intentionally narrower than the full stash toolset."""
     for name in prompts.RECIPIENT_TOOL_SET:
         assert name in prompts.STASH_TOOL_SET
 
@@ -160,13 +159,12 @@ async def test_external_stash_is_live_workspace_attachment(workspace: UUID, _db_
         "External Stash source",
         owner_id,
     )
-    await permission_service.set_visibility("page", page_id, "public")
     source = await stash_service.create_stash(
         workspace_id=workspace,
         owner_id=owner_id,
         title="Live source Stash",
         description="",
-        is_public=True,
+        access="public",
         discoverable=False,
         cover_image_url=None,
         items=[StashItem(object_type="page", object_id=page_id)],

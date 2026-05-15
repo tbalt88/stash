@@ -129,7 +129,7 @@ class StashClient:
 
     # --- Discover (public catalog, no auth required) ---
 
-    def list_catalog(
+    def list_discover_stashes(
         self,
         query: str = "",
         sort: str = "trending",
@@ -149,7 +149,7 @@ class StashClient:
         workspace_id: str,
         title: str,
         description: str = "",
-        is_public: bool = False,
+        access: str = "workspace",
         discoverable: bool = False,
         items: list | None = None,
     ) -> dict:
@@ -158,7 +158,7 @@ class StashClient:
             json={
                 "title": title,
                 "description": description,
-                "is_public": is_public,
+                "access": access,
                 "discoverable": discoverable,
                 "items": items or [],
             },
@@ -169,17 +169,16 @@ class StashClient:
         workspace_id: str,
         title: str,
         description: str = "",
-        ensure: str = "public",
         discoverable: bool = False,
         items: list | None = None,
     ) -> dict:
-        """Create a Product Stash and publish its underlying items in one atomic call."""
+        """Create a public Product Stash in one atomic call."""
         return self._post(
-            f"/api/v1/workspaces/{workspace_id}/stashes/publish?ensure={ensure}",
+            f"/api/v1/workspaces/{workspace_id}/stashes/publish",
             json={
                 "title": title,
                 "description": description,
-                "is_public": ensure == "public",
+                "access": "public",
                 "discoverable": discoverable,
                 "items": items or [],
             },
@@ -552,10 +551,10 @@ class StashClient:
     def remove_object_share(self, object_type: str, object_id: str, user_id: str) -> None:
         self._delete(f"/api/v1/objects/{object_type}/{object_id}/shares/{user_id}")
 
-    def share_link(self, object_type: str, object_id: str, ensure: str | None = None) -> dict:
+    def create_stash_url(self, object_type: str, object_id: str, access: str = "public") -> dict:
         path = f"/api/v1/objects/{object_type}/{object_id}/share-link"
-        if ensure:
-            path += f"?ensure={ensure}"
+        if access:
+            path += f"?access={access}"
         return self._post(path)
 
     def publish(
@@ -564,7 +563,7 @@ class StashClient:
         title: str,
         content: str,
         content_type: str = "markdown",
-        audience: str = "link",
+        audience: str = "public",
         folder_id: str | None = None,
     ) -> dict:
         body: dict = {

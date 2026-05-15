@@ -120,9 +120,7 @@ export default function FileViewerPage() {
             )}
           </div>
           <div className="flex items-center gap-1">
-            {/* "Share" checkbox is gone — sharing is now link-based. Mint a
-                share-link with target_type='file' via the workspace Share
-                button. */}
+            {/* File sharing now happens through the workspace Share button. */}
             {file?.url && (
               <a
                 href={file.url}

@@ -26,7 +26,7 @@ interface ShareModalContextValue {
   state: ShareModalState;
   open: (opts: ShareModalOpenOptions) => void;
   close: () => void;
-  // Bumped whenever a share link is minted or revoked. Consumers include it
+  // Bumped whenever a Stash URL is minted or revoked. Consumers include it
   // in deps to re-fetch their Product Stashes list.
   version: number;
   bumpVersion: () => void;

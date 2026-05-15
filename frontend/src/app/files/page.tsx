@@ -126,7 +126,7 @@ function FilesPageInner() {
         ) : files.length === 0 ? (
           <div className="text-center py-16 text-muted">
             <p className="text-sm">No files uploaded yet.</p>
-            <p className="text-xs mt-1">Upload files here or drag images into wiki pages.</p>
+            <p className="text-xs mt-1">Upload files here or attach them to pages.</p>
           </div>
         ) : (
           <div className="border border-border rounded-xl overflow-hidden">

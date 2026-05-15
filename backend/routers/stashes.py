@@ -19,9 +19,6 @@ from ..services import permission_service, stash_service, workspace_service
 ws_router = APIRouter(prefix="/api/v1/workspaces", tags=["stashes"])
 public_router = APIRouter(prefix="/api/v1/stashes", tags=["stashes"])
 
-_VISIBILITY_RANK = {"private": 0, "inherit": 0, "link": 1, "public": 2}
-
-
 async def _require_can_share_item(workspace_id: UUID, item, user_id: UUID) -> None:
     item_workspace_id = await permission_service.resolve_workspace_id(
         item.object_type, item.object_id
@@ -48,20 +45,23 @@ async def create_stash(
 ):
     if not await workspace_service.is_member(workspace_id, current_user["id"]):
         raise HTTPException(status_code=403, detail="Not a workspace member")
-    if req.is_public or req.discoverable:
-        raise HTTPException(status_code=400, detail="Use publish to create public Stashes")
+    if req.discoverable and req.access != "public":
+        raise HTTPException(status_code=400, detail="Discover Stashes must be public")
     for item in req.items:
         await _require_can_share_item(workspace_id, item, current_user["id"])
-    stash = await stash_service.create_stash(
-        workspace_id=workspace_id,
-        owner_id=current_user["id"],
-        title=req.title,
-        description=req.description,
-        is_public=req.is_public,
-        discoverable=req.discoverable,
-        cover_image_url=req.cover_image_url,
-        items=req.items,
-    )
+    try:
+        stash = await stash_service.create_stash(
+            workspace_id=workspace_id,
+            owner_id=current_user["id"],
+            title=req.title,
+            description=req.description,
+            access=req.access,
+            discoverable=req.discoverable,
+            cover_image_url=req.cover_image_url,
+            items=req.items,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     return StashResponse(**stash)
 
 
@@ -69,35 +69,30 @@ async def create_stash(
 async def publish_stash(
     workspace_id: UUID,
     req: StashCreateRequest,
-    ensure: str = Query("link", pattern=r"^(link|public)$"),
     current_user: dict = Depends(get_current_user),
 ):
-    """Create a Stash and make every underlying item readable at the requested level."""
+    """Create a public Stash and return its shareable URL."""
     if not await workspace_service.is_member(workspace_id, current_user["id"]):
         raise HTTPException(status_code=403, detail="Not a workspace member")
     if not req.items:
         raise HTTPException(status_code=400, detail="A shared bundle needs at least one item")
-    if req.discoverable and ensure != "public":
-        raise HTTPException(status_code=400, detail="Discover Stashes must be public")
 
     for item in req.items:
         await _require_can_share_item(workspace_id, item, current_user["id"])
 
-    for item in req.items:
-        current_vis = await permission_service.get_visibility(item.object_type, item.object_id)
-        if _VISIBILITY_RANK.get(current_vis, 0) < _VISIBILITY_RANK[ensure]:
-            await permission_service.set_visibility(item.object_type, item.object_id, ensure)
-
-    stash = await stash_service.create_stash(
-        workspace_id=workspace_id,
-        owner_id=current_user["id"],
-        title=req.title,
-        description=req.description,
-        is_public=ensure == "public",
-        discoverable=req.discoverable,
-        cover_image_url=req.cover_image_url,
-        items=req.items,
-    )
+    try:
+        stash = await stash_service.create_stash(
+            workspace_id=workspace_id,
+            owner_id=current_user["id"],
+            title=req.title,
+            description=req.description,
+            access="public",
+            discoverable=req.discoverable,
+            cover_image_url=req.cover_image_url,
+            items=req.items,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     base = settings.PUBLIC_URL.rstrip("/")
     return {
         "stash": StashResponse(**stash),
@@ -163,7 +158,7 @@ async def update_stash(
             current_user["id"],
             title=req.title,
             description=req.description,
-            is_public=req.is_public,
+            access=req.access,
             discoverable=req.discoverable,
             cover_image_url=req.cover_image_url,
             items=req.items,

@@ -12,7 +12,7 @@ const PILLARS = [
     label: "Organize",
     color: "bg-green-500/8 border-green-500/20 text-green-600",
     dot: "bg-green-500",
-    description: "Humans and agents turn useful outputs into wiki pages with folders and backlinks.",
+    description: "Humans and agents turn useful outputs into pages and folders in Files.",
   },
   {
     label: "Connect",
@@ -50,12 +50,12 @@ export default function DocsOverview() {
       <P>
         Stash sits between your coding agents and the knowledge they generate. Every agent session
         streams automatically. Every research result, file, and message lands in a shared workspace.
-        Durable knowledge lives in the wiki, and Product Stashes publish useful combinations of
+        Durable knowledge lives in Files, and Product Stashes publish useful combinations of
         sessions, pages, and files so any agent on your team can build on what others learned.
       </P>
       <P>
         Humans and agents both use Stash. You configure workspaces and agent names, then build
-        shared context from sessions, wiki pages, and Product Stashes.
+        shared context from sessions, pages, files, and Product Stashes.
       </P>
 
       <H3>Three modes of use</H3>
