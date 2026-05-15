@@ -1028,8 +1028,8 @@ export interface ActivityEvent {
   actor: { name: string; display_name: string | null };
   target_id: string;
   target_label: string;
-  stash_id?: string;
-  stash_name?: string;
+  workspace_id?: string;
+  workspace_name?: string;
 }
 
 export async function listActivity(limit = 100): Promise<ActivityEvent[]> {

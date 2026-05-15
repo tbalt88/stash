@@ -78,8 +78,8 @@ async def list_activity(
                    ARRAY_AGG(he.agent_name ORDER BY he.created_at DESC)
                    FILTER (WHERE he.agent_name IS NOT NULL)
                  )[1] || ': ' || he.session_id AS target_label,
-                 aw.id AS stash_id,
-                 aw.name AS stash_name
+                 aw.id AS workspace_id,
+                 aw.name AS workspace_name
           FROM history_events he
           JOIN accessible_workspaces aw ON aw.id = he.workspace_id
           WHERE he.session_id IS NOT NULL
@@ -93,8 +93,8 @@ async def list_activity(
                  COALESCE(p.updated_by, p.created_by) AS actor_id,
                  p.id::text AS target_id,
                  p.name AS target_label,
-                 aw.id AS stash_id,
-                 aw.name AS stash_name
+                 aw.id AS workspace_id,
+                 aw.name AS workspace_name
           FROM pages p
           JOIN accessible_workspaces aw ON aw.id = p.workspace_id
           WHERE COALESCE(p.metadata->>'shared_in_stash_id', '') = ''
@@ -107,8 +107,8 @@ async def list_activity(
                  f.uploaded_by AS actor_id,
                  f.id::text AS target_id,
                  f.name AS target_label,
-                 aw.id AS stash_id,
-                 aw.name AS stash_name
+                 aw.id AS workspace_id,
+                 aw.name AS workspace_name
           FROM files f
           JOIN accessible_workspaces aw ON aw.id = f.workspace_id
           WHERE """ + permission_service.readable_content_condition("file", "f", 1) + """
@@ -120,8 +120,8 @@ async def list_activity(
                  wm.user_id AS actor_id,
                  wm.user_id::text AS target_id,
                  '' AS target_label,
-                 aw.id AS stash_id,
-                 aw.name AS stash_name
+                 aw.id AS workspace_id,
+                 aw.name AS workspace_name
           FROM workspace_members wm
           JOIN accessible_workspaces aw ON aw.id = wm.workspace_id
         )
@@ -147,8 +147,8 @@ async def list_activity(
             "actor": users.get(r["actor_id"], {"name": "unknown", "display_name": None}),
             "target_id": r["target_id"],
             "target_label": r["target_label"],
-            "stash_id": r["stash_id"],
-            "stash_name": r["stash_name"],
+            "workspace_id": r["workspace_id"],
+            "workspace_name": r["workspace_name"],
         }
         for r in events
     ]

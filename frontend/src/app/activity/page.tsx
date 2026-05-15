@@ -79,7 +79,7 @@ function ActivityPageInner() {
             No activity yet. Push a transcript, edit a page, or upload a file.
           </p>
         ) : (
-          <ActivityFeed events={events} showStash={!workspaceId} />
+          <ActivityFeed events={events} showWorkspace={!workspaceId} />
         )}
       </div>
     </AppShell>

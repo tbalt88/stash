@@ -8,7 +8,7 @@ const VERB: Record<string, string> = {
   "session.uploaded": "pushed a transcript",
   "page.updated": "edited a page",
   "file.uploaded": "uploaded a file",
-  "member.joined": "joined the stash",
+  "member.joined": "joined the workspace",
 };
 
 const PALETTE = [
@@ -27,12 +27,16 @@ function colorFor(name: string) {
 }
 
 function targetHref(event: ActivityEvent): string | null {
-  if (!event.stash_id) return null;
+  if (!event.workspace_id) return null;
   if (event.kind === "session.uploaded") {
-    return `/workspaces/${event.stash_id}/sessions/${encodeURIComponent(event.target_id)}`;
+    return `/workspaces/${event.workspace_id}/sessions/${encodeURIComponent(event.target_id)}`;
   }
-  if (event.kind === "page.updated") return `/workspaces/${event.stash_id}/p/${event.target_id}`;
-  if (event.kind === "file.uploaded") return `/workspaces/${event.stash_id}/f/${event.target_id}`;
+  if (event.kind === "page.updated") {
+    return `/workspaces/${event.workspace_id}/p/${event.target_id}`;
+  }
+  if (event.kind === "file.uploaded") {
+    return `/workspaces/${event.workspace_id}/f/${event.target_id}`;
+  }
   return null;
 }
 
@@ -56,10 +60,10 @@ function EventIcon({ kind }: { kind: string }) {
 
 export default function ActivityFeed({
   events,
-  showStash,
+  showWorkspace,
 }: {
   events: ActivityEvent[];
-  showStash?: boolean;
+  showWorkspace?: boolean;
 }) {
   return (
     <div className="mt-6 flex flex-col">
@@ -70,7 +74,7 @@ export default function ActivityFeed({
 
         return (
           <div
-            key={`${event.kind}-${event.stash_id ?? "stash"}-${event.target_id}-${index}`}
+            key={`${event.kind}-${event.workspace_id ?? "workspace"}-${event.target_id}-${index}`}
             className="flex items-start gap-3 border-b border-border py-3 last:border-b-0"
           >
             <span
@@ -103,15 +107,15 @@ export default function ActivityFeed({
               {event.target_label && !href && (
                 <> <span className="text-foreground">{event.target_label}</span></>
               )}
-              {showStash && event.stash_name && event.stash_id && (
+              {showWorkspace && event.workspace_name && event.workspace_id && (
                 <>
                   {" "}
                   <span className="text-muted">in</span>{" "}
                   <Link
-                    href={`/workspaces/${event.stash_id}`}
+                    href={`/workspaces/${event.workspace_id}`}
                     className="font-medium text-foreground hover:text-[var(--color-brand-700)]"
                   >
-                    {event.stash_name}
+                    {event.workspace_name}
                   </Link>
                 </>
               )}

@@ -72,8 +72,10 @@ async def test_user_activity_is_scoped_to_accessible_workspaces(client: AsyncCli
     ]
 
     assert len(visible) == 1
-    assert visible[0]["stash_id"] == owner_workspace["id"]
-    assert visible[0]["stash_name"] == "Team Activity"
+    assert visible[0]["workspace_id"] == owner_workspace["id"]
+    assert visible[0]["workspace_name"] == "Team Activity"
+    assert "stash_id" not in visible[0]
+    assert "stash_name" not in visible[0]
     assert visible[0]["target_label"] == "tester: visible-session"
     assert hidden == []
 
@@ -100,4 +102,4 @@ async def test_user_activity_can_filter_to_one_workspace(client: AsyncClient):
         if event["kind"] == "session.uploaded"
     ]
     assert {event["target_id"] for event in events} == {"first-session"}
-    assert {event["stash_id"] for event in events} == {first_workspace["id"]}
+    assert {event["workspace_id"] for event in events} == {first_workspace["id"]}
