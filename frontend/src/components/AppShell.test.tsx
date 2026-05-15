@@ -10,10 +10,12 @@ import {
 
 const nav = vi.hoisted(() => ({
   pathname: "/",
+  back: vi.fn(),
 }));
 
 vi.mock("next/navigation", () => ({
   usePathname: () => nav.pathname,
+  useRouter: () => ({ back: nav.back }),
 }));
 
 vi.mock("next/link", () => ({
@@ -58,6 +60,7 @@ describe("AppShell sidebar collapse", () => {
   beforeEach(() => {
     localStorage.clear();
     nav.pathname = "/";
+    nav.back.mockClear();
     vi.clearAllMocks();
     vi.mocked(readCachedWorkspaces).mockReturnValue({
       userId: user.id,

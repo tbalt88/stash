@@ -103,7 +103,9 @@ describe("AppSidebar tree expansion", () => {
 
     await screen.findByText("Demo Stash");
 
-    expect(screen.getByText("Activity").closest("a")).toHaveAttribute("href", "/activity");
+    const activityLinks = screen.getAllByText("Activity").map((node) => node.closest("a"));
+    expect(activityLinks.some((link) => link?.getAttribute("href") === "/activity")).toBe(true);
+    expect(activityLinks.some((link) => link?.getAttribute("href") === "/activity?workspace=ws-1")).toBe(true);
     expect(detailsFor("Demo Stash")).not.toHaveAttribute("open");
     expect(detailsFor("Sessions")).not.toHaveAttribute("open");
     expect(detailsFor("Files")).not.toHaveAttribute("open");

@@ -20,7 +20,13 @@ from fastapi.responses import PlainTextResponse
 
 from ..auth import get_current_user
 from ..database import get_pool
-from ..services import memory_service, transcript_import, workspace_service
+from ..services import (
+    memory_service,
+    session_service,
+    stash_service,
+    transcript_import,
+    workspace_service,
+)
 
 router = APIRouter(prefix="/api/v1/workspaces/{workspace_id}/transcripts", tags=["transcripts"])
 
@@ -39,6 +45,7 @@ async def upload_transcript(
     session_id: str = Form(...),
     agent_name: str = Form(...),
     cwd: str | None = Form(None),
+    default_stash_id: UUID | None = Form(None),
     current_user: dict = Depends(get_current_user),
 ):
     """Parse the uploaded JSONL into history_events rows. No-op if the
@@ -58,6 +65,23 @@ async def upload_transcript(
         session_id,
     )
     if existing:
+        await session_service.upsert_session(
+            workspace_id,
+            session_id,
+            agent_name=agent_name,
+            cwd=cwd,
+            created_by=current_user["id"],
+        )
+        if default_stash_id:
+            try:
+                await stash_service.add_sessions_to_stash(
+                    stash_id=default_stash_id,
+                    workspace_id=workspace_id,
+                    user_id=current_user["id"],
+                    session_ids=[session_id],
+                )
+            except ValueError as e:
+                raise HTTPException(status_code=400, detail=str(e))
         return {
             "session_id": session_id,
             "imported": 0,
@@ -73,6 +97,16 @@ async def upload_transcript(
             e["metadata"] = {**(e.get("metadata") or {}), "cwd": cwd}
 
     inserted = await memory_service.push_events_batch(workspace_id, current_user["id"], events)
+    if default_stash_id:
+        try:
+            await stash_service.add_sessions_to_stash(
+                stash_id=default_stash_id,
+                workspace_id=workspace_id,
+                user_id=current_user["id"],
+                session_ids=[session_id],
+            )
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
     return {
         "session_id": session_id,
         "imported": len(inserted),

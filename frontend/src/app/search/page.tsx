@@ -11,11 +11,12 @@ import {
   listStashes,
   listMySessions,
   listMyWorkspaces,
-  semanticSearchPages,
+  searchWorkspacePages,
   type SessionSummary,
   type PublicStashDetail,
   type WorkspaceSidebar,
   type WorkspaceStash,
+  type WorkspaceFolder,
 } from "../../lib/api";
 import type { Page, Workspace } from "../../lib/types";
 
@@ -64,6 +65,7 @@ function SearchPageInner() {
   );
   const [selectedProductStashId, setSelectedProductStashId] = useState("");
   const [selectedFolderId, setSelectedFolderId] = useState("");
+  const [selectedPageId, setSelectedPageId] = useState("");
   const [contentScope, setContentScope] = useState<ContentScope>("all");
   const [internalOnly, setInternalOnly] = useState(false);
   const [query, setQuery] = useState(searchParams.get("q") ?? "");
@@ -116,6 +118,7 @@ function SearchPageInner() {
 
   useEffect(() => {
     setSelectedFolderId("");
+    setSelectedPageId("");
     setSelectedProductStashId("");
   }, [selectedWorkspaceId]);
 
@@ -156,11 +159,17 @@ function SearchPageInner() {
 
   useEffect(() => {
     setSelectedFolderId("");
+    setSelectedPageId("");
   }, [selectedProductStashId]);
 
   const folderOptions = useMemo(() => {
     if (!selectedWorkspaceId) return [];
     return sidebars[selectedWorkspaceId]?.files.folders ?? [];
+  }, [selectedWorkspaceId, sidebars]);
+
+  const pageOptions = useMemo(() => {
+    if (!selectedWorkspaceId) return [];
+    return sidebars[selectedWorkspaceId]?.files.pages ?? [];
   }, [selectedWorkspaceId, sidebars]);
 
   const handleSearch = useCallback(async () => {
@@ -191,11 +200,11 @@ function SearchPageInner() {
         return;
       }
 
-      if (includeStashes && !selectedFolderId) {
+      if (includeStashes && !selectedFolderId && !selectedPageId) {
         nextResults.push(...searchStashes(searchedStashes, q));
       }
 
-      if (includeSessions && !selectedFolderId) {
+      if (includeSessions && !selectedFolderId && !selectedPageId) {
         const sessions = await listMySessions(selectedWorkspaceId || undefined, 200);
         nextResults.push(...searchSessions(sessions, q, workspaceById, searchedWorkspaces));
       }
@@ -204,15 +213,25 @@ function SearchPageInner() {
         const settledPageGroups = await Promise.allSettled(
           searchedWorkspaces.map(async (workspace) => ({
             workspace,
-            pages: await semanticSearchPages(workspace.id, q, 24),
+            pages: await searchWorkspacePages(workspace.id, q, 50),
           }))
         );
         const pageGroups = settledPageGroups
           .filter((result) => result.status === "fulfilled")
           .map((result) => result.value);
-        nextResults.push(...searchPages(pageGroups, selectedFolderId));
+        const selectedSidebar = selectedWorkspaceId ? sidebars[selectedWorkspaceId] : undefined;
+        const folderIds = selectedSidebar
+          ? descendantFolderIds(selectedSidebar.files.folders, selectedFolderId)
+          : new Set<string>();
+        nextResults.push(
+          ...searchPages(pageGroups, {
+            selectedFolderId,
+            selectedPageId,
+            folderIds,
+          })
+        );
         if (pageGroups.length < searchedWorkspaces.length) {
-          setError("Page semantic search is unavailable; showing matching sessions and stashes.");
+          setError("Page search is unavailable for one or more workspaces.");
         }
       }
 
@@ -229,8 +248,10 @@ function SearchPageInner() {
     searchedStashes,
     searchedWorkspaces,
     selectedFolderId,
+    selectedPageId,
     selectedProductStash,
     selectedWorkspaceId,
+    sidebars,
     workspaceById,
   ]);
 
@@ -256,7 +277,7 @@ function SearchPageInner() {
             Search pages, sessions, and stashes.
           </h1>
           <p className="mt-2 max-w-[700px] text-[14.5px] leading-relaxed text-muted">
-            Search one workspace, one Product Stash, a folder inside a workspace, or
+            Search one workspace, one Stash, a folder inside a workspace, or
             internal knowledge only. Stash results are published bundles created from
             workspace pages and sessions.
           </p>
@@ -282,7 +303,7 @@ function SearchPageInner() {
               </label>
 
               <label className="flex flex-col gap-1.5">
-                <span className="text-[12px] font-medium text-foreground">Product Stash</span>
+                <span className="text-[12px] font-medium text-foreground">Stash</span>
                 <select
                   value={selectedProductStashId}
                   onChange={(event) => setSelectedProductStashId(event.target.value)}
@@ -302,16 +323,45 @@ function SearchPageInner() {
                 <span className="text-[12px] font-medium text-foreground">Folder</span>
                 <select
                   value={selectedFolderId}
-                  onChange={(event) => setSelectedFolderId(event.target.value)}
-                  disabled={!selectedWorkspaceId || Boolean(selectedProductStashId)}
+                  onChange={(event) => {
+                    setSelectedFolderId(event.target.value);
+                    if (event.target.value) setSelectedPageId("");
+                  }}
+                  disabled={!selectedWorkspaceId || Boolean(selectedProductStashId || selectedPageId)}
                   className="rounded-md border border-border bg-base px-2 py-2 text-[13px] text-foreground focus:border-brand focus:outline-none disabled:opacity-50"
                 >
                   <option value="">
-                    {selectedProductStashId ? "Product Stash selected" : "Entire workspace"}
+                    {selectedProductStashId ? "Stash selected" : "Entire workspace"}
                   </option>
                   {folderOptions.map((folder) => (
                     <option key={folder.id} value={folder.id}>
                       {folder.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="flex flex-col gap-1.5">
+                <span className="text-[12px] font-medium text-foreground">Page</span>
+                <select
+                  value={selectedPageId}
+                  onChange={(event) => {
+                    setSelectedPageId(event.target.value);
+                    if (event.target.value) setSelectedFolderId("");
+                  }}
+                  disabled={!selectedWorkspaceId || Boolean(selectedProductStashId || selectedFolderId)}
+                  className="rounded-md border border-border bg-base px-2 py-2 text-[13px] text-foreground focus:border-brand focus:outline-none disabled:opacity-50"
+                >
+                  <option value="">
+                    {selectedProductStashId
+                      ? "Stash selected"
+                      : selectedFolderId
+                        ? "Folder selected"
+                        : "Any page"}
+                  </option>
+                  {pageOptions.map((page) => (
+                    <option key={page.id} value={page.id}>
+                      {page.name}
                     </option>
                   ))}
                 </select>
@@ -458,7 +508,7 @@ function searchStashes(stashes: SearchableStash[], query: string): SearchResult[
       href: `/stashes/${stash.slug}`,
       sourceName: stash.workspace_name,
       detail:
-        (stash.is_external ? "External Product Stash" : "Product Stash") +
+        (stash.is_external ? "External Stash" : "Stash") +
         ` / ${stash.description || `${stash.items.length} items`}`,
       updatedAt: stash.updated_at,
     }));
@@ -503,11 +553,19 @@ function searchSessions(
 
 function searchPages(
   groups: { workspace: Workspace; pages: Page[] }[],
-  selectedFolderId: string
+  scope: {
+    selectedFolderId: string;
+    selectedPageId: string;
+    folderIds: Set<string>;
+  }
 ): SearchResult[] {
   return groups.flatMap(({ workspace, pages }) =>
     pages
-      .filter((page) => !selectedFolderId || page.folder_id === selectedFolderId)
+      .filter((page) => {
+        if (scope.selectedPageId) return page.id === scope.selectedPageId;
+        if (!scope.selectedFolderId) return true;
+        return Boolean(page.folder_id && scope.folderIds.has(page.folder_id));
+      })
       .map((page) => ({
         id: page.id,
         kind: "Page" as const,
@@ -521,6 +579,32 @@ function searchPages(
         updatedAt: page.updated_at,
       }))
   );
+}
+
+function descendantFolderIds(
+  folders: WorkspaceFolder[],
+  selectedFolderId: string
+): Set<string> {
+  if (!selectedFolderId) return new Set();
+
+  const childrenByParent = new Map<string, WorkspaceFolder[]>();
+  for (const folder of folders) {
+    if (!folder.parent_folder_id) continue;
+    const children = childrenByParent.get(folder.parent_folder_id) ?? [];
+    children.push(folder);
+    childrenByParent.set(folder.parent_folder_id, children);
+  }
+
+  const ids = new Set<string>([selectedFolderId]);
+  const queue = [selectedFolderId];
+  while (queue.length > 0) {
+    const current = queue.shift()!;
+    for (const child of childrenByParent.get(current) ?? []) {
+      ids.add(child.id);
+      queue.push(child.id);
+    }
+  }
+  return ids;
 }
 
 function searchPublicStashItems(

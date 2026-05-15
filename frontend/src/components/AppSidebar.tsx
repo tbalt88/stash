@@ -171,6 +171,11 @@ function WorkspaceTree({
           label="Home"
           active={pathname === `/workspaces/${workspace.id}`}
         />
+        <NavRow
+          href={`/activity?workspace=${workspace.id}`}
+          icon={<ActivityIcon />}
+          label="Activity"
+        />
         <details
           open={openSections.sessions}
           onToggle={(e) => onSectionOpenChange("sessions", e.currentTarget.open)}
@@ -645,14 +650,23 @@ export default function AppSidebar({ user, onCmdkOpen }: AppSidebarProps) {
 
       <div className="mt-4 flex items-center justify-between px-3 pb-1">
         <span className="text-[11px] font-semibold tracking-wide text-muted">MY WORKSPACES</span>
-        <Link
-          href="/workspaces/new"
-          className="rounded p-0.5 text-muted hover:bg-raised hover:text-foreground"
-          title="New workspace"
-          aria-label="New workspace"
-        >
-          +
-        </Link>
+        <details className="relative">
+          <summary
+            className="flex h-5 w-5 cursor-pointer list-none items-center justify-center rounded text-muted hover:bg-raised hover:text-foreground [&::-webkit-details-marker]:hidden"
+            title="Workspace menu"
+            aria-label="Workspace menu"
+          >
+            ⋯
+          </summary>
+          <div className="absolute right-0 top-full z-20 mt-1 w-40 overflow-hidden rounded-md border border-border bg-surface py-1 text-[12.5px] shadow-lg">
+            <Link
+              href="/workspaces/new"
+              className="block px-3 py-1.5 text-foreground hover:bg-raised"
+            >
+              + New workspace
+            </Link>
+          </div>
+        </details>
       </div>
       <nav className="px-1 text-[13.5px]">
         {mine.map((s) => (
@@ -671,10 +685,7 @@ export default function AppSidebar({ user, onCmdkOpen }: AppSidebarProps) {
         ))}
         {mine.length === 0 && (
           <div className="px-3 py-1.5 text-[12px] italic text-muted">
-            No workspaces yet —{" "}
-            <Link href="/workspaces/new" className="text-[var(--color-brand-700)] underline">
-              create one
-            </Link>
+            No workspaces yet.
           </div>
         )}
       </nav>

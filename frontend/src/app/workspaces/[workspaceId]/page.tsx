@@ -11,6 +11,7 @@ import {
   type SetStateAction,
 } from "react";
 import MembersModal from "../../../components/MembersModal";
+import SessionUpload from "../../../components/SessionUpload";
 import StashQuickAdd from "../../../components/StashQuickAdd";
 import {
   FileIcon,
@@ -345,7 +346,7 @@ export default function WorkspaceHomePage() {
                   Hopper folder for you. Connect your agents via the Stash CLI and their sessions
                   appear under <span className="font-medium text-foreground">Sessions</span>; your
                   pages, files, and folders live in <span className="font-medium text-foreground">Files</span>.
-                  Bundle any set of pages and sessions into a Product Stash when you need to publish or hand off context.
+                  Bundle any set of pages and sessions into a Stash when you need to publish or hand off context.
                 </p>
               </div>
             )}
@@ -358,6 +359,11 @@ export default function WorkspaceHomePage() {
               spine?.sessions.length === 1 ? "" : "s"
             }`}
           />
+          {isMember && (
+            <div className="mt-2 mb-3">
+              <SessionUpload workspaceId={workspaceId} onUploaded={load} />
+            </div>
+          )}
           {sessions.length > 0 ? (
             <CardGrid items={sessions} hover="brand" />
           ) : (

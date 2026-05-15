@@ -15,6 +15,7 @@ import numpy as np
 
 from ..database import get_pool
 from . import embeddings as embedding_service
+from . import session_service
 
 logger = logging.getLogger(__name__)
 
@@ -128,6 +129,14 @@ async def push_event(
     event = dict(row)
     if embedding_service.is_configured():
         _schedule_event_embed(event["id"], content, _text_hash(content))
+    if workspace_id is not None and session_id:
+        await session_service.upsert_session(
+            workspace_id,
+            session_id,
+            agent_name=agent_name,
+            cwd=meta.get("cwd") if isinstance(meta.get("cwd"), str) else None,
+            created_by=created_by,
+        )
     return event
 
 
@@ -187,11 +196,41 @@ async def push_events_batch(
         timestamps,
     )
     results = [dict(r) for r in rows]
+    await _upsert_sessions_for_events(workspace_id, created_by, events)
     if embedding_service.is_configured() and results:
         ids = [r["id"] for r in results]
         contents_for_embed = [r["content"] for r in results]
         asyncio.create_task(_embed_events_batch(ids, contents_for_embed))
     return results
+
+
+async def _upsert_sessions_for_events(
+    workspace_id: UUID | None,
+    created_by: UUID,
+    events: list[dict],
+) -> None:
+    if workspace_id is None:
+        return
+
+    sessions: dict[str, dict] = {}
+    for event in events:
+        session_id = event.get("session_id")
+        if not session_id or session_id in sessions:
+            continue
+        metadata = event.get("metadata") or {}
+        sessions[session_id] = {
+            "agent_name": event.get("agent_name") or "",
+            "cwd": metadata.get("cwd") if isinstance(metadata.get("cwd"), str) else None,
+        }
+
+    for session_id, session in sessions.items():
+        await session_service.upsert_session(
+            workspace_id,
+            session_id,
+            agent_name=session["agent_name"],
+            cwd=session["cwd"],
+            created_by=created_by,
+        )
 
 
 async def read_session_events(workspace_id: UUID, session_id: str) -> list[dict]:

@@ -325,6 +325,7 @@ class StashClient:
         event_type: str,
         content: str,
         session_id: str | None = None,
+        default_stash_id: str | None = None,
         tool_name: str | None = None,
         metadata: dict | None = None,
         attachments: list[dict] | None = None,
@@ -333,6 +334,8 @@ class StashClient:
         body: dict = {"agent_name": agent_name, "event_type": event_type, "content": content}
         if session_id:
             body["session_id"] = session_id
+        if default_stash_id:
+            body["default_stash_id"] = default_stash_id
         if tool_name:
             body["tool_name"] = tool_name
         if metadata:
@@ -392,10 +395,18 @@ class StashClient:
             params["before"] = before
         return self._list("/api/v1/me/history-events", "events", **params)
 
-    def push_events_batch(self, workspace_id: str, events: list[dict]) -> list:
+    def push_events_batch(
+        self,
+        workspace_id: str,
+        events: list[dict],
+        default_stash_id: str | None = None,
+    ) -> list:
+        body: dict = {"events": events}
+        if default_stash_id:
+            body["default_stash_id"] = default_stash_id
         return self._post(
             f"/api/v1/workspaces/{workspace_id}/memory/events/batch",
-            json={"events": events},
+            json=body,
         )
 
     def upload_transcript(
@@ -405,6 +416,7 @@ class StashClient:
         transcript_path: str | Path,
         agent_name: str,
         cwd: str = "",
+        default_stash_id: str | None = None,
     ) -> dict:
         import gzip as _gzip
 
@@ -417,7 +429,12 @@ class StashClient:
         resp = self._request(
             "POST",
             f"/api/v1/workspaces/{workspace_id}/transcripts",
-            data={"session_id": session_id, "agent_name": agent_name, "cwd": cwd},
+            data={
+                "session_id": session_id,
+                "agent_name": agent_name,
+                "cwd": cwd,
+                **({"default_stash_id": default_stash_id} if default_stash_id else {}),
+            },
             files={"file": (name, body, "application/gzip")},
             timeout=120,
         )

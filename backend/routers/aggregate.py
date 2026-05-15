@@ -46,9 +46,10 @@ async def list_all_history_events(
 @router.get("/activity")
 async def list_activity(
     limit: int = Query(100, ge=1, le=200),
+    workspace_id: UUID | None = Query(None),
     current_user: dict = Depends(get_current_user),
 ):
-    """Recent product activity across every stash the user can access."""
+    """Recent product activity across accessible workspaces, optionally one workspace."""
     pool = get_pool()
     events = await pool.fetch(
         """
@@ -57,6 +58,7 @@ async def list_activity(
           FROM workspaces w
           JOIN workspace_members wm ON wm.workspace_id = w.id
           WHERE wm.user_id = $1
+          AND ($3::uuid IS NULL OR w.id = $3)
         )
         (
           SELECT 'session.uploaded' AS kind,
@@ -117,6 +119,7 @@ async def list_activity(
         """,
         current_user["id"],
         limit,
+        workspace_id,
     )
     user_ids = list({r["actor_id"] for r in events if r["actor_id"]})
     users = {}

@@ -483,6 +483,7 @@ class HistoryEventCreateRequest(BaseModel):
     event_type: str = Field(..., min_length=1, max_length=64)
     content: str = Field(..., min_length=1)
     session_id: str | None = Field(None, max_length=64)
+    default_stash_id: UUID | None = None
     tool_name: str | None = Field(None, max_length=128)
     metadata: dict = Field(default_factory=dict)
     attachments: list[Attachment] | None = None
@@ -493,6 +494,7 @@ class HistoryEventCreateRequest(BaseModel):
 
 class HistoryEventBatchRequest(BaseModel):
     events: list[HistoryEventCreateRequest] = Field(..., min_length=1, max_length=100)
+    default_stash_id: UUID | None = None
 
 
 class HistoryEventResponse(BaseModel):

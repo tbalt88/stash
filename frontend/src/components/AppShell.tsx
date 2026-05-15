@@ -2,7 +2,7 @@
 
 import { ReactNode, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import type { StashItemSpec } from "../lib/api";
 import { User, Workspace } from "../lib/types";
 import AppSidebar from "./AppSidebar";
@@ -60,6 +60,7 @@ function SidebarToggleIcon({ collapsed }: { collapsed: boolean }) {
 
 export default function AppShell({ user, onLogout, children }: AppShellProps) {
   const pathname = usePathname();
+  const router = useRouter();
   const breadcrumbs = useBreadcrumbsValue();
   const shareModal = useShareModal();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -121,6 +122,16 @@ export default function AppShell({ user, onLogout, children }: AppShellProps) {
             title="Toggle sidebar (⌘\\)"
           >
             <SidebarToggleIcon collapsed={sidebarCollapsed} />
+          </button>
+          <button
+            onClick={() => router.back()}
+            className="rounded p-1 text-muted hover:bg-raised"
+            aria-label="Back"
+            title="Back"
+          >
+            <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M15 18l-6-6 6-6" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
           </button>
           <Breadcrumb activeWorkspace={activeWorkspace} pageCrumbs={breadcrumbs} />
         </div>
@@ -256,14 +267,13 @@ function Breadcrumb({
   activeWorkspace: Workspace | undefined;
   pageCrumbs: { label: string; href?: string; onClick?: () => void }[] | null;
 }) {
-  const items: { label: string; href?: string }[] = [];
-  if (activeWorkspace) {
-    items.push({ label: activeWorkspace.name, href: `/workspaces/${activeWorkspace.id}` });
-  } else {
-    items.push({ label: "Workspaces", href: "/" });
-  }
+  let items: { label: string; href?: string }[] = [];
   if (pageCrumbs && pageCrumbs.length > 0) {
-    pageCrumbs.forEach((c) => items.push({ label: c.label, href: c.href }));
+    items = pageCrumbs.map((c) => ({ label: c.label, href: c.href }));
+  } else if (activeWorkspace) {
+    items = [{ label: "Home", href: `/workspaces/${activeWorkspace.id}` }];
+  } else {
+    items = [{ label: "Home", href: "/" }];
   }
 
   return (

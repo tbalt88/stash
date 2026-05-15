@@ -266,6 +266,54 @@ async def update_stash(
     return await _attach_items(dict(row))
 
 
+async def add_sessions_to_stash(
+    *,
+    stash_id: UUID,
+    workspace_id: UUID,
+    user_id: UUID,
+    session_ids: list[str],
+) -> None:
+    if not session_ids:
+        return
+    if not await user_can_manage(stash_id, user_id):
+        raise ValueError("Not allowed to manage this Stash")
+
+    pool = get_pool()
+    stash = await pool.fetchrow(
+        "SELECT id, workspace_id FROM stashes WHERE id = $1",
+        stash_id,
+    )
+    if not stash or stash["workspace_id"] != workspace_id:
+        raise ValueError("Default Stash must be in this workspace")
+
+    rows = await pool.fetch(
+        "SELECT id, session_id FROM sessions "
+        "WHERE workspace_id = $1 AND session_id = ANY($2::varchar[])",
+        workspace_id,
+        session_ids,
+    )
+    if len(rows) != len(set(session_ids)):
+        raise ValueError("One or more sessions were not materialized")
+
+    start_position = await pool.fetchval(
+        "SELECT COALESCE(MAX(position), -1) + 1 FROM stash_items WHERE stash_id = $1",
+        stash_id,
+    )
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            for offset, row in enumerate(rows):
+                await conn.execute(
+                    "INSERT INTO stash_items "
+                    "(stash_id, object_type, object_id, position, label_override) "
+                    "VALUES ($1, 'session', $2, $3, $4) "
+                    "ON CONFLICT (stash_id, object_type, object_id) DO NOTHING",
+                    stash_id,
+                    row["id"],
+                    start_position + offset,
+                    row["session_id"],
+                )
+
+
 async def delete_stash(stash_id: UUID, user_id: UUID) -> bool:
     pool = get_pool()
     if not await user_can_manage(stash_id, user_id):

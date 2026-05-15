@@ -16,7 +16,7 @@ from ..models import (
     HistoryEventListResponse,
     HistoryEventResponse,
 )
-from ..services import memory_service, workspace_service
+from ..services import memory_service, stash_service, workspace_service
 
 ws_router = APIRouter(prefix="/api/v1/workspaces/{workspace_id}/memory", tags=["memory"])
 
@@ -52,6 +52,16 @@ async def push_ws_event(
         attachments=attachments,
         created_at=req.created_at,
     )
+    if req.default_stash_id and req.session_id:
+        try:
+            await stash_service.add_sessions_to_stash(
+                stash_id=req.default_stash_id,
+                workspace_id=workspace_id,
+                user_id=current_user["id"],
+                session_ids=[req.session_id],
+            )
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
     return HistoryEventResponse(**event)
 
 
@@ -64,6 +74,17 @@ async def push_ws_events_batch(
     await _check_member(workspace_id, current_user["id"])
     events_data = [e.model_dump() for e in req.events]
     events = await memory_service.push_events_batch(workspace_id, current_user["id"], events_data)
+    if req.default_stash_id:
+        session_ids = sorted({event.session_id for event in req.events if event.session_id})
+        try:
+            await stash_service.add_sessions_to_stash(
+                stash_id=req.default_stash_id,
+                workspace_id=workspace_id,
+                user_id=current_user["id"],
+                session_ids=session_ids,
+            )
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
     return [HistoryEventResponse(**e) for e in events]
 
 

@@ -501,7 +501,12 @@ def summarize_discovery(conversations: list[ConversationInfo]) -> dict[str, dict
     return summary
 
 
-def upload_conversation(client, workspace_id: str, conv: ConversationInfo) -> dict:
+def upload_conversation(
+    client,
+    workspace_id: str,
+    conv: ConversationInfo,
+    default_stash_id: str = "",
+) -> dict:
     """Upload a single conversation transcript + push a summary event."""
     import os
 
@@ -516,10 +521,11 @@ def upload_conversation(client, workspace_id: str, conv: ConversationInfo) -> di
         result = client.upload_transcript(
             workspace_id=workspace_id,
             session_id=conv.session_id,
-            transcript_path=transcript_path,
-            agent_name=conv.agent,
-            cwd=conv.cwd,
-        )
+        transcript_path=transcript_path,
+        agent_name=conv.agent,
+        cwd=conv.cwd,
+        default_stash_id=default_stash_id,
+    )
     finally:
         if materialized:
             os.unlink(transcript_path)
@@ -530,6 +536,7 @@ def upload_conversation(client, workspace_id: str, conv: ConversationInfo) -> di
         event_type="session_end",
         content=f"Imported historical session ({_fmt_size(conv.size_bytes)})",
         session_id=conv.session_id,
+        default_stash_id=default_stash_id,
         metadata={
             "cwd": conv.cwd,
             "imported": True,

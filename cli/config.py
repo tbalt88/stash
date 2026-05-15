@@ -19,6 +19,7 @@ PRODUCTION_BASE_URL = "https://api.joinstash.ai"
 
 class Manifest(TypedDict, total=False):
     workspace_id: str
+    default_stash_id: str
     base_url: str
 
 
@@ -48,6 +49,20 @@ def load_manifest(start: Path | None = None) -> Manifest | None:
     except (json.JSONDecodeError, OSError):
         return None
     return data if isinstance(data, dict) else None
+
+
+def write_manifest(updates: Manifest, start: Path | None = None) -> Manifest:
+    path = find_project_manifest(start)
+    if not path:
+        raise FileNotFoundError(MANIFEST_FILE)
+    data = load_manifest(start) or {}
+    for key, value in updates.items():
+        if value:
+            data[key] = value
+        elif key in data:
+            del data[key]
+    path.write_text(json.dumps(data, indent=2) + "\n")
+    return data
 
 
 def _read_json(path: Path) -> dict:

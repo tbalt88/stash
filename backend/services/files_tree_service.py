@@ -544,7 +544,7 @@ async def search_pages_fts(workspace_id: UUID, query: str, limit: int = 10) -> l
         f"setweight(to_tsvector('english', {kw_text_expr}), 'A')"
     )
     rows = await pool.fetch(
-        f"SELECT id, workspace_id, folder_id, name, content_markdown, metadata, "
+        f"SELECT id, workspace_id, folder_id, name, content_markdown, metadata, updated_at, "
         f"ts_rank({vec_expr}, websearch_to_tsquery('english', $2)) AS rank "
         f"FROM pages "
         f"WHERE workspace_id = $1 "

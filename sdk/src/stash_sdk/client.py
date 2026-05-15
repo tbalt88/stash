@@ -407,6 +407,7 @@ class Stash:
         event_type: str,
         content: str,
         session_id: str | None = None,
+        default_stash_id: str | None = None,
         tool_name: str | None = None,
         metadata: dict | None = None,
         attachments: list[dict] | None = None,
@@ -420,6 +421,8 @@ class Stash:
         }
         if session_id:
             body["session_id"] = session_id
+        if default_stash_id:
+            body["default_stash_id"] = default_stash_id
         if tool_name:
             body["tool_name"] = tool_name
         if metadata:
@@ -433,11 +436,17 @@ class Stash:
         )
 
     def push_events_batch(
-        self, events: list[dict], workspace: str | None = None
+        self,
+        events: list[dict],
+        workspace: str | None = None,
+        default_stash_id: str | None = None,
     ) -> list:
+        body: dict = {"events": events}
+        if default_stash_id:
+            body["default_stash_id"] = default_stash_id
         return self._post(
             f"/api/v1/workspaces/{self._ws(workspace)}/memory/events/batch",
-            json={"events": events},
+            json=body,
         )
 
     def query_events(
@@ -482,6 +491,7 @@ class Stash:
         agent_name: str,
         cwd: str = "",
         workspace: str | None = None,
+        default_stash_id: str | None = None,
     ) -> dict:
         import gzip as _gzip
 
@@ -494,7 +504,12 @@ class Stash:
         resp = self._request(
             "POST",
             f"/api/v1/workspaces/{self._ws(workspace)}/transcripts",
-            data={"session_id": session_id, "agent_name": agent_name, "cwd": cwd},
+            data={
+                "session_id": session_id,
+                "agent_name": agent_name,
+                "cwd": cwd,
+                **({"default_stash_id": default_stash_id} if default_stash_id else {}),
+            },
             files={"file": (name, body, "application/gzip")},
             timeout=120,
         )

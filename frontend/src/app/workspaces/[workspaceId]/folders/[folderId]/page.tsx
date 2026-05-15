@@ -21,11 +21,10 @@ import {
   createFolder,
   createPage,
   getFolderContents,
-  getWorkspace,
   uploadFile,
   type FolderContents,
 } from "../../../../../lib/api";
-import type { FileInfo, Folder, Workspace } from "../../../../../lib/types";
+import type { FileInfo, Folder } from "../../../../../lib/types";
 
 export default function FolderDetailPage() {
   const params = useParams();
@@ -34,18 +33,13 @@ export default function FolderDetailPage() {
   const folderId = params.folderId as string;
   const { user, loading, logout } = useAuth();
 
-  const [workspace, setWorkspace] = useState<Workspace | null>(null);
   const [contents, setContents] = useState<FolderContents | null>(null);
   const [error, setError] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async () => {
     try {
-      const [workspace, folderContents] = await Promise.all([
-        getWorkspace(workspaceId),
-        getFolderContents(workspaceId, folderId),
-      ]);
-      setWorkspace(workspace);
+      const folderContents = await getFolderContents(workspaceId, folderId);
       setContents(folderContents);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load folder");
@@ -67,13 +61,12 @@ export default function FolderDetailPage() {
   return (
     <div className="scroll-thin flex-1 overflow-y-auto">
       <div className="mx-auto max-w-3xl px-12 py-8">
-          {/* Breadcrumbs: workspace → folder chain */}
           <nav className="mb-4 flex flex-wrap items-center gap-1.5 text-[12.5px] text-muted">
             <Link
               href={`/workspaces/${workspaceId}`}
               className="hover:text-foreground"
             >
-              {workspace?.name || "Stash"}
+              Home
             </Link>
             {contents?.breadcrumbs.map((crumb, i) => {
               const isLast = i === contents.breadcrumbs.length - 1;

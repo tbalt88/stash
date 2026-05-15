@@ -1123,6 +1123,18 @@ export async function semanticSearchPages(
   return data.pages;
 }
 
+export async function searchWorkspacePages(
+  workspaceId: string,
+  query: string,
+  limit = 20
+): Promise<Page[]> {
+  const params = new URLSearchParams({ q: query, limit: String(limit) });
+  const data = await apiFetch<{ pages: Page[] }>(
+    `/api/v1/workspaces/${workspaceId}/pages/search?${params}`
+  );
+  return data.pages;
+}
+
 // --- Table Embeddings (workspace-only) ---
 
 export async function setTableEmbeddingConfig(
@@ -1183,6 +1195,17 @@ export async function listActivity(limit = 100): Promise<ActivityEvent[]> {
   return apiFetch(`/api/v1/me/activity?limit=${limit}`);
 }
 
+export async function listWorkspaceActivity(
+  workspaceId: string,
+  limit = 100
+): Promise<ActivityEvent[]> {
+  const qs = new URLSearchParams({
+    limit: String(limit),
+    workspace_id: workspaceId,
+  });
+  return apiFetch(`/api/v1/me/activity?${qs}`);
+}
+
 // --- Session transcripts ---
 
 export interface SessionTranscript {
@@ -1223,6 +1246,39 @@ export async function getSessionEvents(
     `/api/v1/workspaces/${workspaceId}/transcripts/${encodeURIComponent(sessionId)}/events`
   );
   return res.events;
+}
+
+export interface UploadedTranscript {
+  session_id: string;
+  imported: number;
+  skipped: boolean;
+  reason?: string;
+}
+
+export async function uploadTranscript(
+  workspaceId: string,
+  file: File,
+  sessionId: string,
+  agentName: string,
+  cwd?: string
+): Promise<UploadedTranscript> {
+  const token = getToken();
+  const formData = new FormData();
+  formData.append("file", file);
+  formData.append("session_id", sessionId);
+  formData.append("agent_name", agentName);
+  if (cwd) formData.append("cwd", cwd);
+
+  const resp = await fetch(`${API_BASE}/api/v1/workspaces/${workspaceId}/transcripts`, {
+    method: "POST",
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    body: formData,
+  });
+  if (!resp.ok) {
+    const detail = await resp.json().then((d) => d.detail).catch(() => resp.statusText);
+    throw new Error(detail);
+  }
+  return resp.json();
 }
 
 // --- Workspace overview, sessions, files, and stashes ---

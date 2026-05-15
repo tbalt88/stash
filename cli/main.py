@@ -26,6 +26,7 @@ from .config import (
     save_enabled_agents,
     set_streaming,
     stored_base_url,
+    write_manifest,
 )
 from .formatting import console, output_json, print_members, print_user, print_workspaces
 
@@ -64,6 +65,11 @@ def _resolve_workspace() -> str:
     if choice is None:
         raise typer.Exit(1)
     return choice
+
+
+def _default_stash_id() -> str:
+    manifest = load_manifest()
+    return (manifest or {}).get("default_stash_id", "")
 
 
 def _err(e: StashError) -> None:
@@ -1336,6 +1342,45 @@ def stashes_publish(
         console.print(f"[yellow]{stash['access'].title()}[/yellow] '{stash['title']}'")
 
 
+@stashes_app.command("default")
+def stashes_default(
+    stash_id: str = typer.Argument("", help="Stash ID to receive this repo's streamed sessions."),
+    clear: bool = typer.Option(False, "--clear", help="Clear this repo's default Stash."),
+    workspace_id: str = typer.Option("", "--workspace", help="Workspace ID; falls back to .stash."),
+):
+    """Set which Stash this repo streams sessions into by default."""
+    if clear:
+        try:
+            write_manifest({"default_stash_id": ""})
+        except FileNotFoundError:
+            console.print("[red]No .stash file found. Run `stash connect` first.[/red]")
+            raise typer.Exit(1)
+        console.print("[green]Cleared default Stash.[/green]")
+        return
+
+    if not stash_id:
+        current = _default_stash_id()
+        console.print(current or "(none)")
+        return
+
+    ws_id = workspace_id or _resolve_workspace()
+    with _client() as c:
+        try:
+            stashes = c.list_stashes(ws_id)
+        except StashError as e:
+            _err(e)
+    if not any(stash["id"] == stash_id for stash in stashes):
+        console.print("[red]Default Stash must belong to the active workspace.[/red]")
+        raise typer.Exit(1)
+
+    try:
+        write_manifest({"default_stash_id": stash_id})
+    except FileNotFoundError:
+        console.print("[red]No .stash file found. Run `stash connect` first.[/red]")
+        raise typer.Exit(1)
+    console.print(f"[green]Default Stash set[/green] {stash_id}")
+
+
 @stashes_app.command("delete")
 def stashes_delete(stash_id: str = typer.Argument(...)):
     """Delete a Product Stash. The underlying resources are not touched."""
@@ -1902,6 +1947,7 @@ def hist_push(
                 event_type=event_type,
                 content=content,
                 session_id=session_id,
+                default_stash_id=_default_stash_id(),
                 tool_name=tool_name,
                 attachments=attachments or None,
                 created_at=created_at,
@@ -2197,7 +2243,7 @@ def hist_import(
         task = progress.add_task("Importing…", total=len(conversations))
         for conv in conversations:
             try:
-                upload_conversation(c, ws, conv)
+                upload_conversation(c, ws, conv, default_stash_id=_default_stash_id())
                 imported += 1
             except StashError:
                 errors += 1
@@ -3449,7 +3495,7 @@ def _onboarding_import_history(detected_agents: list[str]) -> None:
         task = progress.add_task("Importing…", total=len(conversations))
         for conv in conversations:
             try:
-                upload_conversation(c, ws, conv)
+                upload_conversation(c, ws, conv, default_stash_id=_default_stash_id())
                 imported += 1
             except StashError:
                 pass
@@ -3531,14 +3577,16 @@ def _render_settings_header(cfg: dict) -> None:
 
     manifest = load_manifest()
     workspace_id = (manifest.get("workspace_id") if manifest else None) or ""
+    default_stash_id = (manifest.get("default_stash_id") if manifest else None) or ""
     workspace_label = workspace_id[:12] + "…" if workspace_id else "(none — no .stash file)"
+    default_stash_label = default_stash_id[:12] + "…" if default_stash_id else "(none)"
 
     def row(label: str, value: str, *, highlight: bool = True) -> None:
         console.print(f"  [dim]{label}[/dim]{value}", highlight=highlight)
 
     row(f"{'User:':<14}", cfg.get("username") or "(not logged in)")
     row(f"{'Workspace:':<14}", workspace_label, highlight=False)
-    row(f"{'Store:':<14}", cfg.get("default_store") or "(none)")
+    row(f"{'Default Stash:':<14}", default_stash_label, highlight=False)
 
     enabled = load_enabled_agents()
     detected = _detected_agents()

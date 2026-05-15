@@ -76,3 +76,28 @@ async def test_user_activity_is_scoped_to_accessible_workspaces(client: AsyncCli
     assert visible[0]["stash_name"] == "Team Activity"
     assert visible[0]["target_label"] == "tester: visible-session"
     assert hidden == []
+
+
+@pytest.mark.asyncio
+async def test_user_activity_can_filter_to_one_workspace(client: AsyncClient):
+    api_key = await _register(client, "activity_filter")
+    first_workspace = await _workspace(client, api_key, "First Activity")
+    second_workspace = await _workspace(client, api_key, "Second Activity")
+
+    await _event(client, api_key, first_workspace["id"], "first-session")
+    await _event(client, api_key, second_workspace["id"], "second-session")
+
+    resp = await client.get(
+        "/api/v1/me/activity",
+        params={"limit": 200, "workspace_id": first_workspace["id"]},
+        headers=_auth(api_key),
+    )
+    assert resp.status_code == 200
+
+    events = [
+        event
+        for event in resp.json()
+        if event["kind"] == "session.uploaded"
+    ]
+    assert {event["target_id"] for event in events} == {"first-session"}
+    assert {event["stash_id"] for event in events} == {first_workspace["id"]}

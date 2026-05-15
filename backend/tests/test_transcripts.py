@@ -45,6 +45,16 @@ async def _workspace(client, key):
     return r.json()["id"]
 
 
+async def _stash(client, key, ws):
+    r = await client.post(
+        f"/api/v1/workspaces/{ws}/stashes",
+        json={"title": "Default sessions", "items": []},
+        headers={"Authorization": f"Bearer {key}"},
+    )
+    assert r.status_code == 201
+    return r.json()["id"]
+
+
 @pytest.mark.asyncio
 async def test_upload_inserts_events_and_events_roundtrip(client: AsyncClient):
     key = await _register(client)
@@ -104,6 +114,31 @@ async def test_reupload_is_noop_when_events_exist(client: AsyncClient):
     assert second.status_code == 201
     assert second.json()["skipped"] is True
     assert second.json()["imported"] == 0
+
+
+@pytest.mark.asyncio
+async def test_upload_adds_session_to_default_stash(client: AsyncClient):
+    key = await _register(client)
+    ws = await _workspace(client, key)
+    stash_id = await _stash(client, key, ws)
+    headers = {"Authorization": f"Bearer {key}"}
+
+    up = await client.post(
+        f"/api/v1/workspaces/{ws}/transcripts",
+        files={"file": ("s.jsonl", io.BytesIO(BODY), "application/jsonl")},
+        data={
+            "session_id": "sess-default",
+            "agent_name": "claude",
+            "default_stash_id": stash_id,
+        },
+        headers=headers,
+    )
+    assert up.status_code == 201, up.text
+
+    stashes = await client.get(f"/api/v1/workspaces/{ws}/stashes", headers=headers)
+    assert stashes.status_code == 200
+    [stash] = [item for item in stashes.json()["stashes"] if item["id"] == stash_id]
+    assert [item["object_type"] for item in stash["items"]] == ["session"]
 
 
 @pytest.mark.asyncio

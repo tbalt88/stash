@@ -3,14 +3,13 @@
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import SessionUpload from "../../../../components/SessionUpload";
 import { SessionsIcon } from "../../../../components/StashIcons";
 import { useAuth } from "../../../../hooks/useAuth";
 import {
-  getWorkspace,
   listMySessions,
   type SessionSummary,
 } from "../../../../lib/api";
-import type { Workspace } from "../../../../lib/types";
 
 export default function StashSessionsPage() {
   const params = useParams();
@@ -18,18 +17,13 @@ export default function StashSessionsPage() {
   const workspaceId = params.workspaceId as string;
   const { user, loading, logout } = useAuth();
 
-  const [workspace, setWorkspace] = useState<Workspace | null>(null);
   const [sessions, setSessions] = useState<SessionSummary[] | null>(null);
   const [query, setQuery] = useState("");
   const [error, setError] = useState("");
 
   const load = useCallback(async () => {
     try {
-      const [workspace, list] = await Promise.all([
-        getWorkspace(workspaceId),
-        listMySessions(workspaceId, 200),
-      ]);
-      setWorkspace(workspace);
+      const list = await listMySessions(workspaceId, 200);
       setSessions(list);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load sessions");
@@ -71,12 +65,10 @@ export default function StashSessionsPage() {
       <div className="mx-auto max-w-3xl px-12 py-8">
           <nav className="mb-4 flex flex-wrap items-center gap-1.5 text-[12.5px] text-muted">
             <Link href={`/workspaces/${workspaceId}`} className="hover:text-foreground">
-              {workspace?.name || "Stash"}
+              Home
             </Link>
-            <span className="flex items-center gap-1.5">
-              <span className="text-muted/60">/</span>
-              <span className="font-medium text-foreground">Sessions</span>
-            </span>
+            <span className="text-muted/60">/</span>
+            <span className="font-medium text-foreground">Sessions</span>
           </nav>
 
           <div className="mb-1 flex h-10 w-10 items-center justify-center text-4xl text-muted">
@@ -92,7 +84,8 @@ export default function StashSessionsPage() {
             </div>
           )}
 
-          <div className="mt-5 mb-4">
+          <div className="mt-5 mb-4 space-y-3">
+            <SessionUpload workspaceId={workspaceId} onUploaded={load} />
             <input
               type="text"
               value={query}
