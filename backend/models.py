@@ -72,12 +72,12 @@ class ApiKeyCreateResponse(BaseModel):
 
 class WorkspaceCreateRequest(BaseModel):
     name: str = Field(..., min_length=1, max_length=128)
-    description: str = Field("", max_length=1000)
+    description: str = Field("", max_length=50000)
 
 
 class WorkspaceUpdateRequest(BaseModel):
     name: str | None = Field(None, min_length=1, max_length=128)
-    description: str | None = Field(None, max_length=1000)
+    description: str | None = Field(None, max_length=50000)
     cover_image_url: str | None = None
     icon_url: str | None = None
     color_gradient: str | None = Field(None, max_length=256)

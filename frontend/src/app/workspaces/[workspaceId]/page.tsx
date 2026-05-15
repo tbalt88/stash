@@ -7,93 +7,29 @@ import {
   useEffect,
   useRef,
   useState,
-  type Dispatch,
-  type SetStateAction,
 } from "react";
 import MembersModal from "../../../components/MembersModal";
-import SessionUpload from "../../../components/SessionUpload";
-import StashQuickAdd from "../../../components/StashQuickAdd";
 import {
-  FileIcon,
-  FolderIcon,
-  PageIcon,
-  SessionsIcon,
   StashIcon,
-  TableIcon,
 } from "../../../components/StashIcons";
 import { useAuth } from "../../../hooks/useAuth";
 import {
-  createFolder,
-  createPage,
-  getWorkspaceOverview,
   getWorkspace,
   getWorkspaceMembers,
   joinWorkspace,
   listStashes,
   updateWorkspace,
-  uploadFile,
-  type WorkspaceOverview,
-  type WorkspaceFile,
   type WorkspaceStash,
 } from "../../../lib/api";
 import { useShareModal } from "../../../lib/shareModalContext";
-import type { FileInfo, Folder, Workspace, WorkspaceMember } from "../../../lib/types";
-
-interface CardItem {
-  href: string;
-  external?: boolean;
-  icon: React.ReactNode;
-  iconColor?: string;
-  title: string;
-  subtitle: string;
-}
-
-function CardGrid({ items, hover }: { items: CardItem[]; hover: "brand" | "indigo" }) {
-  const hoverCls =
-    hover === "indigo"
-      ? "hover:border-indigo-300 hover:bg-indigo-50/30"
-      : "hover:border-[var(--color-brand-200)] hover:bg-[var(--color-brand-50)]";
-  return (
-    <div className="mt-2 grid grid-cols-1 gap-2 md:grid-cols-2">
-      {items.map((c) => {
-        const cls =
-          "flex items-center gap-3 rounded-lg border border-border bg-base p-3 text-left transition-colors " +
-          hoverCls;
-        const inner = (
-          <>
-            <span
-              className={
-                "flex h-7 w-7 items-center justify-center text-2xl " +
-                (c.iconColor || "text-muted")
-              }
-            >
-              {c.icon}
-            </span>
-            <div className="min-w-0">
-              <div className="truncate text-[13.5px] font-semibold text-foreground">{c.title}</div>
-              <div className="truncate text-[11.5px] text-muted">{c.subtitle}</div>
-            </div>
-          </>
-        );
-        return c.external ? (
-          <a
-            key={c.href + c.title}
-            href={c.href}
-            target="_blank"
-            rel="noopener noreferrer"
-            className={cls}
-          >
-            {inner}
-          </a>
-        ) : (
-          <Link key={c.href + c.title} href={c.href} className={cls}>
-            {inner}
-          </Link>
-        );
-      })}
-    </div>
-  );
-}
+import type { Workspace, WorkspaceMember } from "../../../lib/types";
+import { EditorContent, useEditor } from "@tiptap/react";
+import StarterKit from "@tiptap/starter-kit";
+import Heading from "@tiptap/extension-heading";
+import Bold from "@tiptap/extension-bold";
+import Italic from "@tiptap/extension-italic";
+import TiptapLink from "@tiptap/extension-link";
+import Placeholder from "@tiptap/extension-placeholder";
 
 export default function WorkspaceHomePage() {
   const params = useParams();
@@ -103,19 +39,16 @@ export default function WorkspaceHomePage() {
 
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
   const [members, setMembers] = useState<WorkspaceMember[]>([]);
-  const [spine, setSpine] = useState<WorkspaceOverview | null>(null);
   const [stashes, setStashes] = useState<WorkspaceStash[]>([]);
   const [error, setError] = useState("");
   const [membersOpen, setMembersOpen] = useState(false);
   const shareModal = useShareModal();
   const shareVersion = shareModal.version;
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async () => {
-    const [workspaceResult, membersResult, spineResult, stashesResult] = await Promise.allSettled([
+    const [workspaceResult, membersResult, stashesResult] = await Promise.allSettled([
       getWorkspace(workspaceId),
       getWorkspaceMembers(workspaceId),
-      getWorkspaceOverview(workspaceId),
       listStashes(workspaceId),
     ]);
 
@@ -129,20 +62,8 @@ export default function WorkspaceHomePage() {
       setMembers(membersResult.value);
     }
 
-    if (spineResult.status === "fulfilled") {
-      setSpine(spineResult.value);
-    }
-
     if (stashesResult.status === "fulfilled") {
       setStashes(stashesResult.value);
-    }
-  }, [workspaceId]);
-
-  const refreshSpine = useCallback(async () => {
-    try {
-      setSpine(await getWorkspaceOverview(workspaceId));
-    } catch {
-      /* private */
     }
   }, [workspaceId]);
 
@@ -170,63 +91,6 @@ export default function WorkspaceHomePage() {
   if (loading)
     return <div className="flex h-screen items-center justify-center text-muted">Loading…</div>;
   if (!user) return null;
-
-  const sessions: CardItem[] = (spine?.sessions ?? []).slice(0, 6).map((s) => ({
-    href: `/workspaces/${workspaceId}/sessions/${encodeURIComponent(s.session_id)}`,
-    icon: <SessionsIcon />,
-    title: `#${s.session_id.length > 28 ? s.session_id.slice(0, 28) + "…" : s.session_id}`,
-    subtitle: `${s.agent_name} · ${formatBytes(s.size_bytes)}`,
-  }));
-
-  // Root-level file contents only. Nested folders/pages/files surface
-  // through their parent folder's detail page, not here.
-  const filesTree = spine?.files;
-  const rootFolders = (filesTree?.folders ?? []).filter((f) => !f.parent_folder_id);
-  const rootPages = (filesTree?.pages ?? []).filter((p) => !p.folder_id);
-  const rootFiles = (filesTree?.files ?? []).filter((f) => !f.folder_id);
-
-  const folderItems: CardItem[] = rootFolders.map((f) => ({
-    href: `/workspaces/${workspaceId}/folders/${f.id}`,
-    icon: <FolderIcon />,
-    title: f.name,
-    subtitle: [
-      f.page_count ? `${f.page_count} page${f.page_count === 1 ? "" : "s"}` : null,
-      f.file_count ? `${f.file_count} file${f.file_count === 1 ? "" : "s"}` : null,
-      f.has_skill ? "SKILL.md" : null,
-    ]
-      .filter(Boolean)
-      .join(" · ") || "Empty folder",
-  }));
-  const pageItems: CardItem[] = rootPages.map((p) => ({
-    href: `/workspaces/${workspaceId}/p/${p.id}`,
-    icon: <PageIcon />,
-    title: p.name.replace(/\.md$/, ""),
-    subtitle: "Page",
-  }));
-  const fileItems: CardItem[] = rootFiles.slice(0, 12).map((f) => {
-    const isCsvLinked = f.content_type?.includes("csv") && f.linked_table_id;
-    return {
-      href: isCsvLinked
-        ? `/tables/${f.linked_table_id}?workspaceId=${workspaceId}`
-        : `/workspaces/${workspaceId}/f/${f.id}`,
-      icon: f.content_type?.includes("csv") ? <TableIcon /> : <FileIcon />,
-      iconColor: f.content_type?.includes("csv")
-        ? "text-emerald-600"
-        : f.content_type?.includes("pdf")
-        ? "text-rose-500"
-        : f.content_type?.includes("html")
-        ? "text-amber-600"
-        : undefined,
-      title: f.name,
-      subtitle: isCsvLinked
-        ? `table · ${formatBytes(f.size_bytes)}`
-        : `${f.content_type || "file"} · ${formatBytes(f.size_bytes)}`,
-    };
-  });
-  const filesItems = [...folderItems, ...pageItems, ...fileItems];
-  const totalFolders = filesTree?.folders.length ?? 0;
-  const totalPages = filesTree?.pages.length ?? 0;
-  const totalFiles = filesTree?.files.length ?? 0;
 
   return (
     <>
@@ -268,11 +132,6 @@ export default function WorkspaceHomePage() {
               </Link>
             )}
           </div>
-          <StashDescription
-            workspace={workspace}
-            canEdit={isMember}
-            onSaved={(updated) => setWorkspace(updated)}
-          />
 
 
           <div className="mt-3 flex flex-wrap items-center gap-2 text-[12px] text-muted">
@@ -325,144 +184,13 @@ export default function WorkspaceHomePage() {
             </div>
           )}
 
-          {isMember && (
-            <div className="mt-6">
-              <StashQuickAdd workspaceId={workspaceId} onAdded={refreshSpine} />
-            </div>
-          )}
-
-          {/* Get-started callout — only for an empty workspace. */}
-          {spine &&
-            spine.sessions.length === 0 &&
-            totalFolders === 0 &&
-            totalPages === 0 &&
-            totalFiles === 0 && (
-              <div className="mt-8 rounded-xl border border-[var(--color-brand-200)] bg-[var(--color-brand-50)] p-5">
-                <h3 className="font-display text-[18px] font-semibold text-foreground">
-                  Welcome — here&apos;s how a workspace works
-                </h3>
-                <p className="mt-2 text-[13.5px] leading-relaxed text-foreground/80">
-                  Drop in anything above — a link, a note, or a file — and we&apos;ll add it to
-                  Files. Connect your agents via the Stash CLI and their sessions
-                  appear under <span className="font-medium text-foreground">Sessions</span>; your
-                  pages, files, and folders live in <span className="font-medium text-foreground">Files</span>.
-                  Bundle any set of pages and sessions into a Stash when you need to publish or share context.
-                </p>
-              </div>
-            )}
-
-          {/* Sessions */}
-          <SectionHeader
-            icon={<SessionsIcon />}
-            title="Sessions"
-            trailing={`${spine?.sessions.length ?? 0} transcript${
-              spine?.sessions.length === 1 ? "" : "s"
-            }`}
-          />
-          {isMember && (
-            <div className="mt-2 mb-3">
-              <SessionUpload workspaceId={workspaceId} onUploaded={load} />
-            </div>
-          )}
-          {sessions.length > 0 ? (
-            <CardGrid items={sessions} hover="brand" />
-          ) : (
-            <EmptyState text="No sessions yet. Push agent transcripts via the CLI." />
-          )}
-
-          {/* Files */}
-          <SectionHeader
-            icon={<FileIcon />}
-            title="Files"
-            trailing={`${totalFolders} folder${totalFolders === 1 ? "" : "s"} · ${
-              totalPages
-            } page${totalPages === 1 ? "" : "s"} · ${totalFiles} file${
-              totalFiles === 1 ? "" : "s"
-            }`}
-          />
-          {isMember && (
-            <div className="mt-2 mb-3 flex flex-wrap items-center gap-2">
-              <input ref={fileInputRef} type="file" className="hidden" onChange={async (e) => {
-                const file = e.target.files?.[0];
-                if (!file) return;
-                try {
-                  const uploaded = await uploadFile(workspaceId, file);
-                  addFileToSpine(uploaded, setSpine);
-                } catch { /* */ }
-                if (fileInputRef.current) fileInputRef.current.value = "";
-              }} />
-              <button
-                onClick={() => fileInputRef.current?.click()}
-                className="rounded-md border border-border bg-base px-2.5 py-1 text-[12px] text-foreground hover:bg-raised"
-              >
-                + Add page or file
-              </button>
-              <button
-                onClick={async () => {
-                  try {
-                    const p = await createPage(workspaceId, "Untitled");
-                    router.push(`/workspaces/${workspaceId}/p/${p.id}`);
-                  } catch { /* */ }
-                }}
-                className="rounded-md border border-border bg-base px-2.5 py-1 text-[12px] text-foreground hover:bg-raised"
-              >
-                + Add page
-              </button>
-              <button
-                onClick={async () => {
-                  const name = window.prompt("Folder name?");
-                  if (!name?.trim()) return;
-                  try {
-                    const folder = await createFolder(workspaceId, name.trim());
-                    addFolderToSpine(folder, setSpine);
-                  } catch { /* */ }
-                }}
-                className="rounded-md border border-border bg-base px-2.5 py-1 text-[12px] text-foreground hover:bg-raised"
-              >
-                + New folder
-              </button>
-            </div>
-          )}
-          {filesItems.length > 0 ? (
-            <CardGrid items={filesItems} hover="brand" />
-          ) : (
-            <EmptyState text="Upload files or create pages." />
-          )}
-
-          <SectionHeader
-            icon={<StashIcon />}
-            title="Stashes"
-            trailing={`${stashes.length} Stash${stashes.length === 1 ? "" : "es"}`}
-          />
-          {isMember && (
-            <button
-              onClick={() =>
-                shareModal.open({
-                  workspaceId,
-                  workspaceName: workspace?.name,
-                  tab: "new",
-                })
-              }
-              className="mt-2 rounded-md bg-[var(--color-brand-600)] px-3 py-1.5 text-[13px] font-medium text-white hover:bg-[var(--color-brand-700)]"
-            >
-              + Add Stash
-            </button>
-          )}
-          {stashes.length > 0 ? (
-            <CardGrid
-              items={stashes.slice(0, 8).map((stash) => ({
-                href: `/stashes/${stash.slug}`,
-                icon: <StashIcon />,
-                title: stash.title,
-                subtitle: `${stash.items.length} item${
-                  stash.items.length === 1 ? "" : "s"
-                }`,
-              }))}
-              hover="indigo"
+          <div className="mt-8">
+            <WorkspaceDescriptionEditor
+              workspace={workspace}
+              canEdit={isMember}
+              onSaved={(updated) => setWorkspace(updated)}
             />
-          ) : (
-            <EmptyState text="Create a Stash to bundle sessions and files." />
-          )}
+          </div>
         </div>
       </div>
       <MembersModal workspaceId={workspaceId} open={membersOpen} onClose={() => setMembersOpen(false)} />
@@ -470,44 +198,6 @@ export default function WorkspaceHomePage() {
   );
 }
 
-function SectionHeader({
-  icon,
-  title,
-  trailing,
-}: {
-  icon: React.ReactNode;
-  title: string;
-  trailing: string;
-}) {
-  return (
-    <div className="mt-8 flex items-baseline justify-between">
-      <h2 className="flex items-baseline gap-2 font-display text-xl font-semibold text-foreground">
-        <span className="inline-flex text-[22px] text-muted">{icon}</span>
-        <span>{title}</span>
-      </h2>
-      <span className="text-[11.5px] text-muted">{trailing}</span>
-    </div>
-  );
-}
-
-function EmptyState({
-  text,
-  action,
-}: {
-  text: string;
-  action?: { href: string; label: string };
-}) {
-  return (
-    <div className="mt-2 rounded-lg border border-dashed border-border bg-surface/30 px-4 py-6 text-center text-[12.5px] text-muted">
-      {text}
-      {action && (
-        <div className="mt-2">
-          <span className="font-mono text-[12px]">{action.label}</span>
-        </div>
-      )}
-    </div>
-  );
-}
 
 const AVATAR_PALETTE: { bg: string; fg: string }[] = [
   { bg: "bg-rose-200", fg: "text-rose-800" },
@@ -570,66 +260,10 @@ function formatRelative(iso: string): string {
   return new Date(iso).toLocaleDateString();
 }
 
-function formatBytes(b: number): string {
-  if (!b) return "0 B";
-  if (b < 1024) return `${b} B`;
-  if (b < 1024 * 1024) return `${(b / 1024).toFixed(1)} KB`;
-  return `${(b / 1024 / 1024).toFixed(1)} MB`;
-}
 
-function addFolderToSpine(
-  folder: Folder,
-  setSpine: Dispatch<SetStateAction<WorkspaceOverview | null>>
-) {
-  setSpine((current) => {
-    if (!current) return current;
-    if (!current.files) return current;
-    const folders = [
-      ...current.files.folders,
-      {
-        id: folder.id,
-        name: folder.name,
-        parent_folder_id: folder.parent_folder_id,
-        page_count: 0,
-        file_count: 0,
-        has_skill: false,
-      },
-    ].sort((a, b) => a.name.localeCompare(b.name));
+const AUTOSAVE_MS = 1500;
 
-    return { ...current, files: { ...current.files, folders } };
-  });
-}
-
-function addFileToSpine(
-  file: FileInfo,
-  setSpine: Dispatch<SetStateAction<WorkspaceOverview | null>>
-) {
-  setSpine((current) => {
-    if (!current) return current;
-    if (!current.files) return current;
-    const nextFile: WorkspaceFile = {
-      id: file.id,
-      name: file.name,
-      folder_id: file.folder_id ?? null,
-      size_bytes: file.size_bytes,
-      content_type: file.content_type,
-      url: file.url,
-      created_at: file.created_at,
-      linked_table_id: file.linked_table_id ?? null,
-    };
-
-    return {
-      ...current,
-      files: {
-        ...current.files,
-        files: [nextFile, ...current.files.files],
-      },
-    };
-  });
-}
-
-// Inline-editable description on the workspace home.
-function StashDescription({
+function WorkspaceDescriptionEditor({
   workspace,
   canEdit,
   onSaved,
@@ -638,93 +272,68 @@ function StashDescription({
   canEdit: boolean;
   onSaved: (updated: Workspace) => void;
 }) {
-  const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
+  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastSaved = useRef<string>("");
+
+  const description = workspace?.description ?? "";
+
+  useEffect(() => {
+    lastSaved.current = description;
+  }, [description]);
+
+  const editor = useEditor({
+    immediatelyRender: false,
+    editable: canEdit,
+    content: description || "<p></p>",
+    extensions: [
+      StarterKit.configure({
+        blockquote: false,
+        codeBlock: false,
+        heading: false,
+        bold: false,
+        italic: false,
+        link: false,
+        underline: false,
+      }),
+      Heading.configure({ levels: [1, 2, 3] }),
+      Bold,
+      Italic,
+      TiptapLink.configure({ openOnClick: true, autolink: true }),
+      Placeholder.configure({
+        placeholder: "Describe this workspace…",
+      }),
+    ],
+    editorProps: {
+      attributes: {
+        class: "min-h-[120px] focus:outline-none file-page-body",
+      },
+    },
+    onUpdate: ({ editor: ed }) => {
+      if (!workspace) return;
+      const html = ed.getHTML();
+      if (html === lastSaved.current) return;
+      if (saveTimer.current) clearTimeout(saveTimer.current);
+      saveTimer.current = setTimeout(async () => {
+        lastSaved.current = html;
+        const updated = await updateWorkspace(workspace.id, { description: html });
+        onSaved(updated);
+      }, AUTOSAVE_MS);
+    },
+  });
+
+  useEffect(() => {
+    return () => {
+      if (saveTimer.current) clearTimeout(saveTimer.current);
+    };
+  }, []);
 
   if (!workspace) return null;
 
-  const description = workspace.description ?? "";
-
-  function startEdit() {
-    setDraft(description);
-    setError("");
-    setEditing(true);
-  }
-
-  async function save() {
-    if (!workspace) return;
-    setBusy(true);
-    setError("");
-    try {
-      const updated = await updateWorkspace(workspace.id, { description: draft });
-      onSaved(updated);
-      setEditing(false);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to save");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  if (editing) {
-    return (
-      <div className="mt-2">
-        <textarea
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          maxLength={1000}
-          rows={4}
-          className="w-full rounded-md border border-border bg-base p-2 text-[14px] leading-relaxed"
-          placeholder="What is this workspace for?"
-        />
-        {error && <div className="mt-1 text-[11.5px] text-red-700">{error}</div>}
-        <div className="mt-1.5 flex items-center gap-2 text-[11.5px] text-muted">
-          <button
-            onClick={save}
-            disabled={busy}
-            className="rounded-md bg-[var(--color-brand-600)] px-2.5 py-1 font-medium text-white hover:bg-[var(--color-brand-700)] disabled:opacity-60"
-          >
-            {busy ? "Saving…" : "Save description"}
-          </button>
-          <button
-            onClick={() => setEditing(false)}
-            disabled={busy}
-            className="rounded-md border border-border px-2.5 py-1 hover:bg-base"
-          >
-            Cancel
-          </button>
-          <span className="ml-auto">{draft.length}/1000</span>
-        </div>
-      </div>
-    );
-  }
-
-  if (description) {
-    return (
-      <p className="group/desc mt-2 text-[14.5px] leading-relaxed text-muted">
-        {description}
-        {canEdit && (
-          <button
-            onClick={startEdit}
-            className="ml-2 align-middle text-[11.5px] text-muted opacity-0 underline-offset-2 hover:underline group-hover/desc:opacity-100"
-          >
-            Edit
-          </button>
-        )}
-      </p>
-    );
-  }
-
-  if (!canEdit) return null;
+  if (!canEdit && !description) return null;
 
   return (
-    <button
-      onClick={startEdit}
-      className="mt-2 text-[12.5px] italic text-muted underline-offset-2 hover:underline"
-    >
-      + Add a description
-    </button>
+    <div className="file-page-content">
+      <EditorContent editor={editor} />
+    </div>
   );
 }
