@@ -33,6 +33,10 @@ router = APIRouter(prefix="/api/v1/workspaces/{workspace_id}/transcripts", tags=
 MAX_TRANSCRIPT_SIZE = 50 * 1024 * 1024
 
 
+def _is_jsonl(filename: str | None) -> bool:
+    return bool(filename and filename.lower().endswith(".jsonl"))
+
+
 async def _check_member(workspace_id: UUID, user_id: UUID) -> None:
     if not await workspace_service.is_member(workspace_id, user_id):
         raise HTTPException(status_code=403, detail="Not a workspace member")
@@ -51,6 +55,8 @@ async def upload_transcript(
     """Parse the uploaded JSONL into history_events rows. No-op if the
     session already has events."""
     await _check_member(workspace_id, current_user["id"])
+    if not _is_jsonl(file.filename):
+        raise HTTPException(status_code=400, detail="Session uploads must be .JSONL files")
     if not session_id.strip():
         raise HTTPException(status_code=400, detail="session_id is required")
 

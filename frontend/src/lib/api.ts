@@ -1153,6 +1153,7 @@ export interface WorkspaceSidebarStash {
   discoverable: boolean;
   is_external: boolean;
   item_count: number;
+  items?: StashItemSpec[];
   updated_at: string;
 }
 

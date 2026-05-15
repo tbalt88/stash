@@ -147,6 +147,15 @@ async def _list_stashes(workspace_id: UUID, user_id: UUID) -> list[dict]:
             "discoverable": stash["discoverable"],
             "is_external": stash["is_external"],
             "item_count": len(stash.get("items", [])),
+            "items": [
+                {
+                    "object_type": item["object_type"],
+                    "object_id": str(item["object_id"]),
+                    "position": item["position"],
+                    "label_override": item.get("label_override"),
+                }
+                for item in stash.get("items", [])
+            ],
             "updated_at": stash["updated_at"],
         }
         for stash in stashes
@@ -282,6 +291,7 @@ async def _sidebar_etag(workspace_id: UUID, user_id: UUID) -> str:
           (SELECT MAX(GREATEST(finished_at, started_at)) FROM sessions
             WHERE workspace_id = $1)                                              AS s,
           (SELECT MAX(updated_at) FROM stashes WHERE workspace_id = $1)            AS st,
+          (SELECT MAX(created_at) FROM external_stashes WHERE workspace_id = $1)     AS es,
           (SELECT MAX(sm.created_at) FROM stash_members sm
            JOIN stashes s ON s.id = sm.stash_id
            WHERE s.workspace_id = $1 AND sm.user_id = $2)                          AS sm,
@@ -290,7 +300,7 @@ async def _sidebar_etag(workspace_id: UUID, user_id: UUID) -> str:
         workspace_id,
         user_id,
     )
-    raw = "|".join(str(row[k] or "") for k in ("p", "f", "d", "s", "st", "sm", "w"))
+    raw = "|".join(str(row[k] or "") for k in ("p", "f", "d", "s", "st", "es", "sm", "w"))
     return f'W/"{_short_hash(raw)}"'
 
 

@@ -5,8 +5,12 @@ import { useCallback, useEffect, useState, type DragEvent } from "react";
 import { usePathname } from "next/navigation";
 import {
   type FolderContents,
+  type StashItemSpec,
   type WorkspaceFile,
+  type WorkspaceFolder,
+  type WorkspacePage,
   type WorkspaceSidebar,
+  type WorkspaceSidebarSession,
   uploadFile,
   uploadTranscript,
 } from "../lib/api";
@@ -239,7 +243,7 @@ function WorkspaceTree({
               <NavRow
                 key={s.session_id}
                 href={`/workspaces/${workspace.id}/sessions/${encodeURIComponent(s.session_id)}`}
-                icon={<span className="text-muted">#</span>}
+                icon={<span className="text-muted"><SessionsIcon /></span>}
                 label={s.session_id.length > 22 ? s.session_id.slice(0, 22) + "…" : s.session_id}
               />
             ))}
@@ -258,6 +262,7 @@ function WorkspaceTree({
           dropProps={dropProps("files")}
         />
         <StashesBlock
+          workspace={workspace}
           spine={spine}
           open={openSections.stashes}
           onOpenChange={(nextOpen) => onSectionOpenChange("stashes", nextOpen)}
@@ -271,6 +276,152 @@ function fileIconClass(contentType: string | undefined): string {
   if (contentType?.includes("csv")) return "text-emerald-600";
   if (contentType?.includes("html")) return "text-amber-600";
   return "text-muted";
+}
+
+type StashTreeKind = "session" | "folder" | "page" | "file" | "table" | "other";
+
+type StashTreeItem = {
+  kind: StashTreeKind;
+  key: string;
+  href?: string;
+  label: string;
+  icon: React.ReactNode;
+};
+
+function resolveFolderPath(
+  folderId: string | null,
+  foldersById: Map<string, WorkspaceFolder>,
+  cache: Map<string, string>,
+  stack = new Set<string>()
+): string {
+  if (!folderId) return "";
+  const cached = cache.get(folderId);
+  if (cached !== undefined) return cached;
+  if (stack.has(folderId)) return "";
+  const folder = foldersById.get(folderId);
+  if (!folder) return "";
+
+  stack.add(folderId);
+  const parentPath = resolveFolderPath(folder.parent_folder_id, foldersById, cache, stack);
+  const next = parentPath ? `${parentPath}/${folder.name}` : folder.name;
+  cache.set(folderId, next);
+  return next;
+}
+
+function buildStashTreeItems(
+  workspaceId: string,
+  items: StashItemSpec[],
+  folderById: Map<string, WorkspaceFolder>,
+  pageById: Map<string, WorkspacePage>,
+  fileById: Map<string, WorkspaceFile>,
+  sessionById: Map<string, WorkspaceSidebarSession>,
+  sessionBySessionId: Map<string, WorkspaceSidebarSession>
+): StashTreeItem[] {
+  const pathCache = new Map<string, string>();
+  return [...items]
+    .sort((a, b) => (a.position ?? 0) - (b.position ?? 0))
+    .map((item, index) => {
+      if (item.object_type === "session") {
+        const session = sessionById.get(item.object_id) ?? sessionBySessionId.get(item.object_id);
+        const fallback = `Session ${item.object_id}`;
+        return {
+          kind: "session",
+          key: `${item.object_id}:${index}`,
+          href: session ? `/workspaces/${workspaceId}/sessions/${encodeURIComponent(session.session_id)}` : undefined,
+          icon: <span className="text-muted"><SessionsIcon /></span>,
+          label: item.label_override ?? (session ? session.title || session.session_id : fallback),
+        };
+      }
+
+      if (item.object_type === "folder") {
+        const folder = folderById.get(item.object_id);
+        return {
+          kind: "folder",
+          key: `${item.object_id}:${index}`,
+          href: folder ? `/workspaces/${workspaceId}/folders/${item.object_id}` : undefined,
+          icon: <span className="text-muted"><FolderIcon /></span>,
+          label:
+            item.label_override ??
+            (folder ? resolveFolderPath(folder.id, folderById, pathCache) : `Folder ${item.object_id}`),
+        };
+      }
+
+      if (item.object_type === "page") {
+        const page = pageById.get(item.object_id);
+        if (!page) {
+          return {
+            kind: "page",
+            key: `${item.object_id}:${index}`,
+            icon: <span className="text-muted"><PageIcon /></span>,
+            label: item.label_override ?? `Page ${item.object_id}`,
+          };
+        }
+
+        const folderPath = resolveFolderPath(page.folder_id, folderById, pathCache);
+        const pagePath = folderPath ? `${folderPath}/${page.name}` : page.name;
+        return {
+          kind: "page",
+          key: `${item.object_id}:${index}`,
+          href: `/workspaces/${workspaceId}/p/${page.id}`,
+          icon: <span className="text-muted"><PageIcon /></span>,
+          label: item.label_override ?? pagePath,
+        };
+      }
+
+      if (item.object_type === "file") {
+        const file = fileById.get(item.object_id);
+        if (!file) {
+          return {
+            kind: "file",
+            key: `${item.object_id}:${index}`,
+            icon: <span className={fileIconClass(undefined)}><FileIcon /></span>,
+            label: item.label_override ?? `File ${item.object_id}`,
+          };
+        }
+
+        const folderPath = resolveFolderPath(file.folder_id, folderById, pathCache);
+        const filePath = folderPath ? `${folderPath}/${file.name}` : file.name;
+        return {
+          kind: "file",
+          key: `${item.object_id}:${index}`,
+          href: `/workspaces/${workspaceId}/f/${file.id}`,
+          icon: <span className={fileIconClass(file.content_type)}><FileIcon /></span>,
+          label: item.label_override ?? filePath,
+        };
+      }
+
+      if (item.object_type === "table") {
+        return {
+          kind: "table",
+          key: `${item.object_id}:${index}`,
+          href: `/tables/${item.object_id}?workspaceId=${workspaceId}`,
+          icon: <span className="text-muted"><TableIcon /></span>,
+          label: item.label_override ?? `Table ${item.object_id}`,
+        };
+      }
+
+      return {
+        kind: "other",
+        key: `${item.object_id}:${index}`,
+        icon: <span className="text-muted"><FolderIcon /></span>,
+        label: item.label_override ?? `${item.object_type} ${item.object_id}`,
+      };
+    });
+}
+
+function StashTreeRow({ row }: { row: StashTreeItem }) {
+  if (!row.href) {
+    return (
+      <div className="page-row flex items-center gap-2 rounded-md px-2 py-0.5 text-[12.5px] text-muted">
+        <span className="flex h-4 w-4 items-center justify-center text-[14px]">{row.icon}</span>
+        <span className="flex-1 truncate">{row.label}</span>
+      </div>
+    );
+  }
+
+  return (
+    <NavRow href={row.href} icon={row.icon} label={row.label} />
+  );
 }
 
 function FileNavRow({
@@ -481,15 +632,110 @@ function FilesBlock({
 }
 
 function StashesBlock({
+  workspace,
   spine,
   open,
   onOpenChange,
 }: {
+  workspace: WorkspaceNode;
   spine: WorkspaceSidebar | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
   const stashes = spine?.stashes ?? [];
+  const tree = spine?.files;
+  const foldersById = new Map(
+    (tree?.folders ?? []).map((folder) => [folder.id, folder])
+  );
+  const pagesById = new Map(
+    (tree?.pages ?? []).map((page) => [page.id, page])
+  );
+  const filesById = new Map(
+    (tree?.files ?? []).map((file) => [file.id, file])
+  );
+
+  const sessionById = new Map<string, WorkspaceSidebarSession>();
+  const sessionBySessionId = new Map<string, WorkspaceSidebarSession>();
+  for (const session of spine?.sessions ?? []) {
+    if (session.id) sessionById.set(session.id, session);
+    sessionBySessionId.set(session.session_id, session);
+  }
+
+  const internalStashes = stashes.filter((stash) => !stash.is_external);
+  const externalStashes = stashes.filter((stash) => stash.is_external);
+
+  function renderStashGroup(
+    title: string,
+    items: typeof stashes,
+    includeEmpty = false
+  ) {
+    if (items.length === 0 && !includeEmpty) return null;
+
+    return (
+      <div className="space-y-0.5 border-l border-border pl-2">
+        <div className="px-2 py-0.5 text-[10px] uppercase tracking-wide text-muted">
+          {title} {items.length}
+        </div>
+        {items.length === 0 ? (
+          <div className="px-2 py-1 text-[11px] italic text-muted">empty</div>
+        ) : (
+          items.map((stash) => (
+            <div key={`${title}-${stash.id}`} className="space-y-0.5">
+              <NavRow
+                href={`/stashes/${stash.slug}`}
+                icon={<StashIcon />}
+                label={stash.title}
+                trailing={<span className="text-[10px] text-muted">{stash.items?.length ?? stash.item_count}</span>}
+              />
+              <div className="ml-2.5 space-y-0.5 border-l border-border pl-2">
+                {(() => {
+                  const children = buildStashTreeItems(
+                    workspace.id,
+                    stash.items ?? [],
+                    foldersById,
+                    pagesById,
+                    filesById,
+                    sessionById,
+                    sessionBySessionId
+                  );
+                  const sessions = children.filter((item) => item.kind === "session");
+                  const files = children.filter((item) => item.kind !== "session");
+                  if (children.length === 0) {
+                    return (
+                      <div className="px-2 py-1 text-[11px] italic text-muted">
+                        no visible items
+                      </div>
+                    );
+                  }
+                  return (
+                    <>
+                      {sessions.length > 0 ? (
+                        <>
+                          <div className="px-2 py-0.5 text-[10px] uppercase tracking-wide text-muted">sessions</div>
+                          {sessions.map((item) => (
+                            <StashTreeRow key={`session:${item.key}`} row={item} />
+                          ))}
+                        </>
+                      ) : null}
+                      {files.length > 0 ? (
+                        <>
+                          <div className="px-2 py-0.5 text-[10px] uppercase tracking-wide text-muted">files</div>
+                          {files.map((item) => (
+                            <StashTreeRow key={`files:${item.key}`} row={item} />
+                          ))}
+                        </>
+                      ) : null}
+                    </>
+                  );
+                })()}
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+    );
+  }
+
   return (
     <details
       open={open}
@@ -507,24 +753,20 @@ function StashesBlock({
         <span className="flex h-4 w-4 items-center justify-center text-[14px] text-muted">
           <StashIcon />
         </span>
-        <span className="flex-1 truncate font-medium text-foreground">Stashes</span>
+        <Link
+          href={`/workspaces/${workspace.id}/stashes`}
+          className="flex-1 truncate font-medium text-foreground hover:text-[var(--color-brand-700)]"
+        >
+          Stashes
+        </Link>
         <span className="text-[10.5px] text-muted">{stashes.length}</span>
       </summary>
       <div className="ml-3 space-y-0.5 border-l border-border pl-2">
-        {stashes.map((stash) => (
-          <NavRow
-            key={stash.id}
-            href={`/stashes/${stash.slug}`}
-            icon={<StashIcon />}
-            label={stash.title}
-            trailing={
-              stash.is_external ? <span className="text-[10px] text-muted">ext</span> : null
-            }
-          />
-        ))}
-        {stashes.length === 0 ? (
+        {internalStashes.length === 0 && externalStashes.length === 0 ? (
           <div className="px-2 py-1 text-[11px] italic text-muted">empty</div>
         ) : null}
+        {renderStashGroup("Workspace", internalStashes, false)}
+        {renderStashGroup("External", externalStashes, false)}
       </div>
     </details>
   );
@@ -652,8 +894,8 @@ export default function AppSidebar({
         status: "over",
         message:
           section === "sessions"
-            ? "Drop .jsonl transcripts"
-            : "Drop files into Files",
+            ? "Drop .JSONL transcript files"
+            : "Drop files (any type)",
       };
     });
   }

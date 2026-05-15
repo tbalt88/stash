@@ -107,7 +107,7 @@ export default function SessionUpload({ workspaceId, onUploaded }: SessionUpload
         <input
           ref={inputRef}
           type="file"
-          accept=".jsonl,application/jsonl,application/x-ndjson"
+          accept=".jsonl"
           className="hidden"
           onChange={(event) => {
             const file = event.target.files?.[0];
