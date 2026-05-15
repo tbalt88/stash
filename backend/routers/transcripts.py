@@ -65,6 +65,8 @@ async def upload_transcript(
         session_id,
     )
     if existing:
+        if not await memory_service.can_read_session(workspace_id, session_id, current_user["id"]):
+            raise HTTPException(status_code=404, detail="Transcript not found")
         await session_service.upsert_session(
             workspace_id,
             session_id,
@@ -157,7 +159,7 @@ async def get_transcript_metadata(
     """Metadata-only response. The frontend follows up with /events for
     the bytes."""
     await _check_member(workspace_id, current_user["id"])
-    events = await memory_service.read_session_events(workspace_id, session_id)
+    events = await memory_service.read_session_events(workspace_id, session_id, current_user["id"])
     if not events:
         raise HTTPException(status_code=404, detail="Transcript not found")
     agent_name = events[0]["agent_name"] or ""
@@ -189,7 +191,7 @@ async def get_transcript_events(
     """Chat-thread turns for a session, in render order. Sourced directly
     from history_events — no JSONL serialization round-trip."""
     await _check_member(workspace_id, current_user["id"])
-    events = await memory_service.read_session_events(workspace_id, session_id)
+    events = await memory_service.read_session_events(workspace_id, session_id, current_user["id"])
     if not events:
         raise HTTPException(status_code=404, detail="Transcript not found")
     return {"events": _events_to_viewer_shape(events)}
@@ -205,7 +207,7 @@ async def export_transcript_jsonl(
     import json as json_mod
 
     await _check_member(workspace_id, current_user["id"])
-    events = await memory_service.read_session_events(workspace_id, session_id)
+    events = await memory_service.read_session_events(workspace_id, session_id, current_user["id"])
     if not events:
         raise HTTPException(status_code=404, detail="Transcript not found")
 

@@ -9,6 +9,7 @@ from uuid import UUID
 import numpy as np
 
 from ..database import get_pool
+from . import memory_service
 
 logger = logging.getLogger(__name__)
 
@@ -26,21 +27,24 @@ _DENSITY_SIGNATURE_TOLERANCE = 0.1
 # When ws_idx is passed, the CTE narrows to a single workspace (the caller
 # must have already authorized access to it). Otherwise it returns every
 # event the user can see across all their workspaces.
-def _accessible_events_cte(ws_idx: int | None = None) -> str:
+def _accessible_events_cte(ws_idx: int | None = None, user_idx: int = 1) -> str:
+    readable_events = memory_service.readable_session_event_condition("he", user_idx)
     if ws_idx is not None:
         return f"""
         WITH accessible_events AS (
             SELECT he.id AS event_id
             FROM history_events he
             WHERE he.workspace_id = ${ws_idx}
+              AND {readable_events}
         )
         """
-    return """
+    return f"""
     WITH accessible_events AS (
         SELECT he.id AS event_id
         FROM history_events he
-        WHERE he.workspace_id IN (SELECT workspace_id FROM workspace_members WHERE user_id = $1)
-           OR (he.workspace_id IS NULL AND he.created_by = $1)
+        WHERE (he.workspace_id IN (SELECT workspace_id FROM workspace_members WHERE user_id = $1)
+           OR (he.workspace_id IS NULL AND he.created_by = $1))
+          AND (he.workspace_id IS NULL OR {readable_events})
     )
     """
 
@@ -98,11 +102,11 @@ async def get_activity_timeline(
 
     cutoff = datetime.now(UTC) - timedelta(days=days)
 
-    # $1 = scope (workspace_id if scoped, else user_id), $2 = bucket, $3 = cutoff.
-    # Placeholders must be contiguous, so the scope arg always takes $1 and the
-    # CTE picks the right filter clause based on whether workspace_id is set.
-    scope_arg = workspace_id if workspace_id is not None else user_id
-    ws_idx = 1 if workspace_id is not None else None
+    args: list = [user_id, bucket, cutoff]
+    ws_idx = None
+    if workspace_id is not None:
+        args.append(workspace_id)
+        ws_idx = 4
 
     rows = await pool.fetch(
         _accessible_events_cte(ws_idx=ws_idx) + """
@@ -117,9 +121,7 @@ async def get_activity_timeline(
         GROUP BY bucket_date, me.agent_name, me.event_type
         ORDER BY bucket_date
         """,
-        scope_arg,
-        bucket,
-        cutoff,
+        *args,
     )
 
     # Build response shape
@@ -275,14 +277,17 @@ async def _get_source_counts(user_id: UUID, workspace_id: UUID | None = None) ->
             """
             SELECT
                 (SELECT COUNT(*) FROM pages p
-                 WHERE p.workspace_id = $1
+                 WHERE p.workspace_id = $2
                    AND COALESCE(p.metadata->>'shared_in_stash_id', '') = ''
                    AND p.content_markdown IS NOT NULL AND p.content_markdown != '') AS pages,
                 (SELECT COUNT(*) FROM table_rows tr
-                 WHERE tr.table_id IN (SELECT t.id FROM tables t WHERE t.workspace_id = $1)
+                 WHERE tr.table_id IN (SELECT t.id FROM tables t WHERE t.workspace_id = $2)
                    AND tr.data IS NOT NULL) AS rows,
-                (SELECT COUNT(*) FROM history_events he WHERE he.workspace_id = $1) AS events
+                (SELECT COUNT(*) FROM history_events he
+                 WHERE he.workspace_id = $2
+                   AND """ + memory_service.readable_session_event_condition("he", 1) + """) AS events
             """,
+            user_id,
             workspace_id,
         )
     else:
@@ -300,8 +305,9 @@ async def _get_source_counts(user_id: UUID, workspace_id: UUID | None = None) ->
                         OR (t.workspace_id IS NULL AND t.created_by = $1))
                    AND tr.data IS NOT NULL) AS rows,
                 (SELECT COUNT(*) FROM history_events he
-                 WHERE he.workspace_id IN (SELECT workspace_id FROM workspace_members WHERE user_id = $1)
-                    OR (he.workspace_id IS NULL AND he.created_by = $1)) AS events
+                 WHERE (he.workspace_id IN (SELECT workspace_id FROM workspace_members WHERE user_id = $1)
+                    OR (he.workspace_id IS NULL AND he.created_by = $1))
+                   AND (he.workspace_id IS NULL OR """ + memory_service.readable_session_event_condition("he", 1) + """)) AS events
             """,
             user_id,
         )
@@ -348,10 +354,13 @@ async def compute_knowledge_density(
     if total_docs == 0:
         return [], signature
 
-    # $1 = user_id (or workspace_id if scoped); ws_idx lets the CTEs filter
-    # on a single workspace when scoped.
     scope_arg = workspace_id if workspace_id is not None else user_id
     ws_idx = 1 if workspace_id is not None else None
+    event_args = [user_id]
+    event_ws_idx = None
+    if workspace_id is not None:
+        event_args.append(workspace_id)
+        event_ws_idx = 2
 
     # One scan per source: stem → doc_count + newest_at.
     page_rows = await pool.fetch(
@@ -391,7 +400,7 @@ async def compute_knowledge_density(
         scope_arg,
     )
     event_rows = await pool.fetch(
-        _accessible_events_cte(ws_idx=ws_idx) + """
+        _accessible_events_cte(ws_idx=event_ws_idx) + """
         SELECT stem, COUNT(DISTINCT doc_id) AS ndoc, MAX(ts) AS newest_at
         FROM (
             SELECT word AS stem, he.id AS doc_id, he.created_at AS ts
@@ -406,7 +415,7 @@ async def compute_knowledge_density(
         ORDER BY ndoc DESC
         LIMIT 250
         """,
-        scope_arg,
+        *event_args,
     )
 
     term_counts: dict[str, dict] = {}
@@ -533,9 +542,13 @@ async def get_embedding_projection(
 
     source_key = source or "_all"
 
-    # $1 = user_id (or workspace_id if scoped)
     scope_arg = workspace_id if workspace_id is not None else user_id
     ws_idx = 1 if workspace_id is not None else None
+    event_count_args = [user_id]
+    event_ws_idx = None
+    if workspace_id is not None:
+        event_count_args.append(workspace_id)
+        event_ws_idx = 2
 
     # Cache row keyed by (user_id, source_type, workspace_id) — NULL workspace
     # is the user-wide row (migration 0018, NULLS NOT DISTINCT).
@@ -574,12 +587,12 @@ async def get_embedding_projection(
 
     if source is None or source == "history_events":
         row = await pool.fetchval(
-            _accessible_events_cte(ws_idx=ws_idx) + """
+            _accessible_events_cte(ws_idx=event_ws_idx) + """
             SELECT COUNT(*) FROM history_events me
             JOIN accessible_events a ON a.event_id = me.id
             WHERE me.embedding IS NOT NULL
             """,
-            scope_arg,
+            *event_count_args,
         )
         total_count += row or 0
 
@@ -600,6 +613,11 @@ async def get_embedding_projection(
     # Fetch embeddings from each source
     all_items: list[dict] = []
     per_source_limit = max_points if source else max_points // 3
+    event_fetch_args = [user_id, per_source_limit]
+    event_fetch_ws_idx = None
+    if workspace_id is not None:
+        event_fetch_args.append(workspace_id)
+        event_fetch_ws_idx = 3
 
     if source is None or source == "pages":
         rows = await pool.fetch(
@@ -652,7 +670,7 @@ async def get_embedding_projection(
 
     if source is None or source == "history_events":
         rows = await pool.fetch(
-            _accessible_events_cte(ws_idx=ws_idx) + """
+            _accessible_events_cte(ws_idx=event_fetch_ws_idx) + """
             SELECT me.id, me.agent_name, me.event_type, me.embedding, me.created_at
             FROM history_events me
             JOIN accessible_events a ON a.event_id = me.id
@@ -660,8 +678,7 @@ async def get_embedding_projection(
             ORDER BY me.created_at DESC
             LIMIT $2
             """,
-            scope_arg,
-            per_source_limit,
+            *event_fetch_args,
         )
         for r in rows:
             all_items.append(

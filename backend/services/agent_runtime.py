@@ -146,8 +146,12 @@ async def _parse_stash_items(raw_items: list[dict], workspace_id: UUID) -> list[
 )
 async def _search_history(args: dict) -> dict:
     workspace_id = _current_workspace()
+    user_id = _current_user()
     rows = await memory_service.search_workspace_events(
-        workspace_id, args.get("query", ""), limit=int(args.get("limit", 10))
+        workspace_id,
+        user_id,
+        args.get("query", ""),
+        limit=int(args.get("limit", 10)),
     )
     out = [
         {

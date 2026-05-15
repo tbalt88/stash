@@ -110,12 +110,23 @@ async def _make_table(pool, workspace_id, created_by, name="table"):
     return row["id"]
 
 
-async def _make_history_event(pool, workspace_id, created_by):
+async def _make_history_event(
+    pool,
+    workspace_id,
+    created_by,
+    session_id=None,
+    content="hello",
+    event_type="message",
+):
     return await pool.fetchval(
-        "INSERT INTO history_events (workspace_id, created_by, agent_name, event_type, content) "
-        "VALUES ($1, $2, 'agent', 'message', 'hello') RETURNING id",
+        "INSERT INTO history_events "
+        "(workspace_id, created_by, agent_name, event_type, content, session_id) "
+        "VALUES ($1, $2, 'agent', $3, $4, $5) RETURNING id",
         workspace_id,
         created_by,
+        event_type,
+        content,
+        session_id,
     )
 
 
@@ -398,6 +409,160 @@ async def test_stash_write_member_can_create_shared_page_outside_workspace_files
     )
     assert tree_resp.status_code == 200
     assert [item["name"] for item in tree_resp.json()["pages"]] == ["Source page"]
+
+
+@pytest.mark.asyncio
+async def test_private_stash_hides_session_surfaces_until_user_is_added(
+    client: AsyncClient,
+    pool,
+):
+    owner_key, owner = await _register(client, "session_privacy_owner")
+    member_key, member = await _register(client, "session_privacy_member")
+
+    workspace_resp = await client.post(
+        "/api/v1/workspaces",
+        json={"name": "Session Privacy workspace"},
+        headers=_auth(owner_key),
+    )
+    assert workspace_resp.status_code == 201
+    workspace = workspace_resp.json()
+    workspace_id = uuid.UUID(workspace["id"])
+    owner_id = uuid.UUID(owner["id"])
+    member_id = uuid.UUID(member["id"])
+
+    await _add_workspace_member(pool, workspace_id, member_id)
+    session_row_id = await _make_session(
+        pool,
+        workspace_id,
+        owner_id,
+        session_id="private-session-1",
+    )
+    await _make_history_event(
+        pool,
+        workspace_id,
+        owner_id,
+        session_id="private-session-1",
+        content="secret session note",
+        event_type="user_message",
+    )
+    stash = await _make_stash(
+        workspace_id,
+        owner_id,
+        "private",
+        "session",
+        session_row_id,
+    )
+
+    overview_resp = await client.get(
+        f"/api/v1/workspaces/{workspace['id']}/overview",
+        headers=_auth(member_key),
+    )
+    assert overview_resp.status_code == 200
+    assert overview_resp.json()["sessions"] == []
+
+    sidebar_resp = await client.get(
+        f"/api/v1/workspaces/{workspace['id']}/sidebar",
+        headers=_auth(member_key),
+    )
+    assert sidebar_resp.status_code == 200
+    assert sidebar_resp.json()["sessions"] == []
+
+    transcript_resp = await client.get(
+        f"/api/v1/workspaces/{workspace['id']}/transcripts/private-session-1",
+        headers=_auth(member_key),
+    )
+    assert transcript_resp.status_code == 404
+
+    query_resp = await client.get(
+        f"/api/v1/workspaces/{workspace['id']}/sessions/events",
+        params={"session_id": "private-session-1"},
+        headers=_auth(member_key),
+    )
+    assert query_resp.status_code == 200
+    assert query_resp.json()["events"] == []
+
+    search_resp = await client.get(
+        f"/api/v1/workspaces/{workspace['id']}/sessions/events/search",
+        params={"q": "secret"},
+        headers=_auth(member_key),
+    )
+    assert search_resp.status_code == 200
+    assert search_resp.json()["events"] == []
+
+    my_sessions_resp = await client.get(
+        "/api/v1/me/sessions",
+        params={"workspace_id": workspace["id"]},
+        headers=_auth(member_key),
+    )
+    assert my_sessions_resp.status_code == 200
+    assert my_sessions_resp.json()["sessions"] == []
+
+    all_events_resp = await client.get(
+        "/api/v1/me/session-events",
+        headers=_auth(member_key),
+    )
+    assert all_events_resp.status_code == 200
+    assert all_events_resp.json()["events"] == []
+
+    activity_resp = await client.get(
+        "/api/v1/me/activity",
+        params={"workspace_id": workspace["id"]},
+        headers=_auth(member_key),
+    )
+    assert activity_resp.status_code == 200
+    assert "session.uploaded" not in [event["kind"] for event in activity_resp.json()]
+
+    timeline_resp = await client.get(
+        "/api/v1/me/activity-timeline",
+        params={"workspace_id": workspace["id"]},
+        headers=_auth(member_key),
+    )
+    assert timeline_resp.status_code == 200
+    assert timeline_resp.json()["agents"] == []
+
+    await _add_stash_member(pool, stash["id"], member_id, owner_id, "read")
+
+    overview_resp = await client.get(
+        f"/api/v1/workspaces/{workspace['id']}/overview",
+        headers=_auth(member_key),
+    )
+    assert overview_resp.status_code == 200
+    assert [session["session_id"] for session in overview_resp.json()["sessions"]] == [
+        "private-session-1"
+    ]
+
+    transcript_resp = await client.get(
+        f"/api/v1/workspaces/{workspace['id']}/transcripts/private-session-1",
+        headers=_auth(member_key),
+    )
+    assert transcript_resp.status_code == 200
+    assert transcript_resp.json()["event_count"] == 1
+
+    search_resp = await client.get(
+        f"/api/v1/workspaces/{workspace['id']}/sessions/events/search",
+        params={"q": "secret"},
+        headers=_auth(member_key),
+    )
+    assert search_resp.status_code == 200
+    assert [event["session_id"] for event in search_resp.json()["events"]] == [
+        "private-session-1"
+    ]
+
+    activity_resp = await client.get(
+        "/api/v1/me/activity",
+        params={"workspace_id": workspace["id"]},
+        headers=_auth(member_key),
+    )
+    assert activity_resp.status_code == 200
+    assert "session.uploaded" in [event["kind"] for event in activity_resp.json()]
+
+    timeline_resp = await client.get(
+        "/api/v1/me/activity-timeline",
+        params={"workspace_id": workspace["id"]},
+        headers=_auth(member_key),
+    )
+    assert timeline_resp.status_code == 200
+    assert timeline_resp.json()["agents"] == ["agent"]
 
 
 @pytest.mark.asyncio

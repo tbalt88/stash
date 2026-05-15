@@ -32,9 +32,9 @@ router = APIRouter(prefix="/api/v1/workspaces", tags=["workspaces"])
 # ---------------------------------------------------------------------------
 
 
-async def _list_sessions(workspace_id: UUID) -> list[dict]:
+async def _list_sessions(workspace_id: UUID, user_id: UUID) -> list[dict]:
     """Sessions in this workspace, sourced from history_events rows."""
-    sessions = await memory_service.list_workspace_sessions(workspace_id)
+    sessions = await memory_service.list_workspace_sessions(workspace_id, user_id)
     return [
         {
             "id": s["id"],
@@ -205,7 +205,7 @@ async def get_workspace_overview(
     await _check_overview_access(workspace_id, current_user["id"])
 
     sessions, files, stashes = await asyncio.gather(
-        _list_sessions(workspace_id),
+        _list_sessions(workspace_id, current_user["id"]),
         _files_tree(workspace_id),
         _list_stashes(workspace_id),
     )
@@ -223,12 +223,12 @@ async def get_workspace_sidebar(
     between workspaces hits 304 instead of re-fetching."""
     await _check_overview_access(workspace_id, current_user["id"])
 
-    etag = await _sidebar_etag(workspace_id)
+    etag = await _sidebar_etag(workspace_id, current_user["id"])
     if request.headers.get("if-none-match") == etag:
         return Response(status_code=304, headers={"ETag": etag})
 
     sessions, files, stashes = await asyncio.gather(
-        _list_sessions(workspace_id),
+        _list_sessions(workspace_id, current_user["id"]),
         _files_tree(workspace_id),
         _list_stashes(workspace_id),
     )
@@ -247,7 +247,7 @@ async def _check_overview_access(workspace_id: UUID, user_id: UUID) -> None:
         raise HTTPException(status_code=404, detail="Workspace not found")
 
 
-async def _sidebar_etag(workspace_id: UUID) -> str:
+async def _sidebar_etag(workspace_id: UUID, user_id: UUID) -> str:
     """One short string that changes any time the sidebar's content
     changes. Concatenates last-modified timestamps across the workspace's
     mutating tables."""
@@ -262,11 +262,15 @@ async def _sidebar_etag(workspace_id: UUID) -> str:
           (SELECT MAX(GREATEST(finished_at, started_at)) FROM sessions
             WHERE workspace_id = $1)                                              AS s,
           (SELECT MAX(updated_at) FROM stashes WHERE workspace_id = $1)            AS st,
+          (SELECT MAX(sm.created_at) FROM stash_members sm
+           JOIN stashes s ON s.id = sm.stash_id
+           WHERE s.workspace_id = $1 AND sm.user_id = $2)                          AS sm,
           (SELECT updated_at FROM workspaces WHERE id = $1)                       AS w
         """,
         workspace_id,
+        user_id,
     )
-    raw = "|".join(str(row[k] or "") for k in ("p", "f", "d", "s", "st", "w"))
+    raw = "|".join(str(row[k] or "") for k in ("p", "f", "d", "s", "st", "sm", "w"))
     return f'W/"{_short_hash(raw)}"'
 
 

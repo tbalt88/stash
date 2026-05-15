@@ -775,6 +775,7 @@ async def add_member(
     )
     if not row:
         return None
+    await pool.execute("UPDATE stashes SET updated_at = now() WHERE id = $1", stash_id)
 
     user = await pool.fetchrow(
         "SELECT name, display_name FROM users WHERE id = $1",
@@ -796,7 +797,10 @@ async def remove_member(stash_id: UUID, user_id: UUID) -> bool:
         stash_id,
         user_id,
     )
-    return result == "DELETE 1"
+    removed = result == "DELETE 1"
+    if removed:
+        await pool.execute("UPDATE stashes SET updated_at = now() WHERE id = $1", stash_id)
+    return removed
 
 
 async def user_can_write(stash_id: UUID, user_id: UUID) -> bool:

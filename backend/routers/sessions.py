@@ -14,7 +14,14 @@ from pydantic import BaseModel, Field
 
 from ..auth import get_current_user
 from ..database import get_pool
-from ..services import files_tree_service, session_service, storage_service, workspace_service
+from ..services import (
+    files_tree_service,
+    memory_service,
+    permission_service,
+    session_service,
+    storage_service,
+    workspace_service,
+)
 
 router = APIRouter(prefix="/api/v1", tags=["sessions"])
 
@@ -60,6 +67,7 @@ async def list_my_sessions(
         "he.session_id IS NOT NULL",
         "(he.workspace_id IN (SELECT workspace_id FROM workspace_members WHERE user_id = $1) "
         "OR he.created_by = $1)",
+        f"(he.workspace_id IS NULL OR {memory_service.readable_session_event_condition('he', 1)})",
     ]
     if workspace_id is not None:
         args.append(workspace_id)
@@ -133,6 +141,14 @@ async def upload_session_artifact(
     session = await session_service.get_session_by_id(session_row_id)
     if not session or session["workspace_id"] != workspace_id:
         raise HTTPException(status_code=404, detail="Session not found")
+    can_read = await permission_service.check_access(
+        "session",
+        session_row_id,
+        current_user["id"],
+        workspace_id=workspace_id,
+    )
+    if not can_read:
+        raise HTTPException(status_code=404, detail="Session not found")
     if not storage_service.is_configured():
         raise HTTPException(status_code=503, detail="File storage is not configured")
 
@@ -199,6 +215,8 @@ async def materialize_session(
     than spawning duplicates."""
     if not await workspace_service.is_member(workspace_id, current_user["id"]):
         raise HTTPException(status_code=403, detail="Not a workspace member")
+    if not await memory_service.can_read_session(workspace_id, session_id, current_user["id"]):
+        raise HTTPException(status_code=404, detail="No events for that session in this workspace")
 
     pool = get_pool()
     events = await pool.fetch(

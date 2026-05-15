@@ -77,6 +77,7 @@ async def list_activity(
           FROM history_events he
           JOIN accessible_workspaces aw ON aw.id = he.workspace_id
           WHERE he.session_id IS NOT NULL
+            AND """ + memory_service.readable_session_event_condition("he", 1) + """
           GROUP BY aw.id, aw.name, he.session_id
         )
         UNION ALL
