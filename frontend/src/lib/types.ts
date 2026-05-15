@@ -89,43 +89,6 @@ export interface WorkspaceTree {
   pages: PageSummary[];
 }
 
-// --- History ---
-
-export interface History {
-  id: string;
-  workspace_id: string | null;
-  name: string;
-  description: string;
-  created_by: string;
-  created_at: string;
-  event_count: number | null;
-}
-
-export interface HistoryEvent {
-  id: string;
-  store_id: string;
-  agent_name: string;
-  event_type: string;
-  session_id: string | null;
-  tool_name: string | null;
-  content: string;
-  metadata: Record<string, unknown>;
-  attachments?: Attachment[] | null;
-  created_at: string;
-  created_by: string | null;
-  created_by_name: string | null;
-}
-
-export interface HistoryWithWorkspace extends History {
-  workspace_name: string | null;
-}
-
-export interface HistoryEventWithContext extends HistoryEvent {
-  store_name: string;
-  workspace_id: string | null;
-  workspace_name: string | null;
-}
-
 // --- Permissions ---
 
 export interface ObjectPermission {
@@ -192,8 +155,6 @@ export interface TableRow {
 export interface TableWithWorkspace extends Table {
   workspace_name: string | null;
 }
-
-// (No NotebookWithWorkspace anymore — wikis hang directly off the workspace.)
 
 // --- Files ---
 

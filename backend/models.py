@@ -101,7 +101,7 @@ class WorkspaceListResponse(BaseModel):
     workspaces: list[WorkspaceResponse]
 
 
-# --- Product Stashes (publishable subsets of a workspace) ---
+# --- Stashes (publishable subsets of a workspace) ---
 
 StashObjectType = str  # 'folder' | 'page' | 'table' | 'file' | 'history' | 'session'
 
@@ -558,7 +558,7 @@ class ShareResponse(BaseModel):
 class ShareLinkResponse(BaseModel):
     """URL the share sheet copies to clipboard.
 
-    Shareable objects resolve to an auto-created one-item Product Stash.
+    Shareable objects resolve to an auto-created one-item Stash.
     """
 
     url: str

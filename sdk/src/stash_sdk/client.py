@@ -172,7 +172,7 @@ class Stash:
             raise
 
     # =========================================================================
-    # Discover (public Product Stashes)
+    # Discover (public Stashes)
     # =========================================================================
 
     def list_discover_stashes(
@@ -187,7 +187,7 @@ class Stash:
         return self._get("/api/v1/discover/stashes", **params)
 
     # =========================================================================
-    # Product Stashes
+    # Stashes
     # =========================================================================
 
     def list_stashes(self, workspace: str | None = None) -> list:

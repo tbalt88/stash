@@ -332,7 +332,7 @@ async def _read_skill(args: dict) -> dict:
 
 @tool(
     "list_stashes",
-    "List Product Stashes from the active Stash Workspace.",
+    "List Stashes from the active Stash Workspace.",
     {"type": "object", "properties": {}},
 )
 async def _list_stashes(args: dict) -> dict:
@@ -343,7 +343,7 @@ async def _list_stashes(args: dict) -> dict:
 
 @tool(
     "create_stash",
-    "Create a Product Stash from workspace items.",
+    "Create a Stash from workspace items.",
     {
         "type": "object",
         "properties": {
@@ -399,7 +399,7 @@ async def _create_stash(args: dict) -> dict:
 
 @tool(
     "update_stash",
-    "Update Product Stash metadata or replace its item list.",
+    "Update Stash metadata or replace its item list.",
     {
         "type": "object",
         "properties": {
@@ -457,7 +457,7 @@ async def _update_stash(args: dict) -> dict:
 
 @tool(
     "delete_stash",
-    "Delete a Product Stash by id.",
+    "Delete a Stash by id.",
     {
         "type": "object",
         "properties": {"stash_id": {"type": "string"}},

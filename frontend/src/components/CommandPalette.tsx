@@ -15,7 +15,7 @@ interface CommandPaletteProps {
 }
 
 interface Result {
-  kind: "page" | "session" | "folder" | "file" | "history";
+  kind: "page" | "session" | "folder" | "file";
   label: string;
   href: string;
   detail?: string;
@@ -150,7 +150,6 @@ export default function CommandPalette({ open, onClose, workspaceId }: CommandPa
     session: "#",
     skill: "⚙︎",
     file: "📁",
-    history: "⏱",
   };
 
   return (

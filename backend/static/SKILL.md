@@ -42,9 +42,9 @@ It provides:
 - workspace membership and permissions
 - pages organized in nestable folders
 - tables (typed columns, rows, CSV import/export, semantic row search)
-- history/memory events (with file attachments)
+- session events (with file attachments)
 - file uploads (S3-backed; PDF/image text extraction when available)
-- Product Stashes for publishing sets of pages, sessions, and files
+- Stashes for publishing sets of pages, sessions, and files
 
 Design boundary:
 - Stash owns persistent shared state and plugin-based memory access
@@ -78,7 +78,7 @@ curl -X POST {{BASE_URL}}/api/v1/workspaces \
   -d '{"name": "Project", "description": "Shared workspace"}'
 ```
 
-### 3. Push a History Event
+### 3. Push a Session Event
 ```bash
 curl -X POST {{BASE_URL}}/api/v1/workspaces/$WS/memory/events \
   -H "Authorization: Bearer $API_KEY" \
@@ -123,7 +123,7 @@ scope — pick or create a workspace first.
 | Tables | `/api/v1/workspaces/{ws}/tables` |
 | Rows | `/api/v1/workspaces/{ws}/tables/{t}/rows` |
 | Files | `/api/v1/workspaces/{ws}/files` |
-| Memory / History | `/api/v1/workspaces/{ws}/memory/events` |
+| Session events | `/api/v1/workspaces/{ws}/memory/events` |
 | Transcripts | `/api/v1/workspaces/{ws}/transcripts` |
 | Aggregate (across the user's workspaces) | `/api/v1/me/{pages,tables,history-events}` |
 
@@ -193,7 +193,7 @@ you'll round-trip cleanly through edit mode:
 3. Don't rely on H4 or deeper headings. Restructure with H3 + bold.
 4. Images need an absolute URL (external or `/files/<id>/download`).
 
-## History / Memory Events
+## Session Events
 
 Events are structured append-only records keyed by `(workspace, agent_name, event_type)`.
 
@@ -213,7 +213,7 @@ POST /api/v1/workspaces/{ws}/memory/events
 ```
 
 `attachments` entries must reference a previously-uploaded file. The CLI
-wrapper (`stash history push --attach ./path`) uploads and attaches in one step.
+wrapper (`stash sessions push --attach ./path`) uploads and attaches in one step.
 
 Query/search:
 - `GET /events?agent_name=&event_type=&limit=&after=`
@@ -243,7 +243,7 @@ Query/search:
   returns `status` alongside the text so you can distinguish "still
   extracting" (`pending`/`processing`) from "done, no text available"
   (`done` with `text: null`).
-- Attach files to history events rather than embedding base64 — keeps event
+- Attach files to session events rather than embedding base64 — keeps event
   payloads small and allows reuse across events.
 - When authoring page content that links to another page in the same
   workspace, use the page id URL form: `[text](/workspaces/<ws>/p/<uuid>)`.

@@ -246,7 +246,7 @@ function HeroFeed() {
               style={{ animation: "live-pulse 2s ease-out infinite" }}
             />
             <span className="text-[13px] font-semibold text-ink">team · fergana</span>
-            <span className="text-[12px] text-muted">/ history</span>
+            <span className="text-[12px] text-muted">/ sessions</span>
           </div>
           <span className="inline-flex items-center gap-2 font-mono text-[10px] font-medium uppercase tracking-[0.12em] text-dim">
             Live
@@ -513,7 +513,7 @@ function Problem() {
           <p>
             Stash captures every run across the team and turns it into a
             shared layer your agents can query. The second time a question
-            comes up, an agent answers it from the team&apos;s own history
+            comes up, an agent answers it from the team&apos;s own sessions
             instead of starting from scratch. Call it a hive mind for your
             agents.
           </p>
@@ -601,7 +601,7 @@ function FilesViz() {
 
 function SearchViz() {
   const sources: [string, string][] = [
-    ["history/rex:14:02", "62%"],
+    ["sessions/rex:14:02", "62%"],
     ["files/auth-patterns", "21%"],
     ["files/gateway.py", "11%"],
   ];
@@ -629,21 +629,21 @@ function HowItWorks() {
       n: "01",
       pill: "Stream",
       title: "Every session flows into a shared store.",
-      body: "Prompts, tool calls, and session summaries push to your workspace’s history as they happen. Nothing to remember to save.",
+      body: "Prompts, tool calls, and session summaries push to your workspace’s Sessions as they happen. Nothing to remember to save.",
       viz: <StreamViz />,
     },
     {
       n: "02",
       pill: "Files",
       title: "Teams shape durable pages.",
-      body: "Pages, uploads, and folders stay in Files. Sessions remain searchable history, and useful outputs can be promoted into durable pages.",
+      body: "Pages, uploads, and folders stay in Files. Sessions remain searchable sessions, and useful outputs can be promoted into durable pages.",
       viz: <FilesViz />,
     },
     {
       n: "03",
       pill: "Search",
       title: "Every agent queries the whole team's work.",
-      body: "stash search runs a cross-resource agentic loop over files, history, pages, tables, and Stashes. Your agent answers with sources, not hallucinations.",
+      body: "stash search runs a cross-resource agentic loop over files, sessions, pages, tables, and Stashes. Your agent answers with sources, not hallucinations.",
       viz: <SearchViz />,
     },
   ];
@@ -690,7 +690,7 @@ function HowItWorks() {
 
 function SearchDemo() {
   const steps = [
-    { t: "scanned team history", ms: "42ms" },
+    { t: "scanned team sessions", ms: "42ms" },
     { t: "queried files tree", ms: "81ms" },
     { t: "pulled gateway.py blame", ms: "104ms" },
     { t: "reranked 8 sources", ms: "22ms" },
@@ -706,7 +706,7 @@ function SearchDemo() {
             Stash answers with receipts.
           </h2>
           <p className="max-w-[620px] text-[18px] leading-[1.55] text-dim">
-            stash search runs an agentic loop across files, history, pages,
+            stash search runs an agentic loop across files, sessions, pages,
             tables, and Stashes. Every answer arrives with sources attached.
           </p>
         </div>
@@ -754,7 +754,7 @@ function SearchDemo() {
                 limit was throttling legitimate imports from Shopify partners.
                 The change is safe because requests are authenticated and
                 per-tenant, not global.{" "}
-                <span className="font-mono text-[11.5px] text-brand">history/sam:tue-14:22</span>,{" "}
+                <span className="font-mono text-[11.5px] text-brand">sessions/sam:tue-14:22</span>,{" "}
                 <span className="font-mono text-[11.5px] text-brand">files/gateway-limits</span>
               </p>
             </div>
@@ -769,8 +769,8 @@ function Features() {
   const items = [
     {
       i: "H",
-      h: "Shared history",
-      p: "Every prompt and tool call streams to a team-wide event log. Searchable, filterable, attributable.",
+      h: "Shared sessions",
+      p: "Every prompt and tool call streams to a team-wide session log. Searchable, filterable, attributable.",
       tags: ["events", "per-agent", "replay"],
     },
     {
@@ -793,7 +793,7 @@ function Features() {
     },
     {
       i: "R",
-      h: "Product Stashes",
+      h: "Stashes",
       p: "Publish sessions, pages, and files together as a polished link anyone can inspect.",
       tags: ["publish", "sessions", "files"],
     },

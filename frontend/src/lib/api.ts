@@ -1,10 +1,5 @@
 import {
-  Attachment,
   FileInfo,
-  HistoryEvent,
-  HistoryEventWithContext,
-  History,
-  HistoryWithWorkspace,
   Folder,
   Page,
   WorkspaceTree,
@@ -386,73 +381,6 @@ export async function deletePage(workspaceId: string, pageId: string): Promise<v
   await apiFetch(`/api/v1/workspaces/${workspaceId}/pages/${pageId}`, { method: "DELETE" });
 }
 
-// --- History ---
-
-export async function createHistory(
-  workspaceId: string | null,
-  name: string,
-  description?: string
-): Promise<History> {
-  return apiFetch(`${scope(workspaceId)}/memory`, {
-    method: "POST",
-    body: JSON.stringify({ name, description: description || "" }),
-  });
-}
-
-export async function listHistories(
-  workspaceId: string | null
-): Promise<{ stores: History[] }> {
-  return apiFetch(`${scope(workspaceId)}/memory`);
-}
-
-export async function getHistory(
-  workspaceId: string | null,
-  storeId: string
-): Promise<History> {
-  return apiFetch(`${scope(workspaceId)}/memory/${storeId}`);
-}
-
-export async function deleteHistory(
-  workspaceId: string | null,
-  storeId: string
-): Promise<void> {
-  await apiFetch(`${scope(workspaceId)}/memory/${storeId}`, { method: "DELETE" });
-}
-
-export async function queryHistoryEvents(
-  workspaceId: string | null,
-  storeId: string,
-  params?: {
-    agent_name?: string;
-    session_id?: string;
-    event_type?: string;
-    after?: string;
-    before?: string;
-    limit?: number;
-  }
-): Promise<{ events: HistoryEvent[]; has_more: boolean }> {
-  const searchParams = new URLSearchParams();
-  if (params?.agent_name) searchParams.set("agent_name", params.agent_name);
-  if (params?.session_id) searchParams.set("session_id", params.session_id);
-  if (params?.event_type) searchParams.set("event_type", params.event_type);
-  if (params?.after) searchParams.set("after", params.after);
-  if (params?.before) searchParams.set("before", params.before);
-  if (params?.limit) searchParams.set("limit", String(params.limit));
-  const qs = searchParams.toString();
-  return apiFetch(`${scope(workspaceId)}/memory/${storeId}/events${qs ? `?${qs}` : ""}`);
-}
-
-export async function searchHistoryEvents(
-  workspaceId: string | null,
-  storeId: string,
-  query: string,
-  limit?: number
-): Promise<{ events: HistoryEvent[]; has_more: boolean }> {
-  const searchParams = new URLSearchParams({ q: query });
-  if (limit) searchParams.set("limit", String(limit));
-  return apiFetch(`${scope(workspaceId)}/memory/${storeId}/events/search?${searchParams.toString()}`);
-}
-
 // --- Aggregate (cross-workspace) ---
 
 // Cross-workspace flat page list for page pickers and search surfaces.
@@ -468,71 +396,6 @@ export interface UserPageEntry {
   folder_path: string[];
   workspace_name: string;
   updated_at: string;
-}
-
-export async function listAllHistories(): Promise<{ stores: HistoryWithWorkspace[] }> {
-  return apiFetch("/api/v1/me/history");
-}
-
-export async function queryAllHistoryEvents(
-  params?: {
-    agent_name?: string;
-    event_type?: string;
-    after?: string;
-    before?: string;
-    limit?: number;
-  }
-): Promise<{ events: HistoryEventWithContext[]; has_more: boolean }> {
-  const searchParams = new URLSearchParams();
-  if (params?.agent_name) searchParams.set("agent_name", params.agent_name);
-  if (params?.event_type) searchParams.set("event_type", params.event_type);
-  if (params?.after) searchParams.set("after", params.after);
-  if (params?.before) searchParams.set("before", params.before);
-  if (params?.limit) searchParams.set("limit", String(params.limit));
-  const qs = searchParams.toString();
-  return apiFetch(`/api/v1/me/history-events${qs ? `?${qs}` : ""}`);
-}
-
-export async function queryWorkspaceHistoryEvents(
-  workspaceId: string,
-  params?: {
-    agent_name?: string;
-    session_id?: string;
-    event_type?: string;
-    after?: string;
-    before?: string;
-    limit?: number;
-  }
-): Promise<{ events: HistoryEvent[]; has_more: boolean }> {
-  const searchParams = new URLSearchParams();
-  if (params?.agent_name) searchParams.set("agent_name", params.agent_name);
-  if (params?.session_id) searchParams.set("session_id", params.session_id);
-  if (params?.event_type) searchParams.set("event_type", params.event_type);
-  if (params?.after) searchParams.set("after", params.after);
-  if (params?.before) searchParams.set("before", params.before);
-  if (params?.limit) searchParams.set("limit", String(params.limit));
-  const qs = searchParams.toString();
-  return apiFetch(`/api/v1/workspaces/${workspaceId}/memory/events${qs ? `?${qs}` : ""}`);
-}
-
-export interface CreateHistoryEventInput {
-  agent_name: string;
-  event_type: string;
-  content: string;
-  session_id?: string | null;
-  tool_name?: string | null;
-  metadata?: Record<string, unknown>;
-  attachments?: Attachment[] | null;
-}
-
-export async function createWorkspaceHistoryEvent(
-  workspaceId: string,
-  input: CreateHistoryEventInput
-): Promise<HistoryEvent> {
-  return apiFetch(`/api/v1/workspaces/${workspaceId}/memory/events`, {
-    method: "POST",
-    body: JSON.stringify(input),
-  });
 }
 
 export async function listAllTables(): Promise<{ tables: TableWithWorkspace[] }> {
@@ -889,7 +752,7 @@ export async function deleteFile(workspaceId: string, fileId: string): Promise<v
   await apiFetch(`/api/v1/workspaces/${workspaceId}/files/${fileId}`, { method: "DELETE" });
 }
 
-// --- Sessions (history events grouped by session_id) ---
+// --- Sessions ---
 
 export interface SessionSummary {
   session_id: string;
@@ -929,7 +792,7 @@ export async function materializeSession(
 
 // --- Stashes (publishable bundles of pages, sessions, and files) ---
 
-export type CollectableObjectType = "folder" | "page" | "table" | "file" | "history" | "session";
+export type CollectableObjectType = "folder" | "page" | "table" | "file" | "session";
 
 export interface StashItemSpec {
   object_type: CollectableObjectType;

@@ -1,4 +1,4 @@
-"""Product Stashes — the privacy and sharing boundary for workspace resources."""
+"""Stashes — the privacy and sharing boundary for workspace resources."""
 
 from __future__ import annotations
 

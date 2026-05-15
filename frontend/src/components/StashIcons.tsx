@@ -5,7 +5,6 @@ import ExploreOutlinedIcon from "@mui/icons-material/ExploreOutlined";
 import FolderOutlinedIcon from "@mui/icons-material/FolderOutlined";
 import HelpOutlineOutlinedIcon from "@mui/icons-material/HelpOutlineOutlined";
 import InsertDriveFileOutlinedIcon from "@mui/icons-material/InsertDriveFileOutlined";
-import MenuBookOutlinedIcon from "@mui/icons-material/MenuBookOutlined";
 import PersonOutlineOutlinedIcon from "@mui/icons-material/PersonOutlineOutlined";
 import ScheduleOutlinedIcon from "@mui/icons-material/ScheduleOutlined";
 import SettingsOutlinedIcon from "@mui/icons-material/SettingsOutlined";
@@ -42,10 +41,6 @@ export function StashIcon(props: IconProps) {
 
 export function SessionsIcon(props: IconProps) {
   return <MaterialIcon icon={ChatOutlinedIcon} {...props} />;
-}
-
-export function WikiIcon(props: IconProps) {
-  return <MaterialIcon icon={MenuBookOutlinedIcon} {...props} />;
 }
 
 export function FolderIcon(props: IconProps) {

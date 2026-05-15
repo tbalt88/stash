@@ -55,7 +55,7 @@ export default function DiscoverPage() {
           Discover
         </p>
         <h1 className="mt-3 font-display text-[34px] font-bold tracking-tight text-foreground">
-          Public Product Stashes.
+          Public Stashes.
         </h1>
         <p className="mt-2 max-w-[620px] text-[14.5px] leading-[1.6] text-muted">
           Browse high-signal Stashes that owners have made public and the Stash
@@ -194,7 +194,7 @@ function EmptyState() {
   return (
     <section className="mt-12 rounded-lg border border-dashed border-border bg-base px-6 py-12 text-center">
       <h2 className="font-display text-[20px] font-bold text-foreground">
-        No public Product Stashes yet.
+        No public Stashes yet.
       </h2>
       <p className="mx-auto mt-2 max-w-[420px] text-[13.5px] leading-[1.6] text-muted">
         Public Stashes appear here after their contents are readable from a public link.

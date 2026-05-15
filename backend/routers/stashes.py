@@ -1,4 +1,4 @@
-"""Product Stashes: publishable subsets of a workspace."""
+"""Stashes: publishable subsets of a workspace."""
 
 from uuid import UUID
 

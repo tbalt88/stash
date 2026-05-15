@@ -7,7 +7,7 @@ import HtmlPageView from "../../../../components/workspace/HtmlPageView";
 const BACKEND_ORIGIN = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3456";
 
 type StashItemInlined = {
-  object_type: "folder" | "page" | "table" | "file" | "history" | "session";
+  object_type: "folder" | "page" | "table" | "file" | "session";
   object_id: string;
   position: number;
   label: string;

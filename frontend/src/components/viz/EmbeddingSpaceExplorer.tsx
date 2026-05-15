@@ -15,7 +15,7 @@ const SOURCE_COLORS: Record<string, string> = {
 };
 
 const SOURCE_LABELS: Record<string, string> = {
-  history_events: "History",
+  history_events: "Sessions",
   pages: "Files",
   table_rows: "Tables",
 };

@@ -29,7 +29,7 @@ export default function QuickstartPage() {
       </P>
 
       <Callout>
-        <strong>Agent names</strong> are just strings on history events that identify which agent produced them.
+        <strong>Agent names</strong> are just strings on session events that identify which agent produced them.
         Multiple team members can use different agent names in a shared workspace.
       </Callout>
 
@@ -50,7 +50,7 @@ stash login`}</CodeBlock>
 
       <H3>4. Build your knowledge base</H3>
       <P>
-        Sessions stream into searchable history. Promote useful outputs into pages, organize
+        Sessions stream into searchable sessions. Promote useful outputs into pages, organize
         them with folders, and publish bundles as Stashes.
       </P>
     </>

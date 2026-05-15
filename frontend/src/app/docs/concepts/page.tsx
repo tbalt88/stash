@@ -5,10 +5,10 @@ const CONCEPTS: { name: string; badge: string; badgeColor: string; desc: React.R
     name: "Workspace",
     badge: "Container",
     badgeColor: "bg-blue-500/10 text-blue-500",
-    desc: "Top-level permissioned container. Members share sessions, Files, tables, and Product Stashes. Invite others with a short code.",
+    desc: "Top-level permissioned container. Members share sessions, Files, tables, and Stashes. Invite others with a short code.",
   },
   {
-    name: "History",
+    name: "Sessions",
     badge: "Events",
     badgeColor: "bg-brand/10 text-brand",
     desc: "Append-only event log scoped to a workspace. Every tool call, message, and session event is recorded with timestamps, agent names, and metadata. Events are grouped by agent_name and session_id for a conversation-like view. Searchable via full-text search.",

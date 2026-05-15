@@ -27,7 +27,7 @@ interface ShareModalContextValue {
   open: (opts: ShareModalOpenOptions) => void;
   close: () => void;
   // Bumped whenever a Stash URL is minted or revoked. Consumers include it
-  // in deps to re-fetch their Product Stashes list.
+  // in deps to re-fetch their Stashes list.
   version: number;
   bumpVersion: () => void;
 }

@@ -5,10 +5,10 @@ const CONCEPTS: { name: string; badge: string; badgeColor: string; desc: React.R
     name: "Workspace",
     badge: "Container",
     badgeColor: "bg-blue-500/10 text-blue-500",
-    desc: "Top-level permissioned container. Members share all resources: pages, history, tables, files, and Product Stashes. Invite others with a short code.",
+    desc: "Top-level permissioned container. Members share all resources: pages, sessions, tables, files, and Stashes. Invite others with a short code.",
   },
   {
-    name: "History",
+    name: "Sessions",
     badge: "Events",
     badgeColor: "bg-brand/10 text-brand",
     desc: "Append-only event log scoped to a workspace. Every tool call, message, and session event is recorded with timestamps, agent names, and metadata. Events are grouped by agent_name and session_id for a conversation-like view. Searchable via full-text search.",
@@ -40,7 +40,7 @@ const CONCEPTS: { name: string; badge: string; badgeColor: string; desc: React.R
     name: "Search",
     badge: "Cross-cutting",
     badgeColor: "bg-muted/20 text-muted",
-    desc: "Universal cross-resource AI search. Ask a natural language question and get a synthesized answer across pages, tables, history, files, and Stashes. Supports workspace scoping and resource type filtering.",
+    desc: "Universal cross-resource AI search. Ask a natural language question and get a synthesized answer across pages, tables, sessions, files, and Stashes. Supports workspace scoping and resource type filtering.",
   },
 ];
 

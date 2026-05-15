@@ -139,7 +139,7 @@ class StashClient:
             params["q"] = query
         return self._get("/api/v1/discover/stashes", **params)
 
-    # --- Product Stashes (publishable subsets) ---
+    # --- Stashes (publishable subsets) ---
 
     def list_stashes(self, workspace_id: str) -> list:
         return self._list(f"/api/v1/workspaces/{workspace_id}/stashes", "stashes")
@@ -172,7 +172,7 @@ class StashClient:
         discoverable: bool = False,
         items: list | None = None,
     ) -> dict:
-        """Create a public Product Stash in one atomic call."""
+        """Create a public Stash in one atomic call."""
         return self._post(
             f"/api/v1/workspaces/{workspace_id}/stashes/publish",
             json={

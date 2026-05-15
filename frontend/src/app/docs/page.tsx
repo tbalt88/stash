@@ -24,7 +24,7 @@ const PILLARS = [
 
 const QUICK_LINKS = [
   { href: "/docs/quickstart", label: "Quickstart", desc: "Connect your coding agent and start in 5 minutes." },
-  { href: "/docs/concepts", label: "Concepts", desc: "What workspaces, agent names, and history are." },
+  { href: "/docs/concepts", label: "Concepts", desc: "What workspaces, agent names, and sessions are." },
   { href: "/docs/cli", label: "CLI", desc: "Push events and manage resources from the terminal." },
   { href: "/docs/webhooks", label: "Webhooks", desc: "Subscribe to workspace events with HMAC delivery." },
 ];
@@ -50,12 +50,12 @@ export default function DocsOverview() {
       <P>
         Stash sits between your coding agents and the knowledge they generate. Every agent session
         streams automatically. Every research result, file, and message lands in a shared workspace.
-        Durable knowledge lives in Files, and Product Stashes publish useful combinations of
+        Durable knowledge lives in Files, and Stashes publish useful combinations of
         sessions, pages, and files so any agent on your team can build on what others learned.
       </P>
       <P>
         Humans and agents both use Stash. You configure workspaces and agent names, then build
-        shared context from sessions, pages, files, and Product Stashes.
+        shared context from sessions, pages, files, and Stashes.
       </P>
 
       <H3>Three modes of use</H3>

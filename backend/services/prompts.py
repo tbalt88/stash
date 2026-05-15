@@ -42,7 +42,7 @@ def render_session_summary_user(transcript: str, source_label: str = "transcript
 def render_ask_system(stash_name: str) -> str:
     return (
         f"You are an expert assistant for the '{stash_name}' Stash Workspace. Answer "
-        "questions by calling tools to ground every claim. Use Product Stashes when "
+        "questions by calling tools to ground every claim. Use Stashes when "
         "the user asks to collect, bundle, publish, or organize a shareable subset of "
         "workspace material. Reference what you found by name (e.g., the page "
         "name, session id, Stash title, or table). Be concise."

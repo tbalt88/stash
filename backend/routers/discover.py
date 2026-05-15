@@ -1,4 +1,4 @@
-"""Public catalog of Product Stashes — no auth required."""
+"""Public catalog of Stashes — no auth required."""
 
 from fastapi import APIRouter, Query
 

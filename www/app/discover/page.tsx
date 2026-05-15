@@ -6,7 +6,7 @@ import { APP_URL, fetchCatalog, type PublicStashCard } from "../../lib/discover"
 export const metadata: Metadata = {
   title: "Discover Stashes · Stash",
   description:
-    "Browse public Product Stashes — shared sessions, pages, tables, and files from teams building in the open.",
+    "Browse public Stashes — shared sessions, pages, tables, and files from teams building in the open.",
 };
 
 type SearchParams = {
@@ -33,7 +33,7 @@ export default async function DiscoverPage({
           Discover
         </p>
         <h1 className="mt-5 text-balance font-display text-[clamp(36px,4.6vw,56px)] font-black leading-[1.02] tracking-[-0.035em] text-ink">
-          Public Product Stashes from teams<br />
+          Public Stashes from teams<br />
           <span className="text-brand">building in the open.</span>
         </h1>
         <p className="mt-6 max-w-[640px] text-[17px] leading-[1.6] text-foreground">
@@ -169,7 +169,7 @@ function EmptyState() {
   return (
     <div className="rounded-xl border border-dashed border-border-subtle bg-raised/30 p-12 text-center">
       <p className="font-display text-[20px] font-bold text-ink">
-        No public Product Stashes yet.
+        No public Stashes yet.
       </p>
       <p className="mt-2 text-[14px] text-dim">
         Public Stashes appear here after they are selected for Discover.

@@ -101,7 +101,7 @@ async def create_stash_url(
 
     For shareable objects, this auto-creates (or reuses) a one-item Stash and
     returns /stashes/{slug}.
-    The Product Stash is just the slugged shell — access is governed by the
+    The Stash is just the slugged shell — access is governed by the
     object's own permissions, not by the Stash.
 
     The returned URL is always a Stash URL. For non-Stash objects, this creates

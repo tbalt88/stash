@@ -36,7 +36,7 @@ export async function generateMetadata({
 }
 
 type StashItemInlined = {
-  object_type: "folder" | "page" | "table" | "file" | "history" | "session";
+  object_type: "folder" | "page" | "table" | "file" | "session";
   object_id: string;
   position: number;
   label: string;
@@ -83,7 +83,7 @@ export default async function StashPage({
   const { stash, workspace_name, items } = data;
   const groups = groupStashItems(items);
   const fileCount = (groups.folder?.length ?? 0) + (groups.page?.length ?? 0) + (groups.file?.length ?? 0);
-  const sessionCount = (groups.session?.length ?? 0) + (groups.history?.length ?? 0);
+  const sessionCount = groups.session?.length ?? 0;
   const tableCount = groups.table?.length ?? 0;
 
   return (
@@ -151,7 +151,7 @@ export default async function StashPage({
           </section>
 
           <StashSection id="files" title="Files" items={[...(groups.folder ?? []), ...(groups.page ?? []), ...(groups.file ?? [])]} />
-          <StashSection id="sessions" title="Sessions" items={[...(groups.session ?? []), ...(groups.history ?? [])]} />
+          <StashSection id="sessions" title="Sessions" items={groups.session ?? []} />
           <StashSection id="tables" title="Tables" items={groups.table ?? []} />
         </div>
       </div>
@@ -328,25 +328,6 @@ function ItemBody({ item }: { item: StashItemInlined }) {
       <p className="text-[13px] text-dim">
         {inline.content_type} · {formatSize(inline.size_bytes ?? 0)}
       </p>
-    );
-  }
-
-  if (item.object_type === "history") {
-    const inline = item.inline as {
-      agent_name?: string;
-      event_type?: string;
-      content?: string;
-      created_at?: string;
-    };
-    return (
-      <div>
-        <p className="font-mono text-[11px] uppercase text-muted">
-          {inline.agent_name} · {inline.event_type} · {inline.created_at}
-        </p>
-        <pre className="mt-2 whitespace-pre-wrap break-words rounded bg-background p-3 font-mono text-[12px] leading-[1.5] text-foreground">
-          {inline.content || ""}
-        </pre>
-      </div>
     );
   }
 

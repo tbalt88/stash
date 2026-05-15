@@ -74,6 +74,7 @@ def stash_push_event(
     event_type: str,
     content: str,
     session_id: str = "",
+    default_stash_id: str = "",
     tool_name: str = "",
     workspace_id: str = "",
 ) -> str:
@@ -87,6 +88,7 @@ def stash_push_event(
             event_type=event_type,
             content=content,
             session_id=session_id or None,
+            default_stash_id=default_stash_id or None,
             tool_name=tool_name or None,
         )
     )
@@ -406,12 +408,12 @@ def stash_delete_file(file_id: str, workspace_id: str = "") -> str:
     return _json({"deleted": file_id})
 
 
-# ── Product Stashes ───────────────────────────────────────────────
+# ── Stashes ───────────────────────────────────────────────
 
 
 @mcp.tool()
 def stash_list_stashes(workspace_id: str = "") -> str:
-    """List Product Stashes in the workspace."""
+    """List Stashes in the workspace."""
     client, default_ws = _client()
     ws = _require_ws(workspace_id or default_ws)
     return _json(client.list_stashes(ws))
@@ -426,7 +428,7 @@ def stash_create_stash(
     items: str = "[]",
     workspace_id: str = "",
 ) -> str:
-    """Create a Product Stash. items is a JSON array of object references."""
+    """Create a Stash. items is a JSON array of object references."""
     client, default_ws = _client()
     ws = _require_ws(workspace_id or default_ws)
     item_list = json.loads(items) if isinstance(items, str) else items
@@ -454,7 +456,7 @@ def stash_create_stash(
 
 @mcp.tool()
 def stash_delete_stash(stash_id: str) -> str:
-    """Delete a Product Stash."""
+    """Delete a Stash."""
     client, _ = _client()
     client.delete_stash(stash_id)
     return _json({"deleted": stash_id})
@@ -462,14 +464,14 @@ def stash_delete_stash(stash_id: str) -> str:
 
 @mcp.tool()
 def stash_get_stash(slug: str) -> str:
-    """Get a public Product Stash by its slug."""
+    """Get a public Stash by its slug."""
     client, _ = _client()
     return _json(client.get_public_stash(slug))
 
 
 @mcp.tool()
 def stash_add_external_stash(slug: str, workspace_id: str = "") -> str:
-    """Add a live external Product Stash to a workspace."""
+    """Add a live external Stash to a workspace."""
     client, default_ws = _client()
     ws = _require_ws(workspace_id or default_ws)
     return _json(client.add_external_stash(slug, ws))
@@ -477,7 +479,7 @@ def stash_add_external_stash(slug: str, workspace_id: str = "") -> str:
 
 @mcp.tool()
 def stash_remove_external_stash(stash_id: str, workspace_id: str = "") -> str:
-    """Remove a live external Product Stash from a workspace."""
+    """Remove a live external Stash from a workspace."""
     client, default_ws = _client()
     ws = _require_ws(workspace_id or default_ws)
     client.remove_external_stash(ws, stash_id)

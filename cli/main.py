@@ -1,4 +1,4 @@
-"""Stash CLI — command-line interface for workspaces, files, tables, history, and search."""
+"""Stash CLI — command-line interface for workspaces, files, tables, sessions, and search."""
 
 from __future__ import annotations
 
@@ -32,7 +32,7 @@ from .formatting import console, output_json, print_members, print_user, print_w
 
 app = typer.Typer(
     name="stash",
-    help="Stash CLI — workspaces, Product Stashes, files, tables, history.",
+    help="Stash CLI — workspaces, Stashes, files, tables, and sessions.",
 )
 
 
@@ -727,7 +727,7 @@ def browse(
                     "dim",
                 ),
             ),
-            title="Product Stash",
+            title="Stash",
             border_style="cyan",
         )
     )
@@ -763,7 +763,7 @@ def browse(
 
 
 # ===========================================================================
-# Share — publish a session artifact as a public Product Stash
+# Share — publish a session artifact as a public Stash
 # ===========================================================================
 
 
@@ -899,7 +899,7 @@ def share_session(
     """Share a session as a public artifact with a shareable link.
 
     Publishes a focused summary (the question + finding), the full conversation
-    transcript, and any attached files as a single public Product Stash.
+    transcript, and any attached files as a single public Stash.
     """
     _require_auth()
     ws = workspace_id or _resolve_workspace()
@@ -1007,7 +1007,7 @@ def share_session(
                 if e.status_code != 409:
                     raise
 
-        # Create the public Product Stash and publish the underlying items
+        # Create the public Stash and publish the underlying items
         # so the anonymous URL works immediately.
         bundle = c.publish_stash(
             ws,
@@ -1108,11 +1108,11 @@ def upload(
     name: str = typer.Option("", "--name", "-n", help="Name for the uploaded folder."),
     workspace_id: str = typer.Option(None, "--ws"),
     public: bool = typer.Option(
-        True, "--public/--private", help="Publish a shareable Product Stash."
+        True, "--public/--private", help="Publish a shareable Stash."
     ),
     as_json: bool = typer.Option(False, "--json"),
 ):
-    """Upload local files into workspace pages and publish them as a Product Stash."""
+    """Upload local files into workspace pages and publish them as a Stash."""
     _require_auth()
     target = Path(path)
     if not target.exists():
@@ -1201,7 +1201,7 @@ def upload(
 
 
 def _parse_stash_slug(url_or_slug: str) -> str:
-    """Extract a Product Stash slug from a full URL or bare slug."""
+    """Extract a Stash slug from a full URL or bare slug."""
     url_or_slug = url_or_slug.strip().rstrip("/")
     if "/stashes/" in url_or_slug:
         return url_or_slug.split("/stashes/")[-1]
@@ -1210,9 +1210,9 @@ def _parse_stash_slug(url_or_slug: str) -> str:
 
 @app.command("read")
 def read_stash(
-    url: str = typer.Argument(..., help="Product Stash URL or slug."),
+    url: str = typer.Argument(..., help="Stash URL or slug."),
 ):
-    """Read a public Product Stash and print its contents."""
+    """Read a public Stash and print its contents."""
     slug = _parse_stash_slug(url)
     with _client() as c:
         text = c.get_stash_text(slug)
@@ -1220,10 +1220,10 @@ def read_stash(
 
 
 # ===========================================================================
-# Product Stashes (publishable subsets of a workspace)
+# Stashes
 # ===========================================================================
 
-stashes_app = typer.Typer(help="Product Stashes — publish a shareable subset of a Stash Workspace.")
+stashes_app = typer.Typer(help="Stashes — shareable sets of pages, sessions, tables, and files.")
 app.add_typer(stashes_app, name="stashes")
 
 
@@ -1232,7 +1232,7 @@ def stashes_list(
     workspace_id: str = typer.Argument(None, help="Workspace ID; falls back to .stash."),
     as_json: bool = typer.Option(False, "--json"),
 ):
-    """List Product Stashes in a workspace."""
+    """List Stashes in a workspace."""
     ws_id = workspace_id or _resolve_workspace()
     with _client() as c:
         try:
@@ -1243,7 +1243,7 @@ def stashes_list(
         output_json(data)
         return
     if not data:
-        console.print("[dim]No Product Stashes in this workspace.[/dim]")
+        console.print("[dim]No Stashes in this workspace.[/dim]")
         return
     for v in data:
         flag = f"[cyan]{v['access']}[/cyan]"
@@ -1255,12 +1255,12 @@ def stashes_list(
 
 @stashes_app.command("create")
 def stashes_create(
-    title: str = typer.Argument(..., help="Product Stash title."),
+    title: str = typer.Argument(..., help="Stash title."),
     workspace_id: str = typer.Option("", "--workspace", help="Workspace ID; falls back to .stash."),
     description: str = typer.Option("", "--description"),
     public: bool = typer.Option(False, "--public", help="Publish immediately."),
     discover: bool = typer.Option(
-        False, "--discover", help="List the public Product Stash in Discover."
+        False, "--discover", help="List the public Stash in Discover."
     ),
     items_json: str = typer.Option(
         "[]",
@@ -1269,7 +1269,7 @@ def stashes_create(
     ),
     as_json: bool = typer.Option(False, "--json"),
 ):
-    """Create a Product Stash. Pass --items as JSON to attach resources up front."""
+    """Create a Stash. Pass --items as JSON to attach resources up front."""
     if discover and not public:
         console.print("[red]--discover requires --public.[/red]")
         raise typer.Exit(1)
@@ -1303,7 +1303,7 @@ def stashes_create(
     flag = f"[cyan]{stash['access']}[/cyan]"
     if stash.get("discoverable"):
         flag = f"{flag} [cyan]discover[/cyan]"
-    console.print(f"[green]Created Product Stash[/green] '{stash['title']}'  {flag}")
+    console.print(f"[green]Created Stash[/green] '{stash['title']}'  {flag}")
     console.print(f"  ID: {stash['id']}  Slug: {stash['slug']}")
     if stash["access"] == "public":
         console.print(f"  Public URL: [cyan]{_web_app_url()}/stashes/{stash['slug']}[/cyan]")
@@ -1312,13 +1312,13 @@ def stashes_create(
 @stashes_app.command("publish")
 def stashes_publish(
     stash_id: str = typer.Argument(...),
-    private: bool = typer.Option(False, "--private", help="Make the Product Stash private."),
-    workspace: bool = typer.Option(False, "--workspace-access", help="Make the Product Stash workspace-visible."),
+    private: bool = typer.Option(False, "--private", help="Make the Stash private."),
+    workspace: bool = typer.Option(False, "--workspace-access", help="Make the Stash workspace-visible."),
     discover: bool = typer.Option(
-        False, "--discover", help="List the public Product Stash in Discover."
+        False, "--discover", help="List the public Stash in Discover."
     ),
 ):
-    """Change a Product Stash's access level."""
+    """Change a Stash's access level."""
     if discover and (private or workspace):
         console.print("[red]--discover requires public access.[/red]")
         raise typer.Exit(1)
@@ -1383,22 +1383,22 @@ def stashes_default(
 
 @stashes_app.command("delete")
 def stashes_delete(stash_id: str = typer.Argument(...)):
-    """Delete a Product Stash. The underlying resources are not touched."""
+    """Delete a Stash. The underlying resources are not touched."""
     with _client() as c:
         try:
             c.delete_stash(stash_id)
         except StashError as e:
             _err(e)
-    console.print(f"[green]Deleted Product Stash[/green] {stash_id}")
+    console.print(f"[green]Deleted Stash[/green] {stash_id}")
 
 
 @stashes_app.command("add-external")
 def stashes_add_external(
-    slug: str = typer.Argument(..., help="Public slug of the Product Stash."),
+    slug: str = typer.Argument(..., help="Public slug of the Stash."),
     workspace_id: str = typer.Option("", "--workspace", help="Workspace ID; falls back to .stash."),
     as_json: bool = typer.Option(False, "--json"),
 ):
-    """Add a live external Product Stash to a workspace."""
+    """Add a live external Stash to a workspace."""
     ws_id = workspace_id or _resolve_workspace()
     with _client() as c:
         try:
@@ -1414,10 +1414,10 @@ def stashes_add_external(
 
 @stashes_app.command("remove-external")
 def stashes_remove_external(
-    stash_id: str = typer.Argument(..., help="Product Stash ID."),
+    stash_id: str = typer.Argument(..., help="Stash ID."),
     workspace_id: str = typer.Option("", "--workspace", help="Workspace ID; falls back to .stash."),
 ):
-    """Remove an external Product Stash from a workspace."""
+    """Remove an external Stash from a workspace."""
     ws_id = workspace_id or _resolve_workspace()
     with _client() as c:
         try:
@@ -1540,12 +1540,12 @@ def invite_revoke(
 # Files: folders (nestable) + pages
 # ===========================================================================
 
-files_app = typer.Typer(help="Files — nested folders and markdown/HTML pages.")
+files_app = typer.Typer(help="Files — folders, pages, and uploaded files.")
 app.add_typer(files_app, name="files")
 
 
 @files_app.command("tree")
-def wiki_tree(
+def files_tree(
     workspace_id: str = typer.Option(None, "--ws"),
     as_json: bool = typer.Option(False, "--json"),
 ):
@@ -1575,7 +1575,7 @@ def wiki_tree(
 
 
 @files_app.command("folders")
-def wiki_folders(
+def files_folders(
     workspace_id: str = typer.Option(None, "--ws"),
     as_json: bool = typer.Option(False, "--json"),
 ):
@@ -1602,7 +1602,7 @@ def wiki_folders(
 
 
 @files_app.command("create-folder")
-def wiki_create_folder(
+def files_create_folder(
     name: str = typer.Argument(...),
     workspace_id: str = typer.Option(None, "--ws"),
     parent: str = typer.Option(None, "--parent", help="parent folder id (omit for root)"),
@@ -1622,7 +1622,7 @@ def wiki_create_folder(
 
 
 @files_app.command("pages")
-def wiki_pages(
+def files_pages(
     workspace_id: str = typer.Option(None, "--ws"),
     all_: bool = typer.Option(False, "--all", help="list pages across every workspace"),
     as_json: bool = typer.Option(False, "--json"),
@@ -1647,7 +1647,7 @@ def wiki_pages(
 
 
 @files_app.command("search")
-def wiki_search(
+def files_search(
     query: str = typer.Argument(..., help="Search query."),
     workspace_id: str = typer.Option(None, "--ws"),
     limit: int = typer.Option(20, "-n", "--limit"),
@@ -1694,7 +1694,7 @@ def _prepend_attachments(
 
 
 @files_app.command("add-page")
-def wiki_add_page(
+def files_add_page(
     name: str = typer.Argument(...),
     workspace_id: str = typer.Option(None, "--ws"),
     folder: str = typer.Option(None, "--folder", help="folder id; omit for workspace root"),
@@ -1759,7 +1759,7 @@ def wiki_add_page(
 
 
 @files_app.command("read-page")
-def wiki_read_page(
+def files_read_page(
     page_id: str = typer.Argument(...),
     workspace_id: str = typer.Option(None, "--ws"),
     as_json: bool = typer.Option(False, "--json"),
@@ -1782,7 +1782,7 @@ def wiki_read_page(
 
 
 @files_app.command("edit-page")
-def wiki_edit_page(
+def files_edit_page(
     page_id: str = typer.Argument(...),
     content: str = typer.Option(None, "--content"),
     name: str = typer.Option(None, "--name"),
@@ -1853,11 +1853,11 @@ def wiki_edit_page(
 
 
 # ===========================================================================
-# History (was memory stores)
+# Sessions
 # ===========================================================================
 
-hist_app = typer.Typer(help="History — structured agent event logs.", invoke_without_command=True)
-app.add_typer(hist_app, name="history")
+hist_app = typer.Typer(help="Sessions — agent transcripts and event logs.", invoke_without_command=True)
+app.add_typer(hist_app, name="sessions")
 
 
 @hist_app.callback()
@@ -1867,7 +1867,7 @@ def hist_default(
     limit: int = typer.Option(20, "-n", "--limit"),
     as_json: bool = typer.Option(False, "--json"),
 ):
-    """History — structured agent event logs."""
+    """Sessions — agent transcripts and event logs."""
     if ctx.invoked_subcommand is not None:
         return
     ws = workspace_id or _resolve_workspace()
@@ -1926,7 +1926,7 @@ def hist_push(
     ),
     as_json: bool = typer.Option(False, "--json"),
 ):
-    """Push an event to the workspace history."""
+    """Push an event to the workspace session stream."""
     ws = workspace_id or _resolve_workspace()
     with _client() as c:
         try:
@@ -2145,7 +2145,7 @@ def hist_share(
     """Share a session transcript as a public Stash link.
 
     Fetches the transcript, formats it as a readable page, publishes it
-    in a new Product Stash, and prints the shareable URL.
+    in a new Stash, and prints the shareable URL.
     """
     import gzip
 
@@ -2170,7 +2170,7 @@ def hist_share(
     # 2. Format into markdown
     md = _transcript_to_markdown(body)
 
-    # 3. Create folder + page + public Product Stash
+    # 3. Create folder + page + public Stash
     page_title = title or f"Session {session_id[:8]}"
     with _client() as c:
         folder = c.create_folder(ws, page_title)
@@ -2782,11 +2782,8 @@ def tables_delete(
 
 
 # ===========================================================================
-# Files
+# Uploaded files
 # ===========================================================================
-
-files_app = typer.Typer(help="Files — upload, list, and remove workspace files.")
-app.add_typer(files_app, name="files")
 
 
 def _upload_path(c: StashClient, workspace_id: str, path: str) -> dict:
@@ -3029,22 +3026,22 @@ def _append_claude_md(repo_root: Path) -> None:
 {marker}
 ## Stash
 
-This repo uses [Stash](https://joinstash.ai) for shared agent history.
+This repo uses [Stash](https://joinstash.ai) for shared agent sessions.
 Your coding agent has the `stash` CLI on its PATH. Run `stash --help` to see commands.
 
 **Before starting work, use Stash to check for relevant context.** When you need to understand
 why something was built a certain way, what's been tried before, or what teammates are working on,
-search Stash first — it has the full history of agent sessions and human decisions across the team.
+search Stash first — it has the full session history and human decisions across the team.
 
 Common reads (all support `--json`):
-- `stash history search "<query>"` — full-text search across transcripts
-- `stash history query --limit 20` — latest events
-- `stash history agents` — who's been active
+- `stash sessions search "<query>"` — full-text search across transcripts
+- `stash sessions query --limit 20` — latest events
+- `stash sessions agents` — who's been active
 - `stash files pages --all` — shared pages across workspaces
 
 Common writes:
 - `stash share --title "..."` — share this session as a public artifact with a shareable link
-- `stash read <url>` — read a public Product Stash URL
+- `stash read <url>` — read a public Stash URL
 """
     claude_md.write_text(existing.rstrip() + "\n" + block)
     console.print("  Appended Stash context to [cyan]CLAUDE.md[/cyan]")
@@ -3530,8 +3527,8 @@ def _show_setup_complete_splash() -> None:
         "\n"
         f"{workspace_link_section}"
         "[bold]Commands your agent can now use[/bold]\n"
-        '  [#1e3a8a]stash history search "<query>"[/#1e3a8a]   full-text search across transcripts\n'
-        "  [#1e3a8a]stash history query --agent <name>[/#1e3a8a]   pull a specific agent's events\n"
+        '  [#1e3a8a]stash sessions search "<query>"[/#1e3a8a]   full-text search across transcripts\n'
+        "  [#1e3a8a]stash sessions query --agent <name>[/#1e3a8a]   pull a specific agent's events\n"
         "\n"
         "Run [bold]stash --help[/bold] to see everything.\n"
         "\n"

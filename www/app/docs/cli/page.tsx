@@ -5,7 +5,7 @@ export default function CLIPage() {
     <>
       <Title>CLI Reference</Title>
       <Subtitle>
-        A command-line interface for managing Stash from your terminal — push history events
+        A command-line interface for managing Stash from your terminal — push session events
         and manage all resources.
       </Subtitle>
 
@@ -26,7 +26,7 @@ export default function CLIPage() {
       <CodeBlock>{`stash connect`}</CodeBlock>
       <P>
         The wizard saves everything to <Code>~/.stash/config.json</Code>. Once complete,
-        commands like <Code>stash history push</Code> work without extra flags.
+        commands like <Code>stash sessions push</Code> work without extra flags.
       </P>
 
       <H2>Authentication</H2>
@@ -159,7 +159,7 @@ export default function CLIPage() {
       <H2>Files</H2>
 
       <CommandRef
-        command="stash pages"
+        command="stash files pages"
         args="[--ws ID] [--all]"
         description="List pages in the current workspace."
         params={[
@@ -220,12 +220,12 @@ export default function CLIPage() {
         ]}
       />
 
-      <H2>History</H2>
+      <H2>Sessions</H2>
 
       <CommandRef
-        command="stash history push"
+        command="stash sessions push"
         args="<content> [--agent cli] [--type message] [--session ID] [--attach FILE]"
-        description="Push a new event to the workspace history stream."
+        description="Push a new event to the workspace session stream."
         params={[
           { name: "<content>", type: "string", desc: "Event content to push.", required: true },
           { name: "--ws", type: "string", desc: "Workspace ID override." },
@@ -239,9 +239,9 @@ export default function CLIPage() {
       />
 
       <CommandRef
-        command="stash history query"
+        command="stash sessions query"
         args="[--agent X] [--type Y] [-n 50] [--all]"
-        description="Query recent history events with optional filters."
+        description="Query recent session events with optional filters."
         params={[
           { name: "--ws", type: "string", desc: "Workspace ID override." },
           { name: "--agent", type: "string", desc: "Filter by agent identifier." },
@@ -252,9 +252,9 @@ export default function CLIPage() {
       />
 
       <CommandRef
-        command="stash history search"
+        command="stash sessions search"
         args="<query> [--ws ID] [-n 50]"
-        description="Full-text search across workspace history."
+        description="Full-text search across workspace sessions."
         params={[
           { name: "<query>", type: "string", desc: "Search query.", required: true },
           { name: "--ws", type: "string", desc: "Workspace ID override." },
@@ -263,7 +263,7 @@ export default function CLIPage() {
       />
 
       <CommandRef
-        command="stash history agents"
+        command="stash sessions agents"
         args="[--ws ID]"
         description="List distinct agent names that have logged events in this workspace."
         params={[
@@ -272,7 +272,7 @@ export default function CLIPage() {
       />
 
       <CommandRef
-        command="stash history transcript"
+        command="stash sessions transcript"
         args="<session_id> [--ws ID] [--save PATH]"
         description="Fetch a full session transcript and print or save it. Transcripts are stored gzipped on the server and decompressed automatically."
         params={[
@@ -440,7 +440,7 @@ export default function CLIPage() {
         ]}
       />
 
-      <H2>Files</H2>
+      <H2>Uploaded Files</H2>
 
       <CommandRef
         command="stash files upload"

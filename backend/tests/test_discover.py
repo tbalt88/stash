@@ -1,4 +1,4 @@
-"""Tests for the public Product Stash Discover catalog."""
+"""Tests for the public Stash Discover catalog."""
 
 import pytest
 from httpx import AsyncClient
@@ -72,7 +72,7 @@ async def test_discover_lists_discoverable_public_product_stashes(client: AsyncC
         f"/api/v1/workspaces/{workspace['id']}/stashes/publish",
         json={
             "title": "Public notes",
-            "description": "A public Product Stash",
+            "description": "A public Stash",
             "discoverable": True,
             "items": [{"object_type": "page", "object_id": public_page["id"]}],
         },
