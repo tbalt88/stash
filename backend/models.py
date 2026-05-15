@@ -153,6 +153,24 @@ class StashListResponse(BaseModel):
     stashes: list[StashResponse]
 
 
+class StashMemberRequest(BaseModel):
+    user_id: UUID
+    permission: str = Field("read", pattern=r"^(read|write|admin)$")
+
+
+class StashMemberResponse(BaseModel):
+    user_id: UUID
+    name: str
+    display_name: str | None
+    permission: str
+    granted_by: UUID | None
+    created_at: datetime
+
+
+class StashMembersResponse(BaseModel):
+    members: list[StashMemberResponse]
+
+
 # Public renderer payload — items are inlined with their content where it
 # makes sense (folders/pages, table rows, file metadata, session events).
 # The shape is intentionally permissive: each entry has the item

@@ -891,6 +891,17 @@ export interface WorkspaceStash {
   updated_at: string;
 }
 
+export type StashMemberPermission = "read" | "write" | "admin";
+
+export interface StashMember {
+  user_id: string;
+  name: string;
+  display_name: string | null;
+  permission: StashMemberPermission;
+  granted_by: string | null;
+  created_at: string;
+}
+
 export interface PublicStashItem {
   object_type: CollectableObjectType;
   object_id: string;
@@ -925,6 +936,28 @@ export async function listObjectStashes(
 
 export async function deleteStash(stashId: string): Promise<void> {
   await apiFetch(`/api/v1/stashes/${stashId}`, { method: "DELETE" });
+}
+
+export async function listStashMembers(stashId: string): Promise<StashMember[]> {
+  const data = await apiFetch<{ members: StashMember[] }>(
+    `/api/v1/stashes/${stashId}/members`
+  );
+  return data.members;
+}
+
+export async function addStashMember(
+  stashId: string,
+  userId: string,
+  permission: StashMemberPermission
+): Promise<StashMember> {
+  return apiFetch(`/api/v1/stashes/${stashId}/members`, {
+    method: "POST",
+    body: JSON.stringify({ user_id: userId, permission }),
+  });
+}
+
+export async function removeStashMember(stashId: string, userId: string): Promise<void> {
+  await apiFetch(`/api/v1/stashes/${stashId}/members/${userId}`, { method: "DELETE" });
 }
 
 export async function getPublicStash(slug: string): Promise<PublicStashDetail> {

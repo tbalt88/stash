@@ -677,6 +677,84 @@ async def user_can_manage(stash_id: UUID, user_id: UUID) -> bool:
     return await user_can_write(stash_id, user_id)
 
 
+async def user_can_admin(stash_id: UUID, user_id: UUID) -> bool:
+    pool = get_pool()
+    row = await pool.fetchrow("SELECT workspace_id, owner_id FROM stashes WHERE id = $1", stash_id)
+    if not row:
+        return False
+    if row["owner_id"] == user_id:
+        return True
+    role = await workspace_service.get_member_role(row["workspace_id"], user_id)
+    if role in ("owner", "admin"):
+        return True
+    member = await pool.fetchrow(
+        "SELECT permission FROM stash_members WHERE stash_id = $1 AND user_id = $2",
+        stash_id,
+        user_id,
+    )
+    return bool(member and member["permission"] == "admin")
+
+
+async def list_members(stash_id: UUID) -> list[dict]:
+    pool = get_pool()
+    rows = await pool.fetch(
+        "SELECT sm.user_id, u.name, u.display_name, sm.permission, sm.granted_by, sm.created_at "
+        "FROM stash_members sm "
+        "JOIN users u ON u.id = sm.user_id "
+        "WHERE sm.stash_id = $1 "
+        "ORDER BY sm.created_at, u.name",
+        stash_id,
+    )
+    return [dict(row) for row in rows]
+
+
+async def add_member(
+    stash_id: UUID,
+    user_id: UUID,
+    permission: str,
+    granted_by: UUID,
+) -> dict | None:
+    if permission not in {"read", "write", "admin"}:
+        raise ValueError("Invalid Stash permission")
+
+    pool = get_pool()
+    row = await pool.fetchrow(
+        "INSERT INTO stash_members (stash_id, user_id, permission, granted_by) "
+        "VALUES ($1, $2, $3, $4) "
+        "ON CONFLICT (stash_id, user_id) DO UPDATE "
+        "SET permission = EXCLUDED.permission, granted_by = EXCLUDED.granted_by "
+        "RETURNING user_id, permission, granted_by, created_at",
+        stash_id,
+        user_id,
+        permission,
+        granted_by,
+    )
+    if not row:
+        return None
+
+    user = await pool.fetchrow(
+        "SELECT name, display_name FROM users WHERE id = $1",
+        user_id,
+    )
+    if not user:
+        return None
+
+    member = dict(row)
+    member["name"] = user["name"]
+    member["display_name"] = user["display_name"]
+    return member
+
+
+async def remove_member(stash_id: UUID, user_id: UUID) -> bool:
+    pool = get_pool()
+    result = await pool.execute(
+        "DELETE FROM stash_members WHERE stash_id = $1 AND user_id = $2",
+        stash_id,
+        user_id,
+    )
+    return result == "DELETE 1"
+
+
 async def user_can_write(stash_id: UUID, user_id: UUID) -> bool:
     """Stash writes require owner/admin rights or explicit write access."""
     pool = get_pool()

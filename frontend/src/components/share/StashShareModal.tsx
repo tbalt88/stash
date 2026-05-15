@@ -2,16 +2,23 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  addStashMember,
   createStash,
   publishStash,
   deleteStash,
   getWorkspaceSidebar,
   listStashes,
+  listStashMembers,
   removeExternalStash,
+  removeStashMember,
+  searchUsers,
+  type StashMember,
+  type StashMemberPermission,
   type WorkspaceSidebar,
   type WorkspaceStash,
   type StashItemSpec,
 } from "../../lib/api";
+import type { UserSearchResult } from "../../lib/types";
 import { useShareModal } from "../../lib/shareModalContext";
 
 type Tab = "new" | "manage";
@@ -611,58 +618,260 @@ function ManageTab(props: {
         </div>
       )}
       <ul className="flex flex-col gap-2">
-        {stashes.map((v) => {
-          const url = absoluteUrl(`/stashes/${v.slug}`);
-          const isCopied = copiedSlug === v.slug;
-          return (
-            <li
-              key={v.id}
-              className="rounded-lg border border-border-subtle bg-surface px-3 py-2.5"
-            >
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0 flex-1">
-                  <div className="truncate text-[13px] font-medium text-foreground">
-                    {v.title}
-                  </div>
-                  <div className="mt-0.5 text-[11px] text-muted">
-                    {v.items.length} item{v.items.length === 1 ? "" : "s"} ·{" "}
-                    {v.is_external ? "External" : "Native"} · {accessLabel(v.access)} ·{" "}
-                    {v.discoverable ? "Discover · " : ""}
-                    {v.view_count} view{v.view_count === 1 ? "" : "s"}
-                  </div>
-                  <a
-                    href={url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="mt-1 block truncate font-mono text-[11px] text-[var(--color-brand-700)] hover:underline"
-                  >
-                    {url}
-                  </a>
-                </div>
-                <div className="flex shrink-0 items-center gap-1.5">
-                  <button
-                    onClick={async () => {
-                      await navigator.clipboard.writeText(url).catch(() => {});
-                      setCopiedSlug(v.slug);
-                      setTimeout(() => setCopiedSlug(null), 1200);
-                    }}
-                    className="rounded-md border border-border-subtle px-2 py-1 text-[11px] hover:border-brand hover:text-brand"
-                  >
-                    {isCopied ? "Copied" : "Copy"}
-                  </button>
-                  <button
-                    onClick={() => onDelete(v)}
-                    className="rounded-md border border-border-subtle px-2 py-1 text-[11px] text-muted hover:border-red-400 hover:text-red-400"
-                  >
-                    {v.is_external ? "Remove" : "Revoke"}
-                  </button>
-                </div>
-              </div>
-            </li>
-          );
-        })}
+        {stashes.map((stash) => (
+          <ManagedStashCard
+            key={stash.id}
+            stash={stash}
+            onDelete={onDelete}
+            copiedSlug={copiedSlug}
+            setCopiedSlug={setCopiedSlug}
+          />
+        ))}
       </ul>
     </div>
+  );
+}
+
+function ManagedStashCard({
+  stash,
+  onDelete,
+  copiedSlug,
+  setCopiedSlug,
+}: {
+  stash: WorkspaceStash;
+  onDelete: (stash: WorkspaceStash) => void;
+  copiedSlug: string | null;
+  setCopiedSlug: (s: string | null) => void;
+}) {
+  const [members, setMembers] = useState<StashMember[]>([]);
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState<UserSearchResult[]>([]);
+  const [permission, setPermission] = useState<StashMemberPermission>("read");
+  const [expanded, setExpanded] = useState(false);
+  const [loadingMembers, setLoadingMembers] = useState(false);
+  const [searching, setSearching] = useState(false);
+  const [updatingUserId, setUpdatingUserId] = useState<string | null>(null);
+  const [memberError, setMemberError] = useState("");
+
+  const url = absoluteUrl(`/stashes/${stash.slug}`);
+  const isCopied = copiedSlug === stash.slug;
+
+  const refreshMembers = useCallback(async () => {
+    setLoadingMembers(true);
+    setMemberError("");
+    try {
+      setMembers(await listStashMembers(stash.id));
+    } catch (e) {
+      setMemberError(e instanceof Error ? e.message : "Failed to load people");
+    } finally {
+      setLoadingMembers(false);
+    }
+  }, [stash.id]);
+
+  useEffect(() => {
+    if (!expanded) return;
+    refreshMembers();
+  }, [expanded, refreshMembers]);
+
+  const onSearch = async () => {
+    const value = query.trim();
+    if (!value) {
+      setResults([]);
+      return;
+    }
+    setSearching(true);
+    setMemberError("");
+    try {
+      setResults(await searchUsers(value));
+    } catch (e) {
+      setMemberError(e instanceof Error ? e.message : "Search failed");
+    } finally {
+      setSearching(false);
+    }
+  };
+
+  const onAddMember = async (user: UserSearchResult) => {
+    setUpdatingUserId(user.id);
+    setMemberError("");
+    try {
+      const member = await addStashMember(stash.id, user.id, permission);
+      setMembers((current) => [
+        ...current.filter((item) => item.user_id !== member.user_id),
+        member,
+      ]);
+      setResults([]);
+      setQuery("");
+    } catch (e) {
+      setMemberError(e instanceof Error ? e.message : "Failed to invite person");
+    } finally {
+      setUpdatingUserId(null);
+    }
+  };
+
+  const onRemoveMember = async (member: StashMember) => {
+    setUpdatingUserId(member.user_id);
+    setMemberError("");
+    try {
+      await removeStashMember(stash.id, member.user_id);
+      setMembers((current) => current.filter((item) => item.user_id !== member.user_id));
+    } catch (e) {
+      setMemberError(e instanceof Error ? e.message : "Failed to remove person");
+    } finally {
+      setUpdatingUserId(null);
+    }
+  };
+
+  return (
+    <li className="rounded-lg border border-border-subtle bg-surface px-3 py-2.5">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0 flex-1">
+          <div className="truncate text-[13px] font-medium text-foreground">{stash.title}</div>
+          <div className="mt-0.5 text-[11px] text-muted">
+            {stash.items.length} item{stash.items.length === 1 ? "" : "s"} ·{" "}
+            {stash.is_external ? "External" : "Native"} · {accessLabel(stash.access)} ·{" "}
+            {stash.discoverable ? "Discover · " : ""}
+            {stash.view_count} view{stash.view_count === 1 ? "" : "s"}
+          </div>
+          <a
+            href={url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="mt-1 block truncate font-mono text-[11px] text-[var(--color-brand-700)] hover:underline"
+          >
+            {url}
+          </a>
+        </div>
+        <div className="flex shrink-0 items-center gap-1.5">
+          <button
+            onClick={async () => {
+              await navigator.clipboard.writeText(url).catch(() => {});
+              setCopiedSlug(stash.slug);
+              setTimeout(() => setCopiedSlug(null), 1200);
+            }}
+            className="rounded-md border border-border-subtle px-2 py-1 text-[11px] hover:border-brand hover:text-brand"
+          >
+            {isCopied ? "Copied" : "Copy"}
+          </button>
+          <button
+            onClick={() => onDelete(stash)}
+            className="rounded-md border border-border-subtle px-2 py-1 text-[11px] text-muted hover:border-red-400 hover:text-red-400"
+          >
+            {stash.is_external ? "Remove" : "Revoke"}
+          </button>
+        </div>
+      </div>
+
+      <button
+        onClick={() => setExpanded((value) => !value)}
+        className="mt-3 flex w-full items-center justify-between border-t border-border-subtle pt-2 text-left text-[11px] font-medium text-foreground hover:text-brand"
+        aria-expanded={expanded}
+      >
+        <span>
+          People
+          <span className="ml-1 font-normal text-muted">
+            {expanded && loadingMembers ? "loading" : members.length}
+          </span>
+        </span>
+        <span className="text-muted">{expanded ? "Hide" : "Invite"}</span>
+      </button>
+
+      {expanded && (
+        <div className="pt-2">
+          <div className="flex items-center justify-between gap-3">
+            <div className="text-[11px] text-muted">Invite by username</div>
+            <div className="flex shrink-0 items-center gap-1.5">
+              <select
+                value={permission}
+                onChange={(e) => setPermission(e.target.value as StashMemberPermission)}
+                className="h-7 rounded-md border border-border-subtle bg-base px-2 text-[11px] text-foreground"
+                aria-label={`Permission for ${stash.title}`}
+              >
+                <option value="read">Can view</option>
+                <option value="write">Can edit</option>
+                <option value="admin">Can manage</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="mt-2 flex gap-1.5">
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") onSearch();
+              }}
+              placeholder="Search people by username"
+              className="min-w-0 flex-1 rounded-md border border-border-subtle bg-base px-2 py-1 text-[12px] outline-none focus:border-brand"
+            />
+            <button
+              onClick={onSearch}
+              disabled={searching}
+              className="rounded-md border border-border-subtle px-2 py-1 text-[11px] hover:border-brand hover:text-brand disabled:opacity-50"
+            >
+              {searching ? "Searching" : "Search"}
+            </button>
+          </div>
+
+          {memberError && (
+            <div className="mt-2 rounded-md border border-red-300/40 bg-red-500/10 px-2 py-1 text-[11px] text-red-400">
+              {memberError}
+            </div>
+          )}
+
+          {results.length > 0 && (
+            <div className="mt-2 flex flex-col gap-1">
+              {results.map((user) => (
+                <div
+                  key={user.id}
+                  className="flex items-center justify-between gap-2 rounded-md bg-raised px-2 py-1"
+                >
+                  <div className="min-w-0">
+                    <div className="truncate text-[12px] text-foreground">
+                      {user.display_name || user.name}
+                    </div>
+                    <div className="truncate text-[10.5px] text-muted">@{user.name}</div>
+                  </div>
+                  <button
+                    onClick={() => onAddMember(user)}
+                    disabled={updatingUserId === user.id}
+                    className="shrink-0 rounded-md border border-border-subtle px-2 py-1 text-[11px] hover:border-brand hover:text-brand disabled:opacity-50"
+                  >
+                    Invite
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {members.length > 0 && (
+            <div className="mt-2 flex flex-col gap-1">
+              {members.map((member) => (
+                <div
+                  key={member.user_id}
+                  className="flex items-center justify-between gap-2 rounded-md px-2 py-1 hover:bg-raised"
+                >
+                  <div className="min-w-0">
+                    <div className="truncate text-[12px] text-foreground">
+                      {member.display_name || member.name}
+                    </div>
+                    <div className="truncate text-[10.5px] text-muted">
+                      @{member.name} · {permissionLabel(member.permission)}
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => onRemoveMember(member)}
+                    disabled={updatingUserId === member.user_id}
+                    className="shrink-0 rounded-md border border-border-subtle px-2 py-1 text-[11px] text-muted hover:border-red-400 hover:text-red-400 disabled:opacity-50"
+                  >
+                    Remove
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </li>
   );
 }
 
@@ -949,4 +1158,10 @@ function accessLabel(access: StashAccess): string {
   if (access === "public") return "Public";
   if (access === "private") return "Private";
   return "Workspace";
+}
+
+function permissionLabel(permission: StashMemberPermission): string {
+  if (permission === "admin") return "can manage";
+  if (permission === "write") return "can edit";
+  return "can view";
 }

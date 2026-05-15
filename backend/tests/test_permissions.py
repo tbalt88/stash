@@ -3,6 +3,7 @@
 import uuid
 
 import pytest
+from httpx import AsyncClient
 
 from backend.models import StashItem
 from backend.services import permission_service, stash_service
@@ -23,6 +24,20 @@ async def _make_user(pool, name=None):
         "hash_" + uuid.uuid4().hex,
     )
     return user_id
+
+
+async def _register(client: AsyncClient, name: str | None = None) -> tuple[str, dict]:
+    resp = await client.post(
+        "/api/v1/users/register",
+        json={"name": name or unique_name(), "password": "securepassword1"},
+    )
+    assert resp.status_code == 201
+    body = resp.json()
+    return body["api_key"], body
+
+
+def _auth(api_key: str) -> dict:
+    return {"Authorization": f"Bearer {api_key}"}
 
 
 async def _make_workspace(pool, creator_id):
@@ -220,6 +235,91 @@ async def test_private_stash_member_can_read_and_write_with_permission(pool):
     assert await permission_service.check_access("page", page_id, reader_id)
     assert not await permission_service.check_access("page", page_id, reader_id, require_write=True)
     assert await permission_service.check_access("page", page_id, writer_id, require_write=True)
+
+
+@pytest.mark.asyncio
+async def test_stash_member_api_grants_and_revokes_private_page_access(
+    client: AsyncClient,
+):
+    owner_key, owner = await _register(client, "stash_owner")
+    collaborator_key, collaborator = await _register(client, "stash_collaborator")
+
+    workspace_resp = await client.post(
+        "/api/v1/workspaces",
+        json={"name": "Member API workspace"},
+        headers=_auth(owner_key),
+    )
+    assert workspace_resp.status_code == 201
+    workspace = workspace_resp.json()
+
+    page_resp = await client.post(
+        f"/api/v1/workspaces/{workspace['id']}/pages/new",
+        json={"name": "Private plan", "content": "# Private plan"},
+        headers=_auth(owner_key),
+    )
+    assert page_resp.status_code == 201
+    page = page_resp.json()
+
+    stash_resp = await client.post(
+        f"/api/v1/workspaces/{workspace['id']}/stashes",
+        json={
+            "title": "Private plan stash",
+            "access": "private",
+            "items": [{"object_type": "page", "object_id": page["id"]}],
+        },
+        headers=_auth(owner_key),
+    )
+    assert stash_resp.status_code == 201
+    stash = stash_resp.json()
+
+    assert not await permission_service.check_access(
+        "page",
+        uuid.UUID(page["id"]),
+        uuid.UUID(collaborator["id"]),
+        require_write=True,
+    )
+
+    add_resp = await client.post(
+        f"/api/v1/stashes/{stash['id']}/members",
+        json={"user_id": collaborator["id"], "permission": "write"},
+        headers=_auth(owner_key),
+    )
+    assert add_resp.status_code == 201
+    assert add_resp.json()["permission"] == "write"
+
+    members_resp = await client.get(
+        f"/api/v1/stashes/{stash['id']}/members",
+        headers=_auth(owner_key),
+    )
+    assert members_resp.status_code == 200
+    assert [member["user_id"] for member in members_resp.json()["members"]] == [
+        collaborator["id"]
+    ]
+    assert await permission_service.check_access(
+        "page",
+        uuid.UUID(page["id"]),
+        uuid.UUID(collaborator["id"]),
+        require_write=True,
+    )
+
+    forbidden_resp = await client.post(
+        f"/api/v1/stashes/{stash['id']}/members",
+        json={"user_id": owner["id"], "permission": "read"},
+        headers=_auth(collaborator_key),
+    )
+    assert forbidden_resp.status_code == 403
+
+    delete_resp = await client.delete(
+        f"/api/v1/stashes/{stash['id']}/members/{collaborator['id']}",
+        headers=_auth(owner_key),
+    )
+    assert delete_resp.status_code == 204
+    assert not await permission_service.check_access(
+        "page",
+        uuid.UUID(page["id"]),
+        uuid.UUID(collaborator["id"]),
+        require_write=True,
+    )
 
 
 @pytest.mark.asyncio

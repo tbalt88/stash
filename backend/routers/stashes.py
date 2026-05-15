@@ -7,9 +7,13 @@ from fastapi.responses import PlainTextResponse
 
 from ..auth import get_current_user, get_current_user_optional
 from ..config import settings
+from ..database import get_pool
 from ..models import (
     AddExternalStashRequest,
     StashCreateRequest,
+    StashMemberRequest,
+    StashMemberResponse,
+    StashMembersResponse,
     StashPublicResponse,
     StashResponse,
     StashUpdateRequest,
@@ -18,6 +22,7 @@ from ..services import permission_service, stash_service, workspace_service
 
 ws_router = APIRouter(prefix="/api/v1/workspaces", tags=["stashes"])
 public_router = APIRouter(prefix="/api/v1/stashes", tags=["stashes"])
+
 
 async def _require_can_share_item(workspace_id: UUID, item, user_id: UUID) -> None:
     item_workspace_id = await permission_service.resolve_workspace_id(
@@ -180,6 +185,61 @@ async def delete_stash(
     deleted = await stash_service.delete_stash(stash_id, current_user["id"])
     if not deleted:
         raise HTTPException(status_code=404, detail="Stash not found")
+
+
+async def _require_can_manage_stash(stash_id: UUID, user_id: UUID) -> None:
+    stash = await stash_service.get_stash(stash_id)
+    if not stash:
+        raise HTTPException(status_code=404, detail="Stash not found")
+    if not await stash_service.user_can_admin(stash_id, user_id):
+        raise HTTPException(status_code=403, detail="Not allowed to manage this stash")
+
+
+@public_router.get("/{stash_id}/members", response_model=StashMembersResponse)
+async def list_stash_members(
+    stash_id: UUID,
+    current_user: dict = Depends(get_current_user),
+):
+    await _require_can_manage_stash(stash_id, current_user["id"])
+    members = await stash_service.list_members(stash_id)
+    return StashMembersResponse(members=[StashMemberResponse(**member) for member in members])
+
+
+@public_router.post("/{stash_id}/members", response_model=StashMemberResponse, status_code=201)
+async def add_stash_member(
+    stash_id: UUID,
+    req: StashMemberRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    await _require_can_manage_stash(stash_id, current_user["id"])
+
+    pool = get_pool()
+    user = await pool.fetchrow("SELECT id FROM users WHERE id = $1", req.user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    try:
+        member = await stash_service.add_member(
+            stash_id,
+            req.user_id,
+            req.permission,
+            current_user["id"],
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    if not member:
+        raise HTTPException(status_code=404, detail="Stash not found")
+    return StashMemberResponse(**member)
+
+
+@public_router.delete("/{stash_id}/members/{user_id}", status_code=204)
+async def remove_stash_member(
+    stash_id: UUID,
+    user_id: UUID,
+    current_user: dict = Depends(get_current_user),
+):
+    await _require_can_manage_stash(stash_id, current_user["id"])
+    await stash_service.remove_member(stash_id, user_id)
 
 
 @public_router.get("/{slug}")
