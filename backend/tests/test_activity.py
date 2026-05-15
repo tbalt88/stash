@@ -29,7 +29,7 @@ async def _workspace(client: AsyncClient, api_key: str, name: str) -> dict:
 
 async def _event(client: AsyncClient, api_key: str, workspace_id: str, session_id: str) -> None:
     resp = await client.post(
-        f"/api/v1/workspaces/{workspace_id}/memory/events",
+        f"/api/v1/workspaces/{workspace_id}/sessions/events",
         json={
             "agent_name": "tester",
             "event_type": "assistant_message",

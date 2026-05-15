@@ -1037,7 +1037,7 @@ export async function semanticSearchTableRows(
 
 export async function listAgentNames(workspaceId: string): Promise<string[]> {
   const data = await apiFetch<{ agent_names: string[] }>(
-    `/api/v1/workspaces/${workspaceId}/memory/agent-names`
+    `/api/v1/workspaces/${workspaceId}/sessions/agent-names`
   );
   return data.agent_names;
 }

@@ -1,4 +1,4 @@
-"""History router: workspace and personal agent event storage.
+"""Session event router: workspace agent event storage.
 
 Events belong directly to workspaces. No intermediate "store" abstraction.
 Hierarchy: Workspace → Agent → Session → Events
@@ -18,7 +18,7 @@ from ..models import (
 )
 from ..services import memory_service, stash_service, workspace_service
 
-ws_router = APIRouter(prefix="/api/v1/workspaces/{workspace_id}/memory", tags=["memory"])
+ws_router = APIRouter(prefix="/api/v1/workspaces/{workspace_id}/sessions", tags=["sessions"])
 
 
 # --- Shared auth helpers ---

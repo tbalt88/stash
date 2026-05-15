@@ -20,8 +20,8 @@ async def list_all_pages(current_user: dict = Depends(get_current_user)):
     return UserPageListResponse(pages=[UserPageEntry(**r) for r in rows])
 
 
-@router.get("/history-events")
-async def list_all_history_events(
+@router.get("/session-events")
+async def list_all_session_events(
     agent_name: str | None = Query(None),
     event_type: str | None = Query(None),
     after: datetime | None = Query(None),
@@ -30,7 +30,7 @@ async def list_all_history_events(
     order: str = Query("desc", pattern="^(asc|desc)$"),
     current_user: dict = Depends(get_current_user),
 ):
-    """Events across all accessible workspaces + personal, with filters."""
+    """Session events across all accessible workspaces, with filters."""
     events, has_more = await memory_service.query_all_user_events(
         current_user["id"],
         agent_name=agent_name,

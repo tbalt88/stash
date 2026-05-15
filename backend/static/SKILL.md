@@ -80,7 +80,7 @@ curl -X POST {{BASE_URL}}/api/v1/workspaces \
 
 ### 3. Push a Session Event
 ```bash
-curl -X POST {{BASE_URL}}/api/v1/workspaces/$WS/memory/events \
+curl -X POST {{BASE_URL}}/api/v1/workspaces/$WS/sessions/events \
   -H "Authorization: Bearer $API_KEY" \
   -H "Content-Type: application/json" \
   -d '{"agent_name":"cli","event_type":"note","content":"Hello"}'
@@ -123,9 +123,9 @@ scope — pick or create a workspace first.
 | Tables | `/api/v1/workspaces/{ws}/tables` |
 | Rows | `/api/v1/workspaces/{ws}/tables/{t}/rows` |
 | Files | `/api/v1/workspaces/{ws}/files` |
-| Session events | `/api/v1/workspaces/{ws}/memory/events` |
+| Session events | `/api/v1/workspaces/{ws}/sessions/events` |
 | Transcripts | `/api/v1/workspaces/{ws}/transcripts` |
-| Aggregate (across the user's workspaces) | `/api/v1/me/{pages,tables,history-events}` |
+| Aggregate (across the user's workspaces) | `/api/v1/me/{pages,tables,session-events}` |
 
 CRUD verbs are standard: `POST` to create, `GET` list/detail, `PATCH` update,
 `DELETE` remove. Semantic search hangs off the workspace
@@ -198,7 +198,7 @@ you'll round-trip cleanly through edit mode:
 Events are structured append-only records keyed by `(workspace, agent_name, event_type)`.
 
 ```json
-POST /api/v1/workspaces/{ws}/memory/events
+POST /api/v1/workspaces/{ws}/sessions/events
 {
   "agent_name": "cli",
   "event_type": "note",

@@ -315,7 +315,7 @@ class Stash:
             params["agent_name"] = agent_name
         if event_type:
             params["event_type"] = event_type
-        return self._list("/api/v1/me/history-events", "events", **params)
+        return self._list("/api/v1/me/session-events", "events", **params)
 
     def all_tables(self) -> list:
         return self._list("/api/v1/me/tables", "tables")
@@ -398,7 +398,7 @@ class Stash:
         )
 
     # =========================================================================
-    # History events
+    # Session events
     # =========================================================================
 
     def push_event(
@@ -432,7 +432,7 @@ class Stash:
         if created_at:
             body["created_at"] = created_at
         return self._post(
-            f"/api/v1/workspaces/{self._ws(workspace)}/memory/events", json=body
+            f"/api/v1/workspaces/{self._ws(workspace)}/sessions/events", json=body
         )
 
     def push_events_batch(
@@ -445,7 +445,7 @@ class Stash:
         if default_stash_id:
             body["default_stash_id"] = default_stash_id
         return self._post(
-            f"/api/v1/workspaces/{self._ws(workspace)}/memory/events/batch",
+            f"/api/v1/workspaces/{self._ws(workspace)}/sessions/events/batch",
             json=body,
         )
 
@@ -465,14 +465,14 @@ class Stash:
         if after:
             params["after"] = after
         return self._list(
-            f"/api/v1/workspaces/{self._ws(workspace)}/memory/events", "events", **params
+            f"/api/v1/workspaces/{self._ws(workspace)}/sessions/events", "events", **params
         )
 
     def search_events(
         self, query: str, limit: int = 50, workspace: str | None = None
     ) -> list:
         return self._list(
-            f"/api/v1/workspaces/{self._ws(workspace)}/memory/events/search",
+            f"/api/v1/workspaces/{self._ws(workspace)}/sessions/events/search",
             "events",
             q=query,
             limit=limit,
@@ -480,7 +480,7 @@ class Stash:
 
     def list_agent_names(self, workspace: str | None = None) -> list:
         data = self._get(
-            f"/api/v1/workspaces/{self._ws(workspace)}/memory/agent-names"
+            f"/api/v1/workspaces/{self._ws(workspace)}/sessions/agent-names"
         )
         return data.get("agent_names", []) if isinstance(data, dict) else data
 

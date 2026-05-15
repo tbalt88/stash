@@ -312,10 +312,10 @@ class StashClient:
     def delete_page(self, workspace_id: str, page_id: str) -> None:
         self._delete(f"/api/v1/workspaces/{workspace_id}/pages/{page_id}")
 
-    # --- History (workspace events) ---
+    # --- Session events ---
 
     def list_agent_names(self, workspace_id: str) -> list:
-        data = self._get(f"/api/v1/workspaces/{workspace_id}/memory/agent-names")
+        data = self._get(f"/api/v1/workspaces/{workspace_id}/sessions/agent-names")
         return data.get("agent_names", []) if isinstance(data, dict) else data
 
     def push_event(
@@ -344,7 +344,7 @@ class StashClient:
             body["attachments"] = attachments
         if created_at:
             body["created_at"] = created_at
-        return self._post(f"/api/v1/workspaces/{workspace_id}/memory/events", json=body)
+        return self._post(f"/api/v1/workspaces/{workspace_id}/sessions/events", json=body)
 
     def query_events(
         self,
@@ -365,11 +365,11 @@ class StashClient:
             params["after"] = after
         if before:
             params["before"] = before
-        return self._list(f"/api/v1/workspaces/{workspace_id}/memory/events", "events", **params)
+        return self._list(f"/api/v1/workspaces/{workspace_id}/sessions/events", "events", **params)
 
     def search_events(self, workspace_id: str, query: str, limit: int = 50) -> list:
         return self._list(
-            f"/api/v1/workspaces/{workspace_id}/memory/events/search",
+            f"/api/v1/workspaces/{workspace_id}/sessions/events/search",
             "events",
             q=query,
             limit=limit,
@@ -393,7 +393,7 @@ class StashClient:
             params["after"] = after
         if before:
             params["before"] = before
-        return self._list("/api/v1/me/history-events", "events", **params)
+        return self._list("/api/v1/me/session-events", "events", **params)
 
     def push_events_batch(
         self,
@@ -405,7 +405,7 @@ class StashClient:
         if default_stash_id:
             body["default_stash_id"] = default_stash_id
         return self._post(
-            f"/api/v1/workspaces/{workspace_id}/memory/events/batch",
+            f"/api/v1/workspaces/{workspace_id}/sessions/events/batch",
             json=body,
         )
 
