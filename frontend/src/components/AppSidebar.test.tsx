@@ -329,9 +329,32 @@ describe("AppSidebar tree expansion", () => {
 
     fireEvent.click(day);
     expect(detailsFor(day.textContent ?? "")).toHaveAttribute("open");
+    expect(screen.getByText("Planning session")).toBeTruthy();
 
     fireEvent.click(day);
     expect(detailsFor(day.textContent ?? "")).toHaveAttribute("open");
+  });
+
+  it("creates pages from the native sidebar modal", async () => {
+    const promptSpy = vi.spyOn(window, "prompt");
+    vi.mocked(getWorkspaceSidebar).mockResolvedValue(sidebarWithTree);
+
+    renderSidebar();
+
+    fireEvent.click(await screen.findByLabelText("Add page"));
+
+    expect(promptSpy).not.toHaveBeenCalled();
+    expect(screen.getByRole("heading", { name: "New page" })).toBeTruthy();
+
+    fireEvent.change(screen.getByPlaceholderText("Untitled"), {
+      target: { value: "Launch notes" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Create" }));
+
+    await waitFor(() => expect(createPage).toHaveBeenCalledWith("ws-1", "Launch notes"));
+    await waitFor(() => expect(nav.push).toHaveBeenCalledWith("/workspaces/ws-1/p/page-new"));
+
+    promptSpy.mockRestore();
   });
 
   it("opens the Files section when a top-level page is clicked", async () => {

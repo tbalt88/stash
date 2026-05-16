@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useRef, useState, type DragEvent, type MouseEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type DragEvent, type FormEvent, type MouseEvent } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import {
   createPage,
@@ -292,6 +292,114 @@ function PinMenu({
   );
 }
 
+function CreatePageModal({
+  onClose,
+  onCreate,
+}: {
+  onClose: () => void;
+  onCreate: (name: string) => Promise<void>;
+}) {
+  const [name, setName] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState("");
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    inputRef.current?.focus();
+  }, []);
+
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    const trimmed = name.trim();
+    if (!trimmed) return;
+
+    setSubmitting(true);
+    setError("");
+    try {
+      await onCreate(trimmed);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to create page");
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-[70] flex items-start justify-center bg-black/30 px-4 pt-[18vh]"
+      onClick={onClose}
+    >
+      <form
+        onSubmit={submit}
+        onClick={(event) => event.stopPropagation()}
+        className="w-full max-w-sm overflow-hidden rounded-lg border border-border bg-base shadow-2xl"
+      >
+        <div className="border-b border-border px-4 py-3">
+          <h2 className="font-display text-[17px] font-semibold text-foreground">
+            New page
+          </h2>
+          <p className="mt-1 text-[12px] text-muted">
+            Name the page before adding it to Files.
+          </p>
+        </div>
+        <div className="p-4">
+          <input
+            ref={inputRef}
+            value={name}
+            onChange={(event) => setName(event.target.value)}
+            placeholder="Untitled"
+            className="w-full rounded-md border border-border bg-surface px-3 py-2 text-[14px] text-foreground outline-none placeholder:text-muted focus:border-[var(--color-brand-400)]"
+          />
+          {error ? (
+            <div className="mt-3 rounded-md border border-red-300 bg-red-50 px-3 py-2 text-[12px] text-red-700">
+              {error}
+            </div>
+          ) : null}
+          <div className="mt-4 flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-md border border-border px-3 py-1.5 text-[13px] text-muted hover:bg-raised hover:text-foreground"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={submitting || !name.trim()}
+              className="rounded-md bg-[var(--color-brand-600)] px-3 py-1.5 text-[13px] font-medium text-white hover:bg-[var(--color-brand-700)] disabled:opacity-50"
+            >
+              {submitting ? "Creating..." : "Create"}
+            </button>
+          </div>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+function SectionAddButton({
+  label,
+  onClick,
+}: {
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      title={label}
+      onClick={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        onClick();
+      }}
+      className="ml-1 flex h-5 w-5 items-center justify-center rounded-md border border-border-subtle bg-base text-[13px] font-medium text-muted hover:border-[var(--color-brand-300)] hover:bg-[var(--color-brand-50)] hover:text-[var(--color-brand-800)]"
+    >
+      +
+    </button>
+  );
+}
+
 function WorkspaceTree({
   workspace,
   spine,
@@ -366,29 +474,6 @@ function WorkspaceTree({
           active={pathname === `/workspaces/${workspace.id}`}
         />
       )}
-      <div className="grid grid-cols-3 gap-1 px-2 pb-1">
-        <button
-          type="button"
-          onClick={() => onAddSession(workspace.id)}
-          className="rounded-md border border-border-subtle px-1.5 py-1 text-[10.5px] text-muted hover:border-brand hover:text-brand"
-        >
-          + Session
-        </button>
-        <button
-          type="button"
-          onClick={() => onAddPage(workspace.id)}
-          className="rounded-md border border-border-subtle px-1.5 py-1 text-[10.5px] text-muted hover:border-brand hover:text-brand"
-        >
-          + Page
-        </button>
-        <button
-          type="button"
-          onClick={() => onAddStash(workspace.id)}
-          className="rounded-md border border-[var(--color-brand-300)] bg-[var(--color-brand-50)] px-1.5 py-1 text-[10.5px] font-medium text-[var(--color-brand-800)] hover:bg-[var(--color-brand-100)]"
-        >
-          + Stash
-        </button>
-      </div>
       <details
         open={openSections.sessions}
         onToggle={(e) => onSectionOpenChange("sessions", e.currentTarget.open)}
@@ -411,9 +496,6 @@ function WorkspaceTree({
               open={openSections.sessions}
               onToggle={() => onSectionOpenChange("sessions", !openSections.sessions)}
             />
-            <span className="flex h-4 w-4 items-center justify-center text-[14px] text-muted">
-              <SessionsIcon />
-            </span>
             <Link
               href={`/workspaces/${workspace.id}/sessions`}
               onClick={(event) => {
@@ -425,6 +507,10 @@ function WorkspaceTree({
               Sessions
             </Link>
             <span className="text-[10.5px] text-muted">{spine?.sessions.length ?? 0}</span>
+            <SectionAddButton
+              label="Add session"
+              onClick={() => onAddSession(workspace.id)}
+            />
           </summary>
         <div className="ml-3 space-y-0.5 border-l border-border pl-2">
             {sessionsDrop?.message ? <DropMessage state={sessionsDrop} /> : null}
@@ -453,6 +539,7 @@ function WorkspaceTree({
           pinnedLabels={pinnedLabels}
           onPinToggle={(kind, id, label) => onPinToggle(kind, workspace.id, id, label)}
           onUnpinAll={() => onUnpinAll(workspace.id)}
+          onAddPage={() => onAddPage(workspace.id)}
         />
         <StashesBlock
           workspace={workspace}
@@ -463,6 +550,7 @@ function WorkspaceTree({
           onStashCollapsedChange={(stashId, collapsed) =>
             onStashCollapsedChange(workspace.id, stashId, collapsed)
           }
+          onAddStash={() => onAddStash(workspace.id)}
         />
     </div>
   );
@@ -591,7 +679,7 @@ function SessionUserFolder({
   workspaceId: string;
   bucket: { user: string; sessions: WorkspaceSidebarSession[] };
 }) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(true);
   return (
     <details open={open} className="text-[12px]">
       <summary
@@ -960,6 +1048,7 @@ function FilesBlock({
   pinnedLabels,
   onPinToggle,
   onUnpinAll,
+  onAddPage,
 }: {
   workspace: WorkspaceNode;
   spine: WorkspaceSidebar | null;
@@ -976,6 +1065,7 @@ function FilesBlock({
   pinnedLabels: PinnedLabels;
   onPinToggle: (kind: PinKind, id: string, label?: string) => void;
   onUnpinAll: () => void;
+  onAddPage: () => void;
 }) {
   const tree = spine?.files;
   const folders = tree?.folders ?? [];
@@ -1091,11 +1181,9 @@ function FilesBlock({
         }
       >
         <ChevronToggle open={open} onToggle={() => onOpenChange(!open)} />
-        <span className="flex h-4 w-4 items-center justify-center text-[14px] text-muted">
-          <FileIcon />
-        </span>
         <span className="flex-1 truncate font-medium text-foreground">Files</span>
         <span className="text-[10.5px] text-muted">{total}</span>
+        <SectionAddButton label="Add page" onClick={onAddPage} />
       </summary>
       <div className="ml-3 space-y-0.5 border-l border-border pl-2">
         {filesDrop?.message ? <DropMessage state={filesDrop} /> : null}
@@ -1200,6 +1288,7 @@ function StashesBlock({
   onOpenChange,
   collapsedStashes,
   onStashCollapsedChange,
+  onAddStash,
 }: {
   workspace: WorkspaceNode;
   spine: WorkspaceSidebar | null;
@@ -1207,6 +1296,7 @@ function StashesBlock({
   onOpenChange: (open: boolean) => void;
   collapsedStashes: Record<string, boolean>;
   onStashCollapsedChange: (stashId: string, collapsed: boolean) => void;
+  onAddStash: () => void;
 }) {
   const stashes = spine?.stashes ?? [];
   const tree = spine?.files;
@@ -1262,6 +1352,23 @@ function StashesBlock({
             const sessions = children.filter((item) => item.kind === "session");
             const files = children.filter((item) => item.kind !== "session");
 
+            function renderChildGroup(label: string, group: StashTreeItem[]) {
+              if (group.length === 0) return null;
+
+              return (
+                <div className="space-y-0.5">
+                  <div className="rounded bg-base px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted">
+                    {label}
+                  </div>
+                  <div className="ml-2.5 space-y-0.5 border-l border-border pl-2">
+                    {group.map((item) => (
+                      <StashTreeRow key={`${label}:${item.key}`} row={item} />
+                    ))}
+                  </div>
+                </div>
+              );
+            }
+
             return (
               <div key={`${title}-${stash.id}`} className="space-y-0.5">
                 <div className="page-row flex items-center gap-1 rounded-md px-2 py-0.5 hover:bg-raised">
@@ -1291,22 +1398,8 @@ function StashesBlock({
                       </div>
                     ) : (
                       <>
-                        {sessions.length > 0 ? (
-                          <>
-                            <div className="px-2 py-0.5 text-[10px] uppercase tracking-wide text-muted">sessions</div>
-                            {sessions.map((item) => (
-                              <StashTreeRow key={`session:${item.key}`} row={item} />
-                            ))}
-                          </>
-                        ) : null}
-                        {files.length > 0 ? (
-                          <>
-                            <div className="px-2 py-0.5 text-[10px] uppercase tracking-wide text-muted">files</div>
-                            {files.map((item) => (
-                              <StashTreeRow key={`files:${item.key}`} row={item} />
-                            ))}
-                          </>
-                        ) : null}
+                        {renderChildGroup("Sessions", sessions)}
+                        {renderChildGroup("Files", files)}
                       </>
                     )}
                   </div>
@@ -1333,9 +1426,6 @@ function StashesBlock({
         className="page-row flex items-center gap-1 rounded-md px-2 py-1 hover:bg-raised"
       >
         <ChevronToggle onToggle={() => onOpenChange(!open)} />
-        <span className="flex h-4 w-4 items-center justify-center text-[14px] text-muted">
-          <StashIcon />
-        </span>
         <Link
           href={`/workspaces/${workspace.id}/stashes`}
           className="flex-1 truncate font-medium text-foreground hover:text-[var(--color-brand-700)]"
@@ -1343,6 +1433,7 @@ function StashesBlock({
           Stashes
         </Link>
         <span className="text-[10.5px] text-muted">{stashes.length}</span>
+        <SectionAddButton label="Add Stash" onClick={onAddStash} />
       </summary>
       <div className="ml-3 space-y-0.5 border-l border-border pl-2">
         {nativeStashes.length === 0 && forkedStashes.length === 0 ? (
@@ -1403,6 +1494,7 @@ export default function AppSidebar({
   const [collapsedStashes, setCollapsedStashes] = useState<Record<string, boolean>>(
     () => readBooleanMap(COLLAPSED_STASHES_KEY)
   );
+  const [pageCreateWorkspaceId, setPageCreateWorkspaceId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!userId) return;
@@ -1534,17 +1626,18 @@ export default function AppSidebar({
     input.click();
   }
 
-  async function handleAddPage(workspaceId: string) {
-    const name = window.prompt("Page name");
-    if (!name?.trim()) return;
+  function handleAddPage(workspaceId: string) {
+    setPageCreateWorkspaceId(workspaceId);
+  }
 
+  async function handleCreatePage(workspaceId: string, name: string) {
     setDropState({
       key: dropKey(workspaceId, "files"),
       status: "saving",
-      message: `Creating ${name.trim()}...`,
+      message: `Creating ${name}...`,
     });
     try {
-      const page = await createPage(workspaceId, name.trim());
+      const page = await createPage(workspaceId, name);
       await refreshSidebar(workspaceId);
       setDropState({
         key: dropKey(workspaceId, "files"),
@@ -1552,6 +1645,7 @@ export default function AppSidebar({
         message: `Created ${page.name}.`,
       });
       clearDropLater(workspaceId, "files");
+      setPageCreateWorkspaceId(null);
       router.push(`/workspaces/${workspaceId}/p/${page.id}`);
     } catch (error) {
       setDropState({
@@ -1560,6 +1654,7 @@ export default function AppSidebar({
         message: error instanceof Error ? error.message : "Failed to create page",
       });
       clearDropLater(workspaceId, "files");
+      throw error;
     }
   }
 
@@ -1809,6 +1904,7 @@ export default function AppSidebar({
   }, [pinnedState, spines]);
 
   return (
+    <>
     <aside className="scroll-thin overflow-y-auto border-r border-border bg-surface">
       <div className="px-3 pb-1 pt-3">
         <Link href="/" className="flex items-center gap-2">
@@ -1930,5 +2026,12 @@ export default function AppSidebar({
         )}
       </div>
     </aside>
+    {pageCreateWorkspaceId ? (
+      <CreatePageModal
+        onClose={() => setPageCreateWorkspaceId(null)}
+        onCreate={(name) => handleCreatePage(pageCreateWorkspaceId, name)}
+      />
+    ) : null}
+    </>
   );
 }

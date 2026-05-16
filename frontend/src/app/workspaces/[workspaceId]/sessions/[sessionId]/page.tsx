@@ -18,6 +18,7 @@ import {
 
 interface MessageTurn {
   kind: "message";
+  id: string;
   who: "user" | "assistant";
   name: string;
   time?: string;
@@ -47,6 +48,7 @@ function eventToTurn(ev: SessionEvent): MessageTurn {
 
   return {
     kind: "message",
+    id: ev.id,
     who: ev.role,
     name: ev.role === "assistant" ? "agent" : "user",
     time: createdAt
@@ -163,7 +165,8 @@ export default function SessionViewerPage() {
             <div className="flex items-center gap-2">
               {agentName && (
                 <span className="inline-flex items-center gap-1.5 rounded-md border border-border bg-base px-2 py-1 text-[11px] text-foreground">
-                  <span className="font-mono">⌘</span> {agentName}
+                  <span className="text-muted">Agent</span>
+                  <span className="font-medium">{agentName}</span>
                 </span>
               )}
               <DownloadMenu
@@ -209,7 +212,7 @@ export default function SessionViewerPage() {
               return (
                 <div key={i}>
                   {dateDividerLabel ? <DateDivider label={dateDividerLabel} /> : null}
-                  <MessageRow turn={turn} />
+                  <MessageRow turn={turn} index={i} />
                 </div>
               );
             })}
@@ -220,7 +223,7 @@ export default function SessionViewerPage() {
             )}
           </div>
         </main>
-        <SessionAside detail={sessionDetail} stashes={containingStashes} />
+        <SessionAside detail={sessionDetail} stashes={containingStashes} turns={turns} />
       </div>
     </div>
   );
@@ -229,22 +232,27 @@ export default function SessionViewerPage() {
 function SessionAside({
   detail,
   stashes,
+  turns,
 }: {
   detail: SessionDetail | null;
   stashes: WorkspaceStash[];
+  turns: MessageTurn[];
 }) {
   const filesTouched = normalizeStringList(detail?.files_touched);
   const artifacts = detail?.artifacts ?? [];
+  const toolCalls = turns
+    .map((turn, index) => ({ ...turn, index }))
+    .filter((turn) => turn.toolName);
 
   return (
     <aside className="hidden lg:block">
       <div className="sticky top-16 flex flex-col gap-3">
         <div className="rounded-lg border border-border-subtle bg-surface p-3">
           <div className="text-[11px] font-semibold uppercase tracking-wider text-muted">
-            Session files
+            Artifacts
           </div>
-          <div className="mt-2">
-            {filesTouched.length > 0 ? (
+          {filesTouched.length > 0 ? (
+            <div className="mt-2">
               <div className="flex flex-col gap-1.5">
                 {filesTouched.map((file) => (
                   <div
@@ -255,14 +263,9 @@ function SessionAside({
                   </div>
                 ))}
               </div>
-            ) : (
-              <div className="text-[12px] leading-relaxed text-muted">No files recorded.</div>
-            )}
-          </div>
-          <div className="mt-4 text-[11px] font-semibold uppercase tracking-wider text-muted">
-            Artifacts
-          </div>
-          <div className="mt-2">
+            </div>
+          ) : null}
+          <div className={filesTouched.length > 0 ? "mt-3" : "mt-2"}>
             {artifacts.length > 0 ? (
               <div className="flex flex-col gap-1.5">
                 {artifacts.map((artifact) => (
@@ -281,34 +284,63 @@ function SessionAside({
                 ))}
               </div>
             ) : (
-              <div className="text-[12px] leading-relaxed text-muted">No artifacts recorded.</div>
+              filesTouched.length === 0 ? (
+                <div className="text-[12px] leading-relaxed text-muted">
+                  No artifacts recorded.
+                </div>
+              ) : null
             )}
           </div>
         </div>
         <div className="rounded-lg border border-border-subtle bg-surface p-3">
-        <div className="text-[11px] font-semibold uppercase tracking-wider text-muted">
-          In Stashes
+          <div className="text-[11px] font-semibold uppercase tracking-wider text-muted">
+            Tool calls
+          </div>
+          {toolCalls.length > 0 ? (
+            <div className="mt-2 flex flex-col gap-1.5">
+              {toolCalls.map((turn) => (
+                <a
+                  key={turn.id}
+                  href={`#tool-call-${turn.index}`}
+                  className="rounded-md border border-border-subtle bg-base px-2.5 py-2 text-[12px] text-foreground hover:border-brand hover:text-brand"
+                >
+                  <span className="block truncate font-mono">{turn.toolName}</span>
+                  <span className="mt-0.5 block truncate text-[11px] text-muted">
+                    {turn.time ?? "Tool call"}
+                  </span>
+                </a>
+              ))}
+            </div>
+          ) : (
+            <div className="mt-2 text-[12px] leading-relaxed text-muted">
+              No tool calls recorded.
+            </div>
+          )}
         </div>
-        {stashes.length > 0 ? (
-          <div className="mt-2 flex flex-col gap-1.5">
-            {stashes.map((stash) => (
-              <a
-                key={stash.id}
-                href={`/stashes/${stash.slug}`}
-                className="rounded-md border border-border-subtle bg-base px-2.5 py-2 text-[12px] text-foreground hover:border-brand hover:text-brand"
-              >
-                <span className="block truncate font-medium">{stash.title}</span>
-                <span className="mt-0.5 block text-[11px] text-muted">
-                  {stash.items.length} item{stash.items.length === 1 ? "" : "s"}
-                </span>
-              </a>
-            ))}
+        <div className="rounded-lg border border-border-subtle bg-surface p-3">
+          <div className="text-[11px] font-semibold uppercase tracking-wider text-muted">
+            In Stashes
           </div>
-        ) : (
-          <div className="mt-2 text-[12px] leading-relaxed text-muted">
-            This session is not in a Stash yet.
-          </div>
-        )}
+          {stashes.length > 0 ? (
+            <div className="mt-2 flex flex-col gap-1.5">
+              {stashes.map((stash) => (
+                <a
+                  key={stash.id}
+                  href={`/stashes/${stash.slug}`}
+                  className="rounded-md border border-border-subtle bg-base px-2.5 py-2 text-[12px] text-foreground hover:border-brand hover:text-brand"
+                >
+                  <span className="block truncate font-medium">{stash.title}</span>
+                  <span className="mt-0.5 block text-[11px] text-muted">
+                    {stash.items.length} item{stash.items.length === 1 ? "" : "s"}
+                  </span>
+                </a>
+              ))}
+            </div>
+          ) : (
+            <div className="mt-2 text-[12px] leading-relaxed text-muted">
+              This session is not in a Stash yet.
+            </div>
+          )}
         </div>
       </div>
     </aside>
@@ -338,38 +370,41 @@ function DateDivider({ label }: { label: string }) {
   );
 }
 
-function MessageRow({ turn }: { turn: MessageTurn }) {
+function MessageRow({ turn, index }: { turn: MessageTurn; index: number }) {
   const isAgent = turn.who === "assistant";
   const avatar = avatarFor(turn.name);
+  const rowId = turn.toolName ? `tool-call-${index}` : undefined;
   return (
-    <div className="msg-row group flex gap-3 rounded-md px-2 py-2">
-      <span
-        className={
-          "inline-flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full text-[10px] font-semibold " +
-          avatar.bg +
-          " " +
-          avatar.fg
-        }
-      >
-        {initials(turn.name)}
-      </span>
-      <div className="min-w-0 flex-1">
-        <div className="flex items-baseline gap-2 text-[12.5px]">
-          <span className="font-semibold text-foreground">{turn.name}</span>
-          {isAgent && (
-            <span className="rounded bg-[var(--color-brand-50)] px-1 py-0 text-[9.5px] uppercase tracking-wide text-[var(--color-brand-700)] ring-1 ring-[var(--color-brand-200)]">
-              app
-            </span>
-          )}
-          {turn.toolName && (
-            <span className="rounded bg-indigo-50 px-1 py-0 font-mono text-[10px] text-indigo-700 ring-1 ring-indigo-200">
-              {turn.toolName}
-            </span>
-          )}
-          {turn.time && <span className="text-[10.5px] text-muted">{turn.time}</span>}
-        </div>
-        <div className="mt-0.5 whitespace-pre-wrap text-[13.5px] leading-relaxed text-foreground">
-          {turn.content}
+    <div id={rowId} className="msg-row group scroll-mt-16 rounded-md px-2 py-2">
+      <div className="flex gap-3">
+        <span
+          className={
+            "inline-flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full text-[10px] font-semibold " +
+            avatar.bg +
+            " " +
+            avatar.fg
+          }
+        >
+          {initials(turn.name)}
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-baseline gap-2 text-[12.5px]">
+            <span className="font-semibold text-foreground">{turn.name}</span>
+            {isAgent && (
+              <span className="rounded bg-[var(--color-brand-50)] px-1 py-0 text-[9.5px] uppercase tracking-wide text-[var(--color-brand-700)] ring-1 ring-[var(--color-brand-200)]">
+                app
+              </span>
+            )}
+            {turn.toolName && (
+              <span className="rounded bg-indigo-50 px-1 py-0 font-mono text-[10px] text-indigo-700 ring-1 ring-indigo-200">
+                {turn.toolName}
+              </span>
+            )}
+            {turn.time && <span className="text-[10.5px] text-muted">{turn.time}</span>}
+          </div>
+          <div className="mt-0.5 whitespace-pre-wrap text-[13.5px] leading-relaxed text-foreground">
+            {turn.content}
+          </div>
         </div>
       </div>
     </div>
