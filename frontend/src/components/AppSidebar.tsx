@@ -211,6 +211,7 @@ function NavRow({
   icon,
   label,
   active,
+  onClick,
   onContextMenu,
   trailing,
 }: {
@@ -218,6 +219,7 @@ function NavRow({
   icon: React.ReactNode;
   label: string;
   active?: boolean;
+  onClick?: (event: MouseEvent<HTMLAnchorElement>) => void;
   onContextMenu?: (event: MouseEvent<HTMLAnchorElement>) => void;
   trailing?: React.ReactNode;
 }) {
@@ -230,6 +232,7 @@ function NavRow({
           ? "bg-[var(--color-brand-50)] text-[var(--color-brand-800)]"
           : "text-dim hover:bg-raised hover:text-foreground")
       }
+      onClick={onClick}
       onContextMenu={onContextMenu}
     >
       <span className="flex h-4 w-4 items-center justify-center text-[14px]">{icon}</span>
@@ -393,7 +396,10 @@ function WorkspaceTree({
         {...dropProps("sessions")}
         >
           <summary
-            onClick={(e) => e.preventDefault()}
+            onClick={(e) => {
+              e.preventDefault();
+              onSectionOpenChange("sessions", true);
+            }}
             className={
               "page-row flex items-center gap-1 rounded-md px-2 py-1 hover:bg-raised " +
               (sessionsDrop?.status === "over"
@@ -402,6 +408,7 @@ function WorkspaceTree({
             }
           >
             <ChevronToggle
+              open={openSections.sessions}
               onToggle={() => onSectionOpenChange("sessions", !openSections.sessions)}
             />
             <span className="flex h-4 w-4 items-center justify-center text-[14px] text-muted">
@@ -409,6 +416,10 @@ function WorkspaceTree({
             </span>
             <Link
               href={`/workspaces/${workspace.id}/sessions`}
+              onClick={(event) => {
+                event.stopPropagation();
+                onSectionOpenChange("sessions", true);
+              }}
               className="flex-1 truncate font-medium text-foreground hover:text-[var(--color-brand-700)]"
             >
               Sessions
@@ -545,11 +556,11 @@ function SessionTreeDetails({
         onClick={(e) => {
           e.preventDefault();
           e.stopPropagation();
-          setOpen((current) => !current);
+          setOpen(true);
         }}
         className="page-row flex items-center gap-1 rounded-md px-2 py-1 hover:bg-raised"
       >
-        <ChevronToggle onToggle={() => setOpen((current) => !current)} />
+        <ChevronToggle open={open} onToggle={() => setOpen((current) => !current)} />
         <span className="flex h-4 w-4 items-center justify-center text-[14px] text-muted">
           <FolderIcon />
         </span>
@@ -587,11 +598,11 @@ function SessionUserFolder({
         onClick={(e) => {
           e.preventDefault();
           e.stopPropagation();
-          setOpen((current) => !current);
+          setOpen(true);
         }}
         className="page-row flex items-center gap-1 rounded-md px-2 py-0.5 hover:bg-raised"
       >
-        <ChevronToggle onToggle={() => setOpen((current) => !current)} />
+        <ChevronToggle open={open} onToggle={() => setOpen((current) => !current)} />
         <span className="flex h-4 w-4 items-center justify-center text-[13px] text-muted">
           <PersonIcon />
         </span>
@@ -762,11 +773,13 @@ function FileNavRow({
   workspaceId,
   file,
   label,
+  onClick,
   onPinMenu,
 }: {
   workspaceId: string;
   file: Pick<WorkspaceFile, "id" | "name" | "content_type" | "linked_table_id">;
   label: string;
+  onClick?: (event: MouseEvent<HTMLAnchorElement>) => void;
   onPinMenu?: (event: MouseEvent<HTMLAnchorElement>) => void;
 }) {
   const isCsvLinked =
@@ -783,6 +796,7 @@ function FileNavRow({
         </span>
       }
       label={label}
+      onClick={onClick}
       trailing={null}
       onContextMenu={onPinMenu}
     />
@@ -824,24 +838,32 @@ function FolderTreeNode({
   const [loaded, setLoaded] = useState(!!cachedContents);
   const [open, setOpen] = useState(false);
 
+  const loadContents = useCallback(() => {
+    if (loaded) return;
+    setLoaded(true);
+    getCachedFolderContents(workspaceId, folderId)
+      .then(setContents)
+      .catch(() =>
+        setContents({
+          folder: { id: folderId, name, parent_folder_id: null },
+          breadcrumbs: [],
+          subfolders: [],
+          pages: [],
+          files: [],
+        })
+      );
+  }, [loaded, workspaceId, folderId, name]);
+
+  const openFolder = useCallback(() => {
+    setOpen(true);
+    loadContents();
+  }, [loadContents]);
+
   const handleToggle = useCallback(() => {
     const next = !open;
     setOpen(next);
-    if (next && !loaded) {
-      setLoaded(true);
-      getCachedFolderContents(workspaceId, folderId)
-        .then(setContents)
-        .catch(() =>
-          setContents({
-            folder: { id: folderId, name, parent_folder_id: null },
-            breadcrumbs: [],
-            subfolders: [],
-            pages: [],
-            files: [],
-          })
-        );
-    }
-  }, [open, loaded, workspaceId, folderId, name]);
+    if (next) loadContents();
+  }, [open, loadContents]);
 
   return (
     <details open={open} className="text-[12.5px]">
@@ -856,15 +878,22 @@ function FolderTreeNode({
             isFolderPinned(folderId)
           );
         }}
-        onClick={(e) => e.preventDefault()}
+        onClick={(e) => {
+          e.preventDefault();
+          openFolder();
+        }}
         className="page-row flex items-center gap-1 rounded-md px-2 py-0.5 hover:bg-raised"
       >
-        <ChevronToggle onToggle={handleToggle} />
+        <ChevronToggle open={open} onToggle={handleToggle} />
         <span className="flex h-4 w-4 items-center justify-center text-muted">
           <FolderIcon />
         </span>
         <Link
           href={`/workspaces/${workspaceId}/folders/${folderId}`}
+          onClick={(event) => {
+            event.stopPropagation();
+            openFolder();
+          }}
           className="flex-1 truncate text-left text-foreground hover:text-[var(--color-brand-700)]"
         >
           {name}
@@ -1052,7 +1081,7 @@ function FilesBlock({
       <summary
         onClick={(e) => {
           e.preventDefault();
-          onOpenChange(!open);
+          onOpenChange(true);
         }}
         className={
           "page-row flex items-center gap-1 rounded-md px-2 py-1 hover:bg-raised " +
@@ -1061,7 +1090,7 @@ function FilesBlock({
             : "")
         }
       >
-        <ChevronToggle onToggle={() => onOpenChange(!open)} />
+        <ChevronToggle open={open} onToggle={() => onOpenChange(!open)} />
         <span className="flex h-4 w-4 items-center justify-center text-[14px] text-muted">
           <FileIcon />
         </span>
@@ -1129,6 +1158,7 @@ function FilesBlock({
             href={`/workspaces/${workspace.id}/p/${p.id}`}
             icon={<PageIcon className="text-muted" />}
             label={p.name}
+            onClick={() => onOpenChange(true)}
           />
         ))}
         {rootFiles.slice(0, PREVIEW_ITEM_LIMIT).map((f) => (
@@ -1137,6 +1167,7 @@ function FilesBlock({
             workspaceId={workspace.id}
             file={f}
             label={f.name}
+            onClick={() => onOpenChange(true)}
             onPinMenu={(event) =>
               showPinMenu(event, "file", f.id, f.name, pinnedFileSet.has(f.id))
             }

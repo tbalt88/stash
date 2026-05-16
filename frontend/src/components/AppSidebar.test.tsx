@@ -1,11 +1,12 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import type { ReactNode } from "react";
+import type { MouseEvent, ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import AppSidebar from "./AppSidebar";
 import { resetStashNavigationCache } from "../lib/stashNavigationCache";
 import { ShareModalProvider } from "../lib/shareModalContext";
 import {
   createPage,
+  getFolderContents,
   getWorkspaceSidebar,
   listMyWorkspaces,
   uploadFile,
@@ -26,12 +27,21 @@ vi.mock("next/link", () => ({
   default: ({
     href,
     children,
+    onClick,
     ...props
   }: {
     href: string;
     children: ReactNode;
+    onClick?: (event: MouseEvent<HTMLAnchorElement>) => void;
   }) => (
-    <a href={href} {...props}>
+    <a
+      href={href}
+      {...props}
+      onClick={(event) => {
+        event.preventDefault();
+        onClick?.(event);
+      }}
+    >
       {children}
     </a>
   ),
@@ -126,10 +136,49 @@ const sidebarWithStash = {
   ],
 };
 
+const sidebarWithTree = {
+  sessions: [
+    {
+      id: "session-row-1",
+      session_id: "session-1",
+      title: "Planning session",
+      agent_name: "Codex",
+      size_bytes: 256,
+      last_at: "2026-05-11T00:00:00Z",
+      updated_at: "2026-05-11T00:00:00Z",
+    },
+  ],
+  files: {
+    folders: [
+      {
+        id: "folder-1",
+        name: "Product",
+        parent_folder_id: null,
+        page_count: 1,
+        file_count: 0,
+        has_skill: false,
+      },
+    ],
+    pages: [
+      {
+        id: "page-root",
+        name: "Overview",
+        folder_id: null,
+      },
+    ],
+    files: [],
+  },
+  stashes: [],
+};
+
 function detailsFor(label: string): HTMLDetailsElement {
   const details = screen.getByText(label).closest("details");
   if (!details) throw new Error(`No details element for ${label}`);
   return details as HTMLDetailsElement;
+}
+
+function openSectionState(): Record<string, boolean> {
+  return JSON.parse(localStorage.getItem("stash_sidebar_open_sections") ?? "{}");
 }
 
 function renderSidebar() {
@@ -149,6 +198,13 @@ describe("AppSidebar tree expansion", () => {
     vi.clearAllMocks();
     vi.mocked(listMyWorkspaces).mockResolvedValue({ workspaces: [workspace] });
     vi.mocked(getWorkspaceSidebar).mockResolvedValue(emptySidebar);
+    vi.mocked(getFolderContents).mockResolvedValue({
+      folder: { id: "folder-1", name: "Product", parent_folder_id: null },
+      breadcrumbs: [],
+      subfolders: [],
+      pages: [{ id: "page-child", name: "Roadmap" }],
+      files: [],
+    });
     vi.mocked(uploadFile).mockResolvedValue({
       id: "file-1",
       workspace_id: "ws-1",
@@ -227,6 +283,87 @@ describe("AppSidebar tree expansion", () => {
     expect(detailsFor("Files")).not.toHaveAttribute("open");
     expect(detailsFor("Stashes")).toHaveAttribute("open");
     expect(getWorkspaceSidebar).toHaveBeenCalledWith("ws-1");
+  });
+
+  it("opens the Sessions section when its header is clicked", async () => {
+    localStorage.setItem(
+      "stash_sidebar_open_sections",
+      JSON.stringify({ "ws-1:sessions": false })
+    );
+
+    renderSidebar();
+
+    await screen.findByText("Sessions");
+    expect(detailsFor("Sessions")).not.toHaveAttribute("open");
+
+    fireEvent.click(screen.getByRole("link", { name: "Sessions" }));
+
+    expect(detailsFor("Sessions")).toHaveAttribute("open");
+    expect(openSectionState()["ws-1:sessions"]).toBe(true);
+  });
+
+  it("opens the Files section when its header is clicked", async () => {
+    localStorage.setItem(
+      "stash_sidebar_open_sections",
+      JSON.stringify({ "ws-1:files": false })
+    );
+
+    renderSidebar();
+
+    await screen.findByText("Files");
+    expect(detailsFor("Files")).not.toHaveAttribute("open");
+
+    fireEvent.click(screen.getByText("Files"));
+
+    expect(detailsFor("Files")).toHaveAttribute("open");
+    expect(openSectionState()["ws-1:files"]).toBe(true);
+  });
+
+  it("opens session day folders from the day row without closing on repeat clicks", async () => {
+    vi.mocked(getWorkspaceSidebar).mockResolvedValue(sidebarWithTree);
+
+    renderSidebar();
+
+    const day = await screen.findByText(/May 11/);
+    expect(detailsFor(day.textContent ?? "")).not.toHaveAttribute("open");
+
+    fireEvent.click(day);
+    expect(detailsFor(day.textContent ?? "")).toHaveAttribute("open");
+
+    fireEvent.click(day);
+    expect(detailsFor(day.textContent ?? "")).toHaveAttribute("open");
+  });
+
+  it("opens the Files section when a top-level page is clicked", async () => {
+    localStorage.setItem(
+      "stash_sidebar_open_sections",
+      JSON.stringify({ "ws-1:files": false })
+    );
+    vi.mocked(getWorkspaceSidebar).mockResolvedValue(sidebarWithTree);
+
+    renderSidebar();
+
+    await screen.findByText("Overview");
+    expect(openSectionState()["ws-1:files"]).toBe(false);
+
+    fireEvent.click(screen.getByText("Overview"));
+
+    expect(openSectionState()["ws-1:files"]).toBe(true);
+  });
+
+  it("opens folder rows when their label is clicked", async () => {
+    vi.mocked(getWorkspaceSidebar).mockResolvedValue(sidebarWithTree);
+
+    renderSidebar();
+
+    await screen.findByText("Product");
+    expect(detailsFor("Product")).not.toHaveAttribute("open");
+
+    fireEvent.click(screen.getByText("Product"));
+
+    expect(detailsFor("Product")).toHaveAttribute("open");
+    await waitFor(() => expect(getFolderContents).toHaveBeenCalledWith("ws-1", "folder-1"));
+    expect(await screen.findByText("Roadmap")).toBeTruthy();
   });
 
   it("keeps the workspace landing route open by default", async () => {
