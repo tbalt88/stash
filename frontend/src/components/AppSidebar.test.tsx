@@ -241,6 +241,19 @@ describe("AppSidebar tree expansion", () => {
     expect(detailsFor("Stashes")).toHaveAttribute("open");
   });
 
+  it("links sidebar settings to the active workspace settings page", async () => {
+    nav.pathname = "/workspaces/ws-1/sessions";
+
+    renderSidebar();
+
+    await screen.findByText("Sessions");
+
+    expect(screen.getByRole("link", { name: "Settings" })).toHaveAttribute(
+      "href",
+      "/workspaces/ws-1/settings"
+    );
+  });
+
   it("keeps deep-linked tree sections open by default", async () => {
     nav.pathname = "/workspaces/ws-1/p/page-1";
 
