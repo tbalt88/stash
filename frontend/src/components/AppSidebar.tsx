@@ -1357,7 +1357,6 @@ function StashesBlock({
 
 export default function AppSidebar({
   user,
-  onCmdkOpen,
   activeWorkspaceId,
 }: AppSidebarProps) {
   const pathname = usePathname();
@@ -1822,19 +1821,6 @@ export default function AppSidebar({
       </div>
 
       <nav className="px-2 pt-2 text-[13px]">
-        <button
-          onClick={onCmdkOpen}
-          className="flex w-full items-center gap-2 rounded-md px-2 py-1 text-muted hover:bg-raised"
-        >
-          <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <circle cx="11" cy="11" r="8" />
-            <path d="m21 21-4.3-4.3" />
-          </svg>
-          Search
-          <span className="ml-auto rounded bg-base px-1 py-0 font-mono text-[10px] text-muted ring-1 ring-border">
-            ⌘K
-          </span>
-        </button>
         <NavRow
           href={currentWorkspaceId ? `/workspaces/${currentWorkspaceId}` : "/"}
           icon={<StashIcon />}

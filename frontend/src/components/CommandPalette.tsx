@@ -1,27 +1,36 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { semanticSearchPages, type WorkspaceSidebar } from "../lib/api";
 import {
   getCachedWorkspaceSidebar,
   readCachedWorkspaceSidebar,
 } from "../lib/stashNavigationCache";
+import type { SearchScope } from "./AppShell";
 
 interface CommandPaletteProps {
   open: boolean;
   onClose: () => void;
   workspaceId: string | null;
+  searchScope: SearchScope | null;
 }
 
 interface Result {
-  kind: "page" | "session" | "folder" | "file";
+  kind: "search" | "page" | "session" | "folder" | "file";
   label: string;
   href: string;
   detail?: string;
 }
 
-export default function CommandPalette({ open, onClose, workspaceId }: CommandPaletteProps) {
+export default function CommandPalette({
+  open,
+  onClose,
+  workspaceId,
+  searchScope,
+}: CommandPaletteProps) {
+  const router = useRouter();
   const [query, setQuery] = useState("");
   const [spine, setSpine] = useState<WorkspaceSidebar | null>(() =>
     workspaceId ? readCachedWorkspaceSidebar(workspaceId) : null
@@ -51,13 +60,14 @@ export default function CommandPalette({ open, onClose, workspaceId }: CommandPa
 
   useEffect(() => {
     if (!open || !query.trim()) {
-      setResults([]);
+      setResults(searchScope ? [scopedSearchResult(searchScope, query)] : []);
+      setSelected(0);
       return;
     }
     const q = query.toLowerCase();
 
     // Local spine fuzzy match (instant)
-    const local: Result[] = [];
+    const local: Result[] = searchScope ? [scopedSearchResult(searchScope, query)] : [];
     if (spine && workspaceId) {
       const filesTree = spine.files;
       filesTree.pages.forEach((p) => {
@@ -122,7 +132,7 @@ export default function CommandPalette({ open, onClose, workspaceId }: CommandPa
       }
     }, 250);
     return () => clearTimeout(timer);
-  }, [query, open, spine, workspaceId]);
+  }, [query, open, spine, workspaceId, searchScope]);
 
   useEffect(() => {
     if (!open) return;
@@ -136,16 +146,18 @@ export default function CommandPalette({ open, onClose, workspaceId }: CommandPa
         e.preventDefault();
         setSelected((s) => Math.max(s - 1, 0));
       } else if (e.key === "Enter" && results[selected]) {
+        router.push(results[selected].href);
         onClose();
       }
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [open, results, selected, onClose]);
+  }, [open, results, selected, onClose, router]);
 
   if (!open) return null;
 
   const kindIcon: Record<string, string> = {
+    search: "⌕",
     page: "📄",
     session: "#",
     skill: "⚙︎",
@@ -211,4 +223,17 @@ export default function CommandPalette({ open, onClose, workspaceId }: CommandPa
       </div>
     </div>
   );
+}
+
+function scopedSearchResult(scope: SearchScope, query: string): Result {
+  const params = new URLSearchParams(scope.params);
+  const q = query.trim();
+  if (q) params.set("q", q);
+
+  return {
+    kind: "search",
+    label: q ? `Search ${scope.label} for "${q}"` : `Search ${scope.label}`,
+    href: `/search?${params.toString()}`,
+    detail: scope.detail,
+  };
 }

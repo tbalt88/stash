@@ -13,6 +13,10 @@ const nav = vi.hoisted(() => ({
   back: vi.fn(),
 }));
 
+const commandPaletteState = vi.hoisted(() => ({
+  props: null as { open: boolean; searchScope: { kind: string; label: string } | null } | null,
+}));
+
 vi.mock("next/navigation", () => ({
   usePathname: () => nav.pathname,
   useRouter: () => ({ back: nav.back }),
@@ -43,7 +47,14 @@ vi.mock("./AppSidebar", () => ({
 }));
 
 vi.mock("./CommandPalette", () => ({
-  default: () => null,
+  default: (props: { open: boolean; searchScope: { kind: string; label: string } | null }) => {
+    commandPaletteState.props = props;
+    return props.open ? (
+      <div data-testid="command-palette">
+        {props.searchScope?.kind}:{props.searchScope?.label}
+      </div>
+    ) : null;
+  },
 }));
 
 
@@ -61,6 +72,7 @@ describe("AppShell sidebar collapse", () => {
     localStorage.clear();
     nav.pathname = "/";
     nav.back.mockClear();
+    commandPaletteState.props = null;
     vi.clearAllMocks();
     vi.mocked(readCachedWorkspaces).mockReturnValue({
       userId: user.id,
@@ -96,5 +108,39 @@ describe("AppShell sidebar collapse", () => {
     expect(main?.parentElement).toHaveStyle({
       gridTemplateColumns: "minmax(0, 1fr)",
     });
+  });
+
+  it("opens top-bar search with session scope", () => {
+    nav.pathname = "/workspaces/ws-1/sessions/session-123";
+    vi.mocked(readCachedWorkspaces).mockReturnValue({
+      userId: user.id,
+      all: [
+        {
+          id: "ws-1",
+          name: "Demo Stash",
+          description: "",
+          creator_id: user.id,
+          invite_code: "invite",
+          created_at: "2026-05-11T00:00:00Z",
+          updated_at: "2026-05-11T00:00:00Z",
+          member_count: 1,
+        },
+      ],
+      mine: [],
+      shared: [],
+    });
+
+    render(
+      <ShareModalProvider>
+        <AppShell user={user} onLogout={vi.fn()}>
+          <div>Session content</div>
+        </AppShell>
+      </ShareModalProvider>
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Search" }));
+
+    expect(screen.getByTestId("command-palette")).toHaveTextContent("session:this session");
+    expect(commandPaletteState.props?.searchScope?.kind).toBe("session");
   });
 });

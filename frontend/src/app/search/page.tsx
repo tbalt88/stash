@@ -8,11 +8,13 @@ import { useAuth } from "../../hooks/useAuth";
 import {
   getWorkspaceSidebar,
   getPublicStash,
+  getSessionEvents,
   listStashes,
   listMyWorkspaces,
   searchWorkspaceEvents,
   searchWorkspacePages,
   type PublicStashDetail,
+  type SessionEvent,
   type WorkspaceHistoryEvent,
   type WorkspaceSidebar,
   type WorkspaceStash,
@@ -43,6 +45,12 @@ const CONTENT_SCOPES: { id: ContentScope; label: string }[] = [
   { id: "stashes", label: "Stashes" },
 ];
 
+function initialContentScope(value: string | null, sessionId: string): ContentScope {
+  if (sessionId) return "sessions";
+  if (value === "sessions" || value === "pages" || value === "stashes") return value;
+  return "all";
+}
+
 export default function SearchPage() {
   return (
     <Suspense
@@ -57,6 +65,7 @@ function SearchPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { user, loading, logout } = useAuth();
+  const initialSessionId = searchParams.get("session") ?? "";
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [workspaceStashes, setWorkspaceStashes] = useState<SearchableStash[]>([]);
   const [sidebars, setSidebars] = useState<Record<string, WorkspaceSidebar>>({});
@@ -64,9 +73,15 @@ function SearchPageInner() {
     searchParams.get("workspace") ?? ""
   );
   const [selectedProductStashId, setSelectedProductStashId] = useState("");
-  const [selectedFolderId, setSelectedFolderId] = useState("");
-  const [selectedPageId, setSelectedPageId] = useState("");
-  const [contentScope, setContentScope] = useState<ContentScope>("all");
+  const [selectedProductStashSlug, setSelectedProductStashSlug] = useState(
+    searchParams.get("stash") ?? ""
+  );
+  const [selectedFolderId, setSelectedFolderId] = useState(searchParams.get("folder") ?? "");
+  const [selectedPageId, setSelectedPageId] = useState(searchParams.get("page") ?? "");
+  const [selectedSessionId, setSelectedSessionId] = useState(initialSessionId);
+  const [contentScope, setContentScope] = useState<ContentScope>(
+    () => initialContentScope(searchParams.get("content"), initialSessionId)
+  );
   const [internalOnly, setInternalOnly] = useState(false);
   const [query, setQuery] = useState(searchParams.get("q") ?? "");
   const [results, setResults] = useState<SearchResult[]>([]);
@@ -117,12 +132,6 @@ function SearchPageInner() {
   }, [selectedWorkspaceId, sidebars]);
 
   useEffect(() => {
-    setSelectedFolderId("");
-    setSelectedPageId("");
-    setSelectedProductStashId("");
-  }, [selectedWorkspaceId]);
-
-  useEffect(() => {
     if (!loading && !user) router.push("/login");
   }, [user, loading, router]);
 
@@ -142,8 +151,13 @@ function SearchPageInner() {
   }, [internalOnly, searchedWorkspaces, workspaceStashes]);
 
   const selectedProductStash = useMemo(
-    () => searchedStashes.find((stash) => stash.id === selectedProductStashId) ?? null,
-    [searchedStashes, selectedProductStashId]
+    () =>
+      searchedStashes.find(
+        (stash) =>
+          stash.id === selectedProductStashId ||
+          (selectedProductStashSlug && stash.slug === selectedProductStashSlug)
+      ) ?? null,
+    [searchedStashes, selectedProductStashId, selectedProductStashSlug]
   );
 
   useEffect(() => {
@@ -153,9 +167,15 @@ function SearchPageInner() {
   }, [selectedProductStash, selectedProductStashId]);
 
   useEffect(() => {
+    if (!selectedProductStashSlug || !selectedProductStash || selectedProductStashId) return;
+    setSelectedProductStashId(selectedProductStash.id);
+  }, [selectedProductStash, selectedProductStashId, selectedProductStashSlug]);
+
+  useEffect(() => {
+    if (!selectedProductStashId && !selectedProductStashSlug) return;
     setSelectedFolderId("");
     setSelectedPageId("");
-  }, [selectedProductStashId]);
+  }, [selectedProductStashId, selectedProductStashSlug]);
 
   const folderOptions = useMemo(() => {
     if (!selectedWorkspaceId) return [];
@@ -179,11 +199,27 @@ function SearchPageInner() {
       const includeSessions = contentScope === "all" || contentScope === "sessions";
       const includePages = contentScope === "all" || contentScope === "pages";
       const includeStashes = contentScope === "all" || contentScope === "stashes";
+      const workspace =
+        workspaces.find((item) => item.id === selectedWorkspaceId) ??
+        searchedWorkspaces[0] ??
+        null;
 
-      if (selectedProductStash) {
-        const detail = await getPublicStash(selectedProductStash.slug);
+      if (selectedSessionId && selectedWorkspaceId) {
+        const events = await getSessionEvents(selectedWorkspaceId, selectedSessionId);
+        if (workspace) {
+          nextResults.push(...searchSingleSession(workspace, selectedSessionId, events, q));
+        }
+        setResults(sortResults(nextResults));
+        return;
+      }
+
+      const selectedStashSlug = selectedProductStash?.slug ?? selectedProductStashSlug;
+      if (selectedStashSlug) {
+        const detail = await getPublicStash(selectedStashSlug);
         if (includeStashes) {
-          nextResults.push(...searchStashes([selectedProductStash], q));
+          nextResults.push(
+            ...searchStashes([{ ...detail.stash, workspace_name: detail.workspace_name }], q)
+          );
         }
         nextResults.push(
           ...searchPublicStashItems(detail, q, {
@@ -256,7 +292,10 @@ function SearchPageInner() {
     selectedFolderId,
     selectedPageId,
     selectedProductStash,
+    selectedProductStashSlug,
+    selectedSessionId,
     selectedWorkspaceId,
+    workspaces,
     sidebars,
   ]);
 
@@ -295,7 +334,14 @@ function SearchPageInner() {
                 <span className="text-[12px] font-medium text-foreground">Workspace</span>
                 <select
                   value={selectedWorkspaceId}
-                  onChange={(event) => setSelectedWorkspaceId(event.target.value)}
+                  onChange={(event) => {
+                    setSelectedWorkspaceId(event.target.value);
+                    setSelectedFolderId("");
+                    setSelectedPageId("");
+                    setSelectedProductStashId("");
+                    setSelectedProductStashSlug("");
+                    setSelectedSessionId("");
+                  }}
                   className="rounded-md border border-border bg-base px-2 py-2 text-[13px] text-foreground focus:border-brand focus:outline-none"
                 >
                   <option value="">All workspaces</option>
@@ -311,7 +357,10 @@ function SearchPageInner() {
                 <span className="text-[12px] font-medium text-foreground">Stash</span>
                 <select
                   value={selectedProductStashId}
-                  onChange={(event) => setSelectedProductStashId(event.target.value)}
+                  onChange={(event) => {
+                    setSelectedProductStashId(event.target.value);
+                    setSelectedProductStashSlug("");
+                  }}
                   className="rounded-md border border-border bg-base px-2 py-2 text-[13px] text-foreground focus:border-brand focus:outline-none"
                 >
                   <option value="">All Stashes</option>
@@ -323,6 +372,15 @@ function SearchPageInner() {
                   ))}
                 </select>
               </label>
+
+              {selectedSessionId ? (
+                <div className="flex flex-col gap-1.5">
+                  <span className="text-[12px] font-medium text-foreground">Session</span>
+                  <div className="truncate rounded-md border border-border bg-base px-2 py-2 font-mono text-[12px] text-foreground">
+                    #{selectedSessionId}
+                  </div>
+                </div>
+              ) : null}
 
               <label className="flex flex-col gap-1.5">
                 <span className="text-[12px] font-medium text-foreground">Folder</span>
@@ -496,6 +554,36 @@ function SearchPageInner() {
   );
 }
 
+function searchSingleSession(
+  workspace: Pick<Workspace, "id" | "name">,
+  sessionId: string,
+  events: SessionEvent[],
+  query: string
+): SearchResult[] {
+  const matches = events.filter((event) =>
+    textIncludes(query, sessionId, event.agent_name, event.tool_name, event.content)
+  );
+  if (matches.length === 0) return [];
+
+  const latest = matches.reduce((best, event) => {
+    if (!best.created_at) return event;
+    if (!event.created_at) return best;
+    return new Date(event.created_at) > new Date(best.created_at) ? event : best;
+  }, matches[0]);
+
+  return [
+    {
+      id: `${workspace.id}:${sessionId}`,
+      kind: "Session",
+      title: sessionId,
+      href: `/workspaces/${workspace.id}/sessions/${encodeURIComponent(sessionId)}`,
+      sourceName: workspace.name,
+      detail: sessionEventSnippet(matches[0], query),
+      updatedAt: latest.created_at ?? new Date().toISOString(),
+    },
+  ];
+}
+
 function searchStashes(stashes: SearchableStash[], query: string): SearchResult[] {
   const q = query.toLowerCase();
   return stashes
@@ -547,6 +635,21 @@ function searchSessionsFromEvents(
 function sessionSearchSnippet(event: WorkspaceHistoryEvent, query: string): string {
   const content = event.content.trim();
   if (!content) return `${event.agent_name || "agent"} / ${event.event_type}`;
+
+  const lower = content.toLowerCase();
+  const index = lower.indexOf(query.toLowerCase());
+  if (index === -1) return content.slice(0, 220);
+
+  const start = Math.max(0, index - 80);
+  const end = Math.min(content.length, index + query.length + 140);
+  const prefix = start > 0 ? "..." : "";
+  const suffix = end < content.length ? "..." : "";
+  return `${prefix}${content.slice(start, end)}${suffix}`;
+}
+
+function sessionEventSnippet(event: SessionEvent, query: string): string {
+  const content = event.content.trim();
+  if (!content) return `${event.agent_name || "agent"} session event`;
 
   const lower = content.toLowerCase();
   const index = lower.indexOf(query.toLowerCase());

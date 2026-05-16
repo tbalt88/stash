@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -86,7 +87,26 @@ function StashPageBody({
               {stash.title}
             </h1>
           </div>
-          <AddToWorkspaceButton slug={stash.slug} sourceWorkspaceId={stash.workspace_id} />
+          <div className="flex items-center gap-2">
+            <Link
+              href={`/search?stash=${encodeURIComponent(stash.slug)}`}
+              className="hidden h-8 min-w-[220px] items-center gap-2 rounded-md border border-border bg-base px-2.5 text-[12.5px] text-muted hover:border-[var(--color-brand-300)] hover:bg-raised hover:text-foreground sm:flex"
+              aria-label="Search this Stash"
+            >
+              <svg
+                className="h-3.5 w-3.5 shrink-0"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+              >
+                <circle cx="11" cy="11" r="8" />
+                <path d="m21 21-4.3-4.3" />
+              </svg>
+              <span className="min-w-0 flex-1 truncate">Search this Stash</span>
+            </Link>
+            <AddToWorkspaceButton slug={stash.slug} sourceWorkspaceId={stash.workspace_id} />
+          </div>
         </div>
       </div>
 

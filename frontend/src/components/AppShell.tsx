@@ -8,7 +8,7 @@ import { User, Workspace } from "../lib/types";
 import AppSidebar from "./AppSidebar";
 import CommandPalette from "./CommandPalette";
 import { useShareModal } from "../lib/shareModalContext";
-import { useBreadcrumbsValue } from "./BreadcrumbContext";
+import { type Crumb, useBreadcrumbsValue } from "./BreadcrumbContext";
 import { StashIcon } from "./StashIcons";
 import { getCachedWorkspaces, readCachedWorkspaces } from "../lib/stashNavigationCache";
 
@@ -19,6 +19,13 @@ interface AppShellProps {
 }
 
 const SIDEBAR_KEY = "stash_sidebar_collapsed";
+
+export interface SearchScope {
+  kind: "workspace" | "page" | "folder" | "session" | "stash" | "sessions" | "stashes";
+  label: string;
+  detail: string;
+  params: Record<string, string>;
+}
 
 function readBool(key: string): boolean {
   if (typeof window === "undefined") return false;
@@ -57,6 +64,131 @@ function SidebarToggleIcon({ collapsed }: { collapsed: boolean }) {
       <path d="M9 3v18" />
       {collapsed && <path d="M14 9l3 3-3 3" strokeLinecap="round" strokeLinejoin="round" />}
     </svg>
+  );
+}
+
+function lastCrumbLabel(crumbs: Crumb[] | null): string | null {
+  const label = crumbs?.[crumbs.length - 1]?.label.trim();
+  return label || null;
+}
+
+function inferSearchScope(
+  pathname: string,
+  activeWorkspace: Workspace | undefined,
+  breadcrumbs: Crumb[] | null
+): SearchScope | null {
+  const stashMatch = pathname.match(/^\/stashes\/([^/?#]+)/);
+  if (stashMatch) {
+    const slug = decodeURIComponent(stashMatch[1]);
+    return {
+      kind: "stash",
+      label: "this Stash",
+      detail: "Search only in this Stash",
+      params: { stash: slug },
+    };
+  }
+
+  const sessionMatch = pathname.match(/^\/workspaces\/([^/]+)\/sessions\/([^/?#]+)/);
+  if (sessionMatch) {
+    const sessionId = decodeURIComponent(sessionMatch[2]);
+    return {
+      kind: "session",
+      label: "this session",
+      detail: `Search only in #${sessionId}`,
+      params: { workspace: sessionMatch[1], session: sessionId },
+    };
+  }
+
+  const pageMatch = pathname.match(/^\/workspaces\/([^/]+)\/p\/([^/?#]+)/);
+  if (pageMatch) {
+    return {
+      kind: "page",
+      label: lastCrumbLabel(breadcrumbs) ?? "this page",
+      detail: "Search only in this page",
+      params: { workspace: pageMatch[1], page: pageMatch[2] },
+    };
+  }
+
+  const folderMatch = pathname.match(/^\/workspaces\/([^/]+)\/folders\/([^/?#]+)/);
+  if (folderMatch) {
+    return {
+      kind: "folder",
+      label: lastCrumbLabel(breadcrumbs) ?? "this folder",
+      detail: "Search only in this folder",
+      params: { workspace: folderMatch[1], folder: folderMatch[2] },
+    };
+  }
+
+  const sessionsMatch = pathname.match(/^\/workspaces\/([^/]+)\/sessions(?:\/)?$/);
+  if (sessionsMatch) {
+    return {
+      kind: "sessions",
+      label: "sessions",
+      detail: "Search sessions in this workspace",
+      params: { workspace: sessionsMatch[1], content: "sessions" },
+    };
+  }
+
+  const stashesMatch = pathname.match(/^\/workspaces\/([^/]+)\/stashes(?:\/)?$/);
+  if (stashesMatch) {
+    return {
+      kind: "stashes",
+      label: "Stashes",
+      detail: "Search Stashes in this workspace",
+      params: { workspace: stashesMatch[1], content: "stashes" },
+    };
+  }
+
+  const workspaceMatch = pathname.match(/^\/workspaces\/([^/]+)(?:\/)?$/);
+  if (workspaceMatch) {
+    return {
+      kind: "workspace",
+      label: activeWorkspace?.name ?? "this workspace",
+      detail: "Search this workspace",
+      params: { workspace: workspaceMatch[1] },
+    };
+  }
+
+  return null;
+}
+
+function TopSearchButton({
+  scope,
+  workspace,
+  onClick,
+}: {
+  scope: SearchScope | null;
+  workspace?: Workspace;
+  onClick: () => void;
+}) {
+  const label = scope
+    ? `Search ${scope.label}`
+    : workspace
+      ? `Search ${workspace.name}`
+      : "Search";
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="flex h-7 w-full items-center gap-2 rounded-md border border-border bg-surface px-2.5 text-left text-[12.5px] text-muted shadow-sm hover:border-[var(--color-brand-300)] hover:bg-raised hover:text-foreground"
+      aria-label="Search"
+    >
+      <svg
+        className="h-3.5 w-3.5 shrink-0"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+      >
+        <circle cx="11" cy="11" r="8" />
+        <path d="m21 21-4.3-4.3" />
+      </svg>
+      <span className="min-w-0 flex-1 truncate">{label}</span>
+      <span className="rounded bg-base px-1.5 py-0.5 font-mono text-[10px] text-muted ring-1 ring-border">
+        ⌘K
+      </span>
+    </button>
   );
 }
 
@@ -104,11 +236,12 @@ export default function AppShell({ user, onLogout, children }: AppShellProps) {
   }, []);
 
   const activeWorkspace = workspaces.find((s) => s.id === activeWorkspaceId);
+  const searchScope = inferSearchScope(pathname, activeWorkspace, breadcrumbs);
   const initial = (user.display_name || user.name || "?")[0].toUpperCase();
 
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-base">
-      <header className="sticky top-0 z-30 flex h-11 flex-shrink-0 items-center justify-between border-b border-border bg-base/85 px-3 backdrop-blur-md">
+      <header className="sticky top-0 z-30 grid h-11 flex-shrink-0 grid-cols-[minmax(0,1fr)_minmax(220px,460px)_minmax(0,1fr)] items-center gap-3 border-b border-border bg-base/85 px-3 backdrop-blur-md">
         <div className="flex min-w-0 items-center gap-1.5 text-[13px]">
           <button
             onClick={() => {
@@ -139,7 +272,13 @@ export default function AppShell({ user, onLogout, children }: AppShellProps) {
           <Breadcrumb activeWorkspace={activeWorkspace} pageCrumbs={breadcrumbs} />
         </div>
 
-        <div className="flex items-center gap-1">
+        <TopSearchButton
+          scope={searchScope}
+          workspace={activeWorkspace}
+          onClick={() => setCmdkOpen(true)}
+        />
+
+        <div className="flex items-center justify-end gap-1">
           {activeWorkspaceId && (
             <button
               className="mr-1 rounded-md bg-[var(--color-brand-600)] px-2.5 py-1 text-[12.5px] font-medium text-white hover:bg-[var(--color-brand-700)]"
@@ -172,8 +311,6 @@ export default function AppShell({ user, onLogout, children }: AppShellProps) {
           <AppSidebar
             user={user}
             onLogout={onLogout}
-            cmdkOpen={cmdkOpen}
-            onCmdkOpen={() => setCmdkOpen(true)}
             activeWorkspaceId={activeWorkspaceId}
           />
         )}
@@ -186,6 +323,7 @@ export default function AppShell({ user, onLogout, children }: AppShellProps) {
         open={cmdkOpen}
         onClose={() => setCmdkOpen(false)}
         workspaceId={activeWorkspaceId}
+        searchScope={searchScope}
       />
     </div>
   );
