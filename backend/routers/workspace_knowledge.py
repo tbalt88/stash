@@ -302,7 +302,6 @@ async def _sidebar_etag(workspace_id: UUID, user_id: UUID) -> str:
           (SELECT MAX(GREATEST(finished_at, started_at)) FROM sessions
             WHERE workspace_id = $1)                                              AS s,
           (SELECT MAX(updated_at) FROM stashes WHERE workspace_id = $1)            AS st,
-          (SELECT MAX(created_at) FROM external_stashes WHERE workspace_id = $1)     AS es,
           (SELECT MAX(sm.created_at) FROM stash_members sm
            JOIN stashes s ON s.id = sm.stash_id
            WHERE s.workspace_id = $1 AND sm.user_id = $2)                          AS sm,
@@ -311,7 +310,7 @@ async def _sidebar_etag(workspace_id: UUID, user_id: UUID) -> str:
         workspace_id,
         user_id,
     )
-    raw = "|".join(str(row[k] or "") for k in ("p", "f", "d", "s", "st", "es", "sm", "w"))
+    raw = "|".join(str(row[k] or "") for k in ("p", "f", "d", "s", "st", "sm", "w"))
     return f'W/"{_short_hash(raw)}"'
 
 

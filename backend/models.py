@@ -145,6 +145,7 @@ class StashResponse(BaseModel):
     items: list[StashItem]
     is_external: bool = False
     added_to_workspace_id: UUID | None = None
+    forked_from_stash_id: UUID | None = None
     created_at: datetime
     updated_at: datetime
 

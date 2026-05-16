@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import secrets
@@ -11,6 +12,7 @@ from ..database import get_pool
 from . import files_tree_service, permission_service, storage_service, workspace_service
 
 _SLUG_RE = re.compile(r"[^a-z0-9]+")
+_HTML_TAG_RE = re.compile(r"<[^>]+>")
 
 
 def _slugify(title: str) -> str:
@@ -18,15 +20,25 @@ def _slugify(title: str) -> str:
     return f"{base}-{secrets.token_urlsafe(4)[:6].lower()}"
 
 
+def _strip_html(html: str) -> str:
+    return _HTML_TAG_RE.sub(" ", html)
+
+
+def _content_hash(content: str) -> str:
+    return hashlib.sha256(content.encode()).hexdigest()
+
+
 _STASH_SELECT = (
     "SELECT v.id, v.workspace_id, v.slug, v.title, v.description, v.owner_id, "
     "v.access, "
-    "v.discoverable, v.cover_image_url, v.view_count, v.created_at, v.updated_at FROM stashes v"
+    "v.discoverable, v.cover_image_url, v.view_count, v.forked_from_stash_id, "
+    "v.created_at, v.updated_at FROM stashes v"
 )
 _STASH_COLS = (
     "v.id, v.workspace_id, v.slug, v.title, v.description, v.owner_id, "
     "v.access, "
-    "v.discoverable, v.cover_image_url, v.view_count, v.created_at, v.updated_at"
+    "v.discoverable, v.cover_image_url, v.view_count, v.forked_from_stash_id, "
+    "v.created_at, v.updated_at"
 )
 
 
@@ -46,6 +58,8 @@ async def _is_anonymously_readable(stash: dict) -> bool:
 
 
 def _mark_native(stash: dict) -> dict:
+    if stash.get("forked_from_stash_id"):
+        return _mark_external(stash, stash["workspace_id"])
     stash["is_external"] = False
     stash["added_to_workspace_id"] = None
     return stash
@@ -64,10 +78,10 @@ async def _replace_items(conn, stash_id: UUID, items: list) -> None:
             "INSERT INTO stash_items (stash_id, object_type, object_id, position, label_override) "
             "VALUES ($1, $2, $3, $4, $5)",
             stash_id,
-            item.object_type,
-            item.object_id,
-            item.position if item.position is not None else i,
-            item.label_override,
+            _item_value(item, "object_type"),
+            _item_value(item, "object_id"),
+            _item_value(item, "position") if _item_value(item, "position") is not None else i,
+            _item_value(item, "label_override"),
         )
 
 
@@ -197,7 +211,8 @@ async def create_stash(
                 "INSERT INTO stashes (workspace_id, slug, title, description, owner_id, "
                 "access, discoverable, cover_image_url) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) "
                 "RETURNING id, workspace_id, slug, title, description, owner_id, "
-                "access, discoverable, cover_image_url, view_count, created_at, updated_at",
+                "access, discoverable, cover_image_url, view_count, forked_from_stash_id, "
+                "created_at, updated_at",
                 workspace_id,
                 slug,
                 title,
@@ -432,21 +447,311 @@ async def list_workspace_stashes(
         f"{_STASH_SELECT} WHERE v.workspace_id = $1 ORDER BY updated_at DESC",
         workspace_id,
     )
-    external_rows = await pool.fetch(
-        f"SELECT {_STASH_COLS}, es.workspace_id AS added_to_workspace_id "
-        "FROM external_stashes es "
-        "JOIN stashes v ON v.id = es.stash_id "
-        "WHERE es.workspace_id = $1 "
-        "ORDER BY es.created_at DESC",
+    native = [_mark_native(await _attach_items(dict(row))) for row in native_rows]
+    return await _filter_readable_stashes(native, user_id)
+
+
+async def _fork_page(
+    conn,
+    source_page_id: UUID,
+    *,
+    workspace_id: UUID,
+    folder_id: UUID | None,
+    user_id: UUID,
+) -> UUID:
+    page = await conn.fetchrow(
+        "SELECT name, content_markdown, content_html, content_type, html_layout, metadata "
+        "FROM pages WHERE id = $1",
+        source_page_id,
+    )
+    if not page:
+        raise ValueError("Stash item page not found")
+
+    metadata = dict(page["metadata"] or {})
+    metadata.pop("shared_in_stash_id", None)
+    content_markdown = page["content_markdown"] or ""
+    content_html = page["content_html"] or ""
+    content_type = page["content_type"] or "markdown"
+    active_content = _strip_html(content_html) if content_type == "html" else content_markdown
+    row = await conn.fetchrow(
+        "INSERT INTO pages "
+        "(workspace_id, folder_id, name, content_markdown, content_html, content_type, "
+        "html_layout, content_hash, metadata, created_by, updated_by) "
+        "VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10, $10) "
+        "RETURNING id",
         workspace_id,
+        folder_id,
+        page["name"],
+        content_markdown,
+        content_html,
+        content_type,
+        page["html_layout"] or "responsive",
+        _content_hash(active_content),
+        metadata,
+        user_id,
+    )
+    return row["id"]
+
+
+async def _fork_table(conn, source_table_id: UUID, *, workspace_id: UUID, user_id: UUID) -> UUID:
+    table = await conn.fetchrow(
+        "SELECT name, description, columns, views, embedding_config FROM tables WHERE id = $1",
+        source_table_id,
+    )
+    if not table:
+        raise ValueError("Stash item table not found")
+
+    new_table = await conn.fetchrow(
+        "INSERT INTO tables "
+        "(workspace_id, name, description, columns, views, embedding_config, created_by, updated_by) "
+        "VALUES ($1, $2, $3, $4, $5, $6, $7, $7) RETURNING id",
+        workspace_id,
+        table["name"],
+        table["description"],
+        table["columns"],
+        table["views"],
+        table["embedding_config"],
+        user_id,
+    )
+    rows = await conn.fetch(
+        "SELECT data, row_order FROM table_rows WHERE table_id = $1 ORDER BY row_order",
+        source_table_id,
+    )
+    for row in rows:
+        await conn.execute(
+            "INSERT INTO table_rows (table_id, data, row_order, created_by, updated_by) "
+            "VALUES ($1, $2, $3, $4, $4)",
+            new_table["id"],
+            row["data"],
+            row["row_order"],
+            user_id,
+        )
+    return new_table["id"]
+
+
+async def _fork_file(
+    conn,
+    source_file_id: UUID,
+    *,
+    workspace_id: UUID,
+    folder_id: UUID | None,
+    user_id: UUID,
+) -> UUID:
+    file = await conn.fetchrow(
+        "SELECT name, content_type, size_bytes, storage_key, extracted_text, extraction_status, "
+        "extraction_error, extraction_attempts, linked_table_id FROM files WHERE id = $1",
+        source_file_id,
+    )
+    if not file:
+        raise ValueError("Stash item file not found")
+
+    linked_table_id = None
+    if file["linked_table_id"]:
+        linked_table_id = await _fork_table(
+            conn,
+            file["linked_table_id"],
+            workspace_id=workspace_id,
+            user_id=user_id,
+        )
+
+    new_file = await conn.fetchrow(
+        "INSERT INTO files "
+        "(workspace_id, folder_id, name, content_type, size_bytes, storage_key, uploaded_by, "
+        "extracted_text, extraction_status, extraction_error, extraction_attempts, linked_table_id) "
+        "VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING id",
+        workspace_id,
+        folder_id,
+        file["name"],
+        file["content_type"],
+        file["size_bytes"],
+        file["storage_key"],
+        user_id,
+        file["extracted_text"],
+        file["extraction_status"],
+        file["extraction_error"],
+        file["extraction_attempts"],
+        linked_table_id,
+    )
+    return new_file["id"]
+
+
+async def _fork_folder(
+    conn,
+    source_folder_id: UUID,
+    *,
+    workspace_id: UUID,
+    parent_folder_id: UUID | None,
+    user_id: UUID,
+) -> UUID:
+    folder = await conn.fetchrow("SELECT name FROM folders WHERE id = $1", source_folder_id)
+    if not folder:
+        raise ValueError("Stash item folder not found")
+
+    new_folder = await conn.fetchrow(
+        "INSERT INTO folders (workspace_id, parent_folder_id, name, created_by) "
+        "VALUES ($1, $2, $3, $4) RETURNING id",
+        workspace_id,
+        parent_folder_id,
+        folder["name"],
+        user_id,
     )
 
-    native = [_mark_native(await _attach_items(dict(row))) for row in native_rows]
-    external = [
-        _mark_external(await _attach_items(dict(row)), row["added_to_workspace_id"])
-        for row in external_rows
-    ]
-    return await _filter_readable_stashes(native + external, user_id)
+    child_folders = await conn.fetch(
+        "SELECT id FROM folders WHERE parent_folder_id = $1 ORDER BY name, id",
+        source_folder_id,
+    )
+    for child in child_folders:
+        await _fork_folder(
+            conn,
+            child["id"],
+            workspace_id=workspace_id,
+            parent_folder_id=new_folder["id"],
+            user_id=user_id,
+        )
+
+    pages = await conn.fetch(
+        "SELECT id FROM pages WHERE folder_id = $1 ORDER BY name, id",
+        source_folder_id,
+    )
+    for page in pages:
+        await _fork_page(
+            conn,
+            page["id"],
+            workspace_id=workspace_id,
+            folder_id=new_folder["id"],
+            user_id=user_id,
+        )
+
+    files = await conn.fetch(
+        "SELECT id FROM files WHERE folder_id = $1 ORDER BY name, id",
+        source_folder_id,
+    )
+    for file in files:
+        await _fork_file(
+            conn,
+            file["id"],
+            workspace_id=workspace_id,
+            folder_id=new_folder["id"],
+            user_id=user_id,
+        )
+
+    return new_folder["id"]
+
+
+async def _fork_session(
+    conn,
+    source_session_id: UUID,
+    *,
+    workspace_id: UUID,
+    user_id: UUID,
+) -> UUID:
+    session = await conn.fetchrow(
+        "SELECT workspace_id, session_id, agent_name, cwd, summary, summary_status, files_touched, "
+        "started_at, finished_at, created_by FROM sessions WHERE id = $1",
+        source_session_id,
+    )
+    if not session:
+        raise ValueError("Stash item session not found")
+
+    forked_session_id = f"{session['session_id']}-fork-{source_session_id.hex[:8]}"
+    new_session = await conn.fetchrow(
+        "INSERT INTO sessions "
+        "(workspace_id, session_id, agent_name, cwd, summary, summary_status, files_touched, "
+        "started_at, finished_at, created_by) "
+        "VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, $9, $10) RETURNING id",
+        workspace_id,
+        forked_session_id,
+        session["agent_name"],
+        session["cwd"],
+        session["summary"],
+        session["summary_status"],
+        session["files_touched"],
+        session["started_at"],
+        session["finished_at"],
+        session["created_by"] or user_id,
+    )
+
+    events = await conn.fetch(
+        "SELECT created_by, agent_name, event_type, content, session_id, tool_name, metadata, "
+        "attachments, created_at FROM history_events "
+        "WHERE workspace_id = $1 AND session_id = $2 ORDER BY created_at, id",
+        session["workspace_id"],
+        session["session_id"],
+    )
+    for event in events:
+        await conn.execute(
+            "INSERT INTO history_events "
+            "(workspace_id, created_by, agent_name, event_type, content, session_id, tool_name, "
+            "metadata, attachments, created_at) "
+            "VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9::jsonb, $10)",
+            workspace_id,
+            event["created_by"] or user_id,
+            event["agent_name"],
+            event["event_type"],
+            event["content"],
+            forked_session_id,
+            event["tool_name"],
+            event["metadata"],
+            event["attachments"],
+            event["created_at"],
+        )
+
+    artifacts = await conn.fetch(
+        "SELECT file_path, storage_key, size_bytes, created_at "
+        "FROM session_artifacts WHERE session_id = $1 ORDER BY created_at, id",
+        source_session_id,
+    )
+    for artifact in artifacts:
+        await conn.execute(
+            "INSERT INTO session_artifacts (session_id, file_path, storage_key, size_bytes, created_at) "
+            "VALUES ($1, $2, $3, $4, $5)",
+            new_session["id"],
+            artifact["file_path"],
+            artifact["storage_key"],
+            artifact["size_bytes"],
+            artifact["created_at"],
+        )
+
+    return new_session["id"]
+
+
+async def _fork_object(
+    conn,
+    object_type: str,
+    object_id: UUID,
+    *,
+    workspace_id: UUID,
+    user_id: UUID,
+) -> UUID:
+    if object_type == "folder":
+        return await _fork_folder(
+            conn,
+            object_id,
+            workspace_id=workspace_id,
+            parent_folder_id=None,
+            user_id=user_id,
+        )
+    if object_type == "page":
+        return await _fork_page(
+            conn,
+            object_id,
+            workspace_id=workspace_id,
+            folder_id=None,
+            user_id=user_id,
+        )
+    if object_type == "file":
+        return await _fork_file(
+            conn,
+            object_id,
+            workspace_id=workspace_id,
+            folder_id=None,
+            user_id=user_id,
+        )
+    if object_type == "table":
+        return await _fork_table(conn, object_id, workspace_id=workspace_id, user_id=user_id)
+    if object_type == "session":
+        return await _fork_session(conn, object_id, workspace_id=workspace_id, user_id=user_id)
+    raise ValueError("Unsupported Stash item type")
 
 
 async def add_external_stash(workspace_id: UUID, slug: str, added_by: UUID) -> dict | None:
@@ -460,23 +765,64 @@ async def add_external_stash(workspace_id: UUID, slug: str, added_by: UUID) -> d
     if not await user_can_read(stash["id"], added_by):
         return None
 
-    await pool.execute(
-        "INSERT INTO external_stashes (workspace_id, stash_id, added_by) "
-        "VALUES ($1, $2, $3) ON CONFLICT (workspace_id, stash_id) DO NOTHING",
+    existing = await pool.fetchrow(
+        f"{_STASH_SELECT} WHERE v.workspace_id = $1 AND v.forked_from_stash_id = $2",
         workspace_id,
         stash["id"],
-        added_by,
     )
-    return _mark_external(stash, workspace_id)
+    if existing:
+        return _mark_external(await _attach_items(dict(existing)), workspace_id)
+
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            fork = await conn.fetchrow(
+                "INSERT INTO stashes "
+                "(workspace_id, slug, title, description, owner_id, access, discoverable, "
+                "cover_image_url, forked_from_stash_id) "
+                "VALUES ($1, $2, $3, $4, $5, 'workspace', false, $6, $7) "
+                "RETURNING id, workspace_id, slug, title, description, owner_id, access, "
+                "discoverable, cover_image_url, view_count, forked_from_stash_id, created_at, updated_at",
+                workspace_id,
+                _slugify(stash["title"]),
+                stash["title"],
+                stash["description"],
+                added_by,
+                stash["cover_image_url"],
+                stash["id"],
+            )
+            forked_items = []
+            for item in stash["items"]:
+                forked_id = await _fork_object(
+                    conn,
+                    item["object_type"],
+                    item["object_id"],
+                    workspace_id=workspace_id,
+                    user_id=added_by,
+                )
+                forked_items.append(
+                    {
+                        "object_type": item["object_type"],
+                        "object_id": forked_id,
+                        "position": item["position"],
+                        "label_override": item.get("label_override"),
+                    }
+                )
+            await _replace_items(conn, fork["id"], forked_items)
+
+    return _mark_external(await _attach_items(dict(fork)), workspace_id)
 
 
-async def remove_external_stash(workspace_id: UUID, stash_id: UUID) -> bool:
+async def remove_external_stash(workspace_id: UUID, stash_id: UUID, user_id: UUID) -> bool:
     pool = get_pool()
-    result = await pool.execute(
-        "DELETE FROM external_stashes WHERE workspace_id = $1 AND stash_id = $2",
+    stash = await pool.fetchrow(
+        "SELECT id FROM stashes "
+        "WHERE workspace_id = $1 AND id = $2 AND forked_from_stash_id IS NOT NULL",
         workspace_id,
         stash_id,
     )
+    if not stash or not await user_can_manage(stash_id, user_id):
+        return False
+    result = await pool.execute("DELETE FROM stashes WHERE id = $1", stash_id)
     return result == "DELETE 1"
 
 

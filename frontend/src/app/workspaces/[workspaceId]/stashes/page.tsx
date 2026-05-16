@@ -46,8 +46,8 @@ export default function WorkspaceStashesPage() {
     });
   }, [stashes, query]);
 
-  const internal = useMemo(() => filtered.filter((stash) => !stash.is_external), [filtered]);
-  const external = useMemo(() => filtered.filter((stash) => stash.is_external), [filtered]);
+  const native = useMemo(() => filtered.filter((stash) => !stash.forked_from_stash_id), [filtered]);
+  const forked = useMemo(() => filtered.filter((stash) => stash.forked_from_stash_id), [filtered]);
 
   if (stashes === null) {
     return <div className="flex h-screen items-center justify-center text-muted">Loading…</div>;
@@ -105,25 +105,25 @@ export default function WorkspaceStashesPage() {
           </div>
         ) : (
           <div className="space-y-6">
-            {internal.length > 0 && (
+            {native.length > 0 && (
               <section>
                 <h2 className="mb-2 font-display text-[15px] font-semibold text-foreground">
                   Workspace stashes
                 </h2>
                 <ul className="space-y-2">
-                  {internal.map((stash) => (
+                  {native.map((stash) => (
                     <StashListItem key={stash.id} stash={stash} />
                   ))}
                 </ul>
               </section>
             )}
-            {external.length > 0 && (
+            {forked.length > 0 && (
               <section>
                 <h2 className="mb-2 font-display text-[15px] font-semibold text-foreground">
-                  External stashes
+                  Forked stashes
                 </h2>
                 <ul className="space-y-2">
-                  {external.map((stash) => (
+                  {forked.map((stash) => (
                     <StashListItem key={stash.id} stash={stash} />
                   ))}
                 </ul>
@@ -154,7 +154,7 @@ function StashListItem({ stash }: { stash: WorkspaceStash }) {
             {stash.description || "No description"}
           </div>
           <div className="mt-1 text-[11px] text-muted">
-            {stash.items.length} item{stash.items.length === 1 ? "" : "s"} · {stash.is_external ? "External" : "Workspace"}
+            {stash.items.length} item{stash.items.length === 1 ? "" : "s"} · {stash.forked_from_stash_id ? "Fork" : "Workspace"}
           </div>
         </div>
       </Link>

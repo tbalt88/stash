@@ -744,6 +744,7 @@ export interface CreatedStash {
   items: StashItemSpec[];
   is_external: boolean;
   added_to_workspace_id: string | null;
+  forked_from_stash_id: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -817,6 +818,7 @@ export interface WorkspaceStash {
   items: StashItemSpec[];
   is_external: boolean;
   added_to_workspace_id: string | null;
+  forked_from_stash_id: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -1226,6 +1228,7 @@ export interface WorkspaceSidebarStash {
   access: "workspace" | "private" | "public";
   discoverable: boolean;
   is_external: boolean;
+  forked_from_stash_id: string | null;
   item_count: number;
   items?: StashItemSpec[];
   updated_at: string;

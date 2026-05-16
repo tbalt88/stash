@@ -239,6 +239,21 @@ function NavRow({
   );
 }
 
+function DisabledNavRow({
+  icon,
+  label,
+}: {
+  icon: React.ReactNode;
+  label: string;
+}) {
+  return (
+    <div className="page-row flex cursor-not-allowed items-center gap-2 rounded-md px-2 py-1 text-[13px] text-muted/50">
+      <span className="flex h-4 w-4 items-center justify-center">{icon}</span>
+      <span className="truncate">{label}</span>
+    </div>
+  );
+}
+
 function PinMenu({
   state,
   onClose,
@@ -1181,8 +1196,8 @@ function StashesBlock({
     sessionBySessionId.set(session.session_id, session);
   }
 
-  const internalStashes = stashes.filter((stash) => !stash.is_external);
-  const externalStashes = stashes.filter((stash) => stash.is_external);
+  const nativeStashes = stashes.filter((stash) => !stash.forked_from_stash_id);
+  const forkedStashes = stashes.filter((stash) => stash.forked_from_stash_id);
 
   function renderStashGroup(
     title: string | null,
@@ -1299,11 +1314,11 @@ function StashesBlock({
         <span className="text-[10.5px] text-muted">{stashes.length}</span>
       </summary>
       <div className="ml-3 space-y-0.5 border-l border-border pl-2">
-        {internalStashes.length === 0 && externalStashes.length === 0 ? (
+        {nativeStashes.length === 0 && forkedStashes.length === 0 ? (
           <div className="px-2 py-1 text-[11px] italic text-muted">empty</div>
         ) : null}
-        {renderStashGroup(null, internalStashes, false)}
-        {renderStashGroup("External stashes", externalStashes, false)}
+        {renderStashGroup(null, nativeStashes, false)}
+        {renderStashGroup("Forked stashes", forkedStashes, false)}
       </div>
     </details>
   );
@@ -1331,6 +1346,8 @@ export default function AppSidebar({
       : activeTreeMatch
         ? "files"
         : null;
+  const routeWorkspaceId = pathname.match(/^\/workspaces\/([^/]+)/)?.[1] ?? null;
+  const currentWorkspaceId = activeWorkspaceId ?? routeWorkspaceId;
   const [mine, setMine] = useState<Workspace[]>(cachedWorkspaces?.mine ?? []);
   const [shared, setShared] = useState<Workspace[]>(cachedWorkspaces?.shared ?? []);
   const [openWorkspaces] = useState<Record<string, boolean>>(() =>
@@ -1788,12 +1805,12 @@ export default function AppSidebar({
           </span>
         </button>
         <NavRow
-          href={activeWorkspaceId ? `/workspaces/${activeWorkspaceId}` : "/"}
+          href={currentWorkspaceId ? `/workspaces/${currentWorkspaceId}` : "/"}
           icon={<StashIcon />}
           label="Home"
           active={
-            activeWorkspaceId
-              ? pathname.startsWith(`/workspaces/${activeWorkspaceId}`)
+            currentWorkspaceId
+              ? pathname === `/workspaces/${currentWorkspaceId}`
               : pathname === "/"
           }
         />
@@ -1884,7 +1901,16 @@ export default function AppSidebar({
 
       <div className="mt-6 border-t border-border px-2 py-2">
         <NavRow href="/docs" icon={<HelpIcon />} label="Docs" active={pathname.startsWith("/docs")} />
-        <NavRow href="/settings" icon={<SettingsIcon />} label="Settings" active={pathname.startsWith("/settings")} />
+        {currentWorkspaceId ? (
+          <NavRow
+            href={`/workspaces/${currentWorkspaceId}/settings`}
+            icon={<SettingsIcon />}
+            label="Settings"
+            active={pathname === `/workspaces/${currentWorkspaceId}/settings`}
+          />
+        ) : (
+          <DisabledNavRow icon={<SettingsIcon />} label="Settings" />
+        )}
       </div>
     </aside>
   );

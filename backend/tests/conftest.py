@@ -96,7 +96,6 @@ _TRUNCATE_TABLES = [
     "documents",
     "files",
     "stash_members",
-    "external_stashes",
     "stash_items",
     "stashes",
     "history_events",

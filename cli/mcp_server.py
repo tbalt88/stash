@@ -486,7 +486,7 @@ def stash_get_stash(slug: str) -> str:
 
 @mcp.tool()
 def stash_add_external_stash(slug: str, workspace_id: str = "") -> str:
-    """Add a live external Stash to a workspace."""
+    """Fork an external Stash into a workspace."""
     client, default_ws = _client()
     ws = _require_ws(workspace_id or default_ws)
     return _json(client.add_external_stash(slug, ws))
@@ -494,7 +494,7 @@ def stash_add_external_stash(slug: str, workspace_id: str = "") -> str:
 
 @mcp.tool()
 def stash_remove_external_stash(stash_id: str, workspace_id: str = "") -> str:
-    """Remove a live external Stash from a workspace."""
+    """Remove a forked external Stash from a workspace."""
     client, default_ws = _client()
     ws = _require_ws(workspace_id or default_ws)
     client.remove_external_stash(ws, stash_id)

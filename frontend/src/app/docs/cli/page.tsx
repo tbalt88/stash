@@ -62,7 +62,7 @@ stash stashes create <title> [--workspace ID] [--items JSON] [--public] [--disco
 stash stashes publish <stash_id> [--private|--workspace-access|--discover]
 stash stashes default [stash_id] [--clear] [--workspace ID]
 stash stashes delete <stash_id>
-stash stashes add-external <slug> [--workspace ID]
+stash stashes add-external <slug> [--workspace ID]    # fork into workspace
 stash stashes remove-external <stash_id> [--workspace ID]`}</CodeBlock>
 
       <H3>Tables</H3>

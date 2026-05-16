@@ -97,7 +97,7 @@ export default function AddToWorkspaceButton({ slug, sourceWorkspaceId }: Props)
         <div className="absolute right-0 top-12 z-20 w-[300px] rounded-lg border border-border-subtle bg-surface p-3 text-left shadow-lg">
           {attached ? (
             <div className="space-y-2">
-              <p className="text-[13px] font-medium text-foreground">Added to workspace</p>
+              <p className="text-[13px] font-medium text-foreground">Forked into workspace</p>
               <button
                 type="button"
                 onClick={() => router.push(`/workspaces/${attached.added_to_workspace_id}`)}

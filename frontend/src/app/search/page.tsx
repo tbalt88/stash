@@ -318,7 +318,7 @@ function SearchPageInner() {
                   {searchedStashes.map((stash) => (
                     <option key={stash.id} value={stash.id}>
                       {stash.title}
-                      {stash.is_external ? " (External)" : ""}
+                      {stash.forked_from_stash_id ? " (Fork)" : ""}
                     </option>
                   ))}
                 </select>
@@ -513,7 +513,7 @@ function searchStashes(stashes: SearchableStash[], query: string): SearchResult[
       href: `/stashes/${stash.slug}`,
       sourceName: stash.workspace_name,
       detail:
-        (stash.is_external ? "External Stash" : "Stash") +
+        (stash.forked_from_stash_id ? "Forked Stash" : "Stash") +
         ` / ${stash.description || `${stash.items.length} items`}`,
       updatedAt: stash.updated_at,
     }));

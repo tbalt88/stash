@@ -9,7 +9,6 @@ import {
   getWorkspaceSidebar,
   listStashes,
   listStashMembers,
-  removeExternalStash,
   removeStashMember,
   searchUsers,
   updateStash,
@@ -236,16 +235,13 @@ export default function StashShareModal() {
   };
 
   const onDelete = async (stash: WorkspaceStash) => {
-    const message = stash.is_external
-      ? "Remove this external Stash from the workspace?"
+    const isFork = Boolean(stash.forked_from_stash_id);
+    const message = isFork
+      ? "Delete this forked Stash?"
       : "Delete this Stash? Anyone with the public URL will get a 404.";
     if (!confirm(message)) return;
     try {
-      if (stash.is_external && stash.added_to_workspace_id) {
-        await removeExternalStash(stash.added_to_workspace_id, stash.id);
-      } else {
-        await deleteStash(stash.id);
-      }
+      await deleteStash(stash.id);
       setStashes((v) => v.filter((x) => x.id !== stash.id));
       bumpVersion();
     } catch (e) {
@@ -680,6 +676,9 @@ function ManagedStashCard({
 
   const url = absoluteUrl(`/stashes/${stash.slug}`);
   const isCopied = copiedSlug === stash.slug;
+  const isFork = Boolean(stash.forked_from_stash_id);
+  const canManageItems = !stash.is_external || isFork;
+  const kind = isFork ? "Fork" : "Native";
   const itemLabels = useMemo(() => buildItemLabelMap(rows, sessions), [rows, sessions]);
   const existingKeys = useMemo(() => new Set(stash.items.map(itemKey)), [stash.items]);
   const addableItems = useMemo(() => {
@@ -803,7 +802,7 @@ function ManagedStashCard({
           <div className="truncate text-[13px] font-medium text-foreground">{stash.title}</div>
           <div className="mt-0.5 text-[11px] text-muted">
             {stash.items.length} item{stash.items.length === 1 ? "" : "s"} ·{" "}
-            {stash.is_external ? "External" : "Native"} ·{" "}
+            {kind} ·{" "}
             {stash.discoverable ? "Discover · " : ""}
             {stash.view_count} view{stash.view_count === 1 ? "" : "s"}
           </div>
@@ -831,12 +830,12 @@ function ManagedStashCard({
             onClick={() => onDelete(stash)}
             className="rounded-md border border-border-subtle px-2 py-1 text-[11px] text-muted hover:border-red-400 hover:text-red-400"
           >
-            {stash.is_external ? "Remove" : "Revoke"}
+            {isFork ? "Delete fork" : "Revoke"}
           </button>
         </div>
       </div>
 
-      {!stash.is_external && (
+      {canManageItems && (
         <>
           <button
             onClick={() => setItemsOpen((value) => !value)}

@@ -286,35 +286,7 @@ function WorkspaceNewsfeed({
 
       <div className="grid gap-5 lg:grid-cols-[minmax(0,1.15fr)_minmax(260px,0.85fr)]">
         <div className="space-y-5">
-          <NewsfeedPanel title="Recent sessions">
-            {sessions.length === 0 ? (
-              <EmptyNewsfeedLine text="No sessions yet." />
-            ) : (
-              <div className="flex flex-col gap-2">
-                {sessions.map((session) => (
-                  <Link
-                    key={session.session_id}
-                    href={`/workspaces/${workspaceId}/sessions/${encodeURIComponent(session.session_id)}`}
-                    className="rounded-lg border border-border-subtle bg-base px-3 py-2.5 hover:border-brand hover:bg-[var(--color-brand-50)]"
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <div className="truncate text-[13px] font-medium text-foreground">
-                          {session.title || session.session_id}
-                        </div>
-                        <div className="mt-1 text-[11px] text-muted">
-                          {session.agent_name || "agent"} · {formatRelative(session.last_at)}
-                        </div>
-                      </div>
-                      <span className="shrink-0 font-mono text-[10px] uppercase text-muted">
-                        Session
-                      </span>
-                    </div>
-                  </Link>
-                ))}
-              </div>
-            )}
-          </NewsfeedPanel>
+          <RecentSessionsTable workspaceId={workspaceId} sessions={sessions} />
 
           <NewsfeedPanel title="Stashes">
             {stashes.length === 0 ? (
@@ -332,7 +304,7 @@ function WorkspaceNewsfeed({
                     </div>
                     <div className="mt-1 text-[11px] text-muted">
                       {stash.discoverable ? "Discover · " : ""}
-                      {stash.is_external ? "External · " : ""}
+                      {stash.forked_from_stash_id ? "Fork · " : ""}
                       {stash.items.length} item{stash.items.length === 1 ? "" : "s"}
                     </div>
                   </Link>
@@ -351,6 +323,90 @@ function WorkspaceNewsfeed({
         </NewsfeedPanel>
       </div>
     </section>
+  );
+}
+
+function RecentSessionsTable({
+  workspaceId,
+  sessions,
+}: {
+  workspaceId: string;
+  sessions: NewsfeedSession[];
+}) {
+  const groups = groupSessionsByDate(sessions);
+
+  return (
+    <section>
+      <h3 className="mb-2 font-display text-[15px] font-semibold text-foreground">
+        Recent sessions
+      </h3>
+      <div className="overflow-hidden rounded-lg border border-border bg-surface">
+        {groups.length === 0 ? (
+          <EmptyNewsfeedLine text="No sessions yet." />
+        ) : (
+          groups.map((group) => (
+            <div key={group.label}>
+              <div className="border-b border-border bg-raised/30 px-3 py-1.5 text-[12px] font-medium text-muted">
+                {group.label}
+              </div>
+              {group.sessions.map((session) => (
+                <RecentSessionRow
+                  key={session.session_id}
+                  workspaceId={workspaceId}
+                  session={session}
+                />
+              ))}
+            </div>
+          ))
+        )}
+      </div>
+    </section>
+  );
+}
+
+function RecentSessionRow({
+  workspaceId,
+  session,
+}: {
+  workspaceId: string;
+  session: NewsfeedSession;
+}) {
+  const agent = session.agent_name || "agent";
+  const avatar = avatarFor(agent);
+
+  return (
+    <Link
+      href={`/workspaces/${workspaceId}/sessions/${encodeURIComponent(session.session_id)}`}
+      className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 border-b border-border px-3 py-3 text-[13px] last:border-b-0 hover:bg-[var(--color-brand-50)] sm:grid-cols-[minmax(96px,0.46fr)_minmax(0,1fr)_76px_70px]"
+    >
+      <div className="hidden min-w-0 items-center gap-2 text-muted sm:flex">
+        <span
+          className={
+            "inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[9px] font-semibold " +
+            avatar.bg +
+            " " +
+            avatar.fg
+          }
+        >
+          {initialsFor(agent)}
+        </span>
+        <span className="truncate">{agent}</span>
+      </div>
+      <div className="min-w-0">
+        <div className="truncate font-medium text-foreground">
+          {session.title || session.session_id}
+        </div>
+        <div className="mt-0.5 truncate text-[11px] text-muted sm:hidden">
+          {agent} · {formatRelative(session.last_at)}
+        </div>
+      </div>
+      <span className="hidden w-fit rounded-full border border-border bg-base px-2 py-0.5 text-[11px] text-muted sm:inline-flex">
+        Session
+      </span>
+      <span className="justify-self-end whitespace-nowrap text-[11.5px] text-muted">
+        {formatRelative(session.last_at)}
+      </span>
+    </Link>
   );
 }
 
@@ -377,6 +433,44 @@ function avatarFor(name: string) {
   let h = 5381;
   for (let i = 0; i < name.length; i++) h = (h * 33 + name.charCodeAt(i)) >>> 0;
   return AVATAR_PALETTE[h % AVATAR_PALETTE.length];
+}
+
+function initialsFor(name: string): string {
+  const normalized = name.trim();
+  if (!normalized) return "A";
+  return normalized.slice(0, 2).toUpperCase();
+}
+
+function groupSessionsByDate(sessions: NewsfeedSession[]) {
+  const groups: { label: string; sessions: NewsfeedSession[] }[] = [];
+  for (const session of sessions) {
+    const label = dateGroupLabel(session.last_at);
+    const group = groups.find((item) => item.label === label);
+    if (group) {
+      group.sessions.push(session);
+      continue;
+    }
+    groups.push({ label, sessions: [session] });
+  }
+  return groups;
+}
+
+function dateGroupLabel(iso: string): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "Unknown date";
+
+  const today = new Date();
+  const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  const dateStart = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  const dayDiff = Math.round((todayStart.getTime() - dateStart.getTime()) / 86_400_000);
+
+  if (dayDiff === 0) return "Today";
+  if (dayDiff === 1) return "Yesterday";
+  return date.toLocaleDateString(undefined, {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+  });
 }
 
 function MemberStack({ members }: { members: WorkspaceMember[] }) {

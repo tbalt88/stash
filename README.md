@@ -37,7 +37,7 @@
 
 - Stash installs a hook for your coding agents that automatically uploads session transcripts to a shared store.
 - It exposes a CLI and MCP server that let humans and agents query sessions, write pages, and create Product Stashes.
-- Product Stashes bundle pages and sessions into shareable links. You can publish them publicly, list them in Discover, or add external Stashes to your workspace.
+- Product Stashes bundle pages and sessions into shareable links. You can publish them publicly, list them in Discover, or fork external Stashes into your workspace.
 
 ## Why shared beats individual
 

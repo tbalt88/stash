@@ -1453,7 +1453,7 @@ def stashes_add_external(
     workspace_id: str = typer.Option("", "--workspace", help="Workspace ID; falls back to .stash."),
     as_json: bool = typer.Option(False, "--json"),
 ):
-    """Add a live external Stash to a workspace."""
+    """Fork an external Stash into a workspace."""
     ws_id = workspace_id or _resolve_workspace()
     with _client() as c:
         try:
@@ -1463,7 +1463,7 @@ def stashes_add_external(
     if _use_json(as_json):
         output_json(stash)
         return
-    console.print(f"[green]Added external Stash[/green] '{stash['title']}'")
+    console.print(f"[green]Forked external Stash[/green] '{stash['title']}'")
     console.print(f"  Open it: [cyan]{_web_app_url()}/stashes/{stash['slug']}[/cyan]")
 
 
@@ -1472,14 +1472,14 @@ def stashes_remove_external(
     stash_id: str = typer.Argument(..., help="Stash ID."),
     workspace_id: str = typer.Option("", "--workspace", help="Workspace ID; falls back to .stash."),
 ):
-    """Remove an external Stash from a workspace."""
+    """Remove a forked external Stash from a workspace."""
     ws_id = workspace_id or _resolve_workspace()
     with _client() as c:
         try:
             c.remove_external_stash(ws_id, stash_id)
         except StashError as e:
             _err(e)
-    console.print(f"[green]Removed external Stash[/green] {stash_id}")
+    console.print(f"[green]Removed forked Stash[/green] {stash_id}")
 
 
 # ===========================================================================

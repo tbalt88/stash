@@ -128,9 +128,13 @@ async def remove_external_stash(
 ):
     if not await workspace_service.is_member(workspace_id, current_user["id"]):
         raise HTTPException(status_code=403, detail="Not a workspace member")
-    deleted = await stash_service.remove_external_stash(workspace_id, stash_id)
+    deleted = await stash_service.remove_external_stash(
+        workspace_id,
+        stash_id,
+        current_user["id"],
+    )
     if not deleted:
-        raise HTTPException(status_code=404, detail="External Stash not found")
+        raise HTTPException(status_code=404, detail="Forked Stash not found")
 
 
 @ws_router.get("/{workspace_id}/stashes/objects/{object_type}/{object_id}")

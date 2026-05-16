@@ -141,10 +141,11 @@ async def test_stash_tools_create_list_and_delete(workspace: UUID, _db_pool):
 
 
 @pytest.mark.asyncio
-async def test_external_stash_is_live_workspace_attachment(workspace: UUID, _db_pool):
+async def test_external_stash_is_workspace_fork(workspace: UUID, _db_pool):
     owner_id = await _db_pool.fetchval("SELECT creator_id FROM workspaces WHERE id = $1", workspace)
     target_workspace = uuid4()
     page_id = uuid4()
+    session_row_id = uuid4()
     await _db_pool.execute(
         "INSERT INTO workspaces (id, name, creator_id, invite_code) VALUES ($1, $2, $3, $4)",
         target_workspace,
@@ -166,25 +167,85 @@ async def test_external_stash_is_live_workspace_attachment(workspace: UUID, _db_
         "External Stash source",
         owner_id,
     )
+    await _db_pool.execute(
+        "INSERT INTO sessions (id, workspace_id, session_id, agent_name, created_by) "
+        "VALUES ($1, $2, $3, $4, $5)",
+        session_row_id,
+        workspace,
+        "session-external-source",
+        "assistant",
+        owner_id,
+    )
+    await _db_pool.execute(
+        "INSERT INTO history_events "
+        "(workspace_id, created_by, agent_name, event_type, content, session_id) "
+        "VALUES ($1, $2, $3, $4, $5, $6)",
+        workspace,
+        owner_id,
+        "assistant",
+        "assistant",
+        "Copied session event",
+        "session-external-source",
+    )
     source = await stash_service.create_stash(
         workspace_id=workspace,
         owner_id=owner_id,
-        title="Live source Stash",
+        title="Fork source Stash",
         description="",
         access="public",
         discoverable=False,
         cover_image_url=None,
-        items=[StashItem(object_type="page", object_id=page_id)],
+        items=[
+            StashItem(object_type="page", object_id=page_id, position=0),
+            StashItem(object_type="session", object_id=session_row_id, position=1),
+        ],
     )
 
     attached = await stash_service.add_external_stash(
         target_workspace, source["slug"], added_by=owner_id
     )
-    target_stashes = await stash_service.list_workspace_stashes(target_workspace)
+    target_stashes = await stash_service.list_workspace_stashes(target_workspace, owner_id)
 
     assert attached is not None
-    assert attached["id"] == source["id"]
+    assert attached["id"] != source["id"]
     assert attached["is_external"] is True
     assert attached["added_to_workspace_id"] == target_workspace
-    assert [stash["id"] for stash in target_stashes] == [source["id"]]
-    assert target_stashes[0]["workspace_id"] == workspace
+    assert attached["forked_from_stash_id"] == source["id"]
+    assert [stash["id"] for stash in target_stashes] == [attached["id"]]
+    assert target_stashes[0]["workspace_id"] == target_workspace
+
+    fork_page_id = attached["items"][0]["object_id"]
+    assert fork_page_id != page_id
+    fork_page = await _db_pool.fetchrow(
+        "SELECT workspace_id, name, content_markdown FROM pages WHERE id = $1",
+        fork_page_id,
+    )
+    assert fork_page["workspace_id"] == target_workspace
+    assert fork_page["name"] == "Public source page"
+    assert fork_page["content_markdown"] == "External Stash source"
+
+    await _db_pool.execute(
+        "UPDATE pages SET content_markdown = $1 WHERE id = $2",
+        "Edited source",
+        page_id,
+    )
+    fork_content = await _db_pool.fetchval(
+        "SELECT content_markdown FROM pages WHERE id = $1",
+        fork_page_id,
+    )
+    assert fork_content == "External Stash source"
+
+    fork_session_id = attached["items"][1]["object_id"]
+    assert fork_session_id != session_row_id
+    fork_session = await _db_pool.fetchrow(
+        "SELECT workspace_id, session_id FROM sessions WHERE id = $1",
+        fork_session_id,
+    )
+    assert fork_session["workspace_id"] == target_workspace
+    assert fork_session["session_id"] == f"session-external-source-fork-{session_row_id.hex[:8]}"
+    fork_event = await _db_pool.fetchrow(
+        "SELECT workspace_id, session_id, content FROM history_events WHERE workspace_id = $1",
+        target_workspace,
+    )
+    assert fork_event["session_id"] == fork_session["session_id"]
+    assert fork_event["content"] == "Copied session event"

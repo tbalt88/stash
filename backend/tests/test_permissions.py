@@ -436,7 +436,34 @@ async def test_invited_private_external_stash_can_be_added_to_workspace(client: 
         headers=_auth(collaborator_key),
     )
     assert added.status_code == 201
-    assert added.json()["is_external"] is True
+    fork = added.json()
+    assert fork["is_external"] is True
+    assert fork["workspace_id"] == target_workspace["id"]
+    assert fork["added_to_workspace_id"] == target_workspace["id"]
+    assert fork["forked_from_stash_id"] == stash["id"]
+    assert fork["id"] != stash["id"]
+
+    fork_page_id = fork["items"][0]["object_id"]
+    fork_page = await client.get(
+        f"/api/v1/workspaces/{target_workspace['id']}/pages/{fork_page_id}",
+        headers=_auth(collaborator_key),
+    )
+    assert fork_page.status_code == 200
+    assert fork_page.json()["content_markdown"] == "private"
+
+    update_source = await client.patch(
+        f"/api/v1/workspaces/{source_workspace['id']}/pages/{page['id']}",
+        json={"content": "updated source"},
+        headers=_auth(owner_key),
+    )
+    assert update_source.status_code == 200
+
+    fork_page_after_source_edit = await client.get(
+        f"/api/v1/workspaces/{target_workspace['id']}/pages/{fork_page_id}",
+        headers=_auth(collaborator_key),
+    )
+    assert fork_page_after_source_edit.status_code == 200
+    assert fork_page_after_source_edit.json()["content_markdown"] == "private"
 
 
 @pytest.mark.asyncio

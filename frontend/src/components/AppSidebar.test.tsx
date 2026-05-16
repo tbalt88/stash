@@ -111,6 +111,7 @@ const sidebarWithStash = {
       access: "workspace" as const,
       discoverable: false,
       is_external: false,
+      forked_from_stash_id: null,
       item_count: 1,
       items: [
         {
