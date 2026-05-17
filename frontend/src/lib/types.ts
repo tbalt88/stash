@@ -22,20 +22,12 @@ export interface Workspace {
   description: string;
   creator_id: string;
   invite_code: string;
-  is_public: boolean;
   created_at: string;
   updated_at: string;
   member_count: number | null;
-  summary?: string | null;
-  tags?: string[];
-  category?: string | null;
-  discoverable?: boolean;
-  featured?: boolean;
   cover_image_url?: string | null;
   icon_url?: string | null;
   color_gradient?: string | null;
-  fork_count?: number;
-  forked_from_workspace_id?: string | null;
 }
 
 export interface WorkspaceMember {
@@ -46,7 +38,7 @@ export interface WorkspaceMember {
   joined_at: string;
 }
 
-// --- Wiki: folders (nested) and pages ---
+// --- Files: folders (nested) and pages ---
 
 export type PageContentType = "markdown" | "html";
 
@@ -95,60 +87,6 @@ export interface FolderTreeNode extends Folder {
 export interface WorkspaceTree {
   folders: FolderTreeNode[];
   pages: PageSummary[];
-}
-
-// --- History ---
-
-export interface History {
-  id: string;
-  workspace_id: string | null;
-  name: string;
-  description: string;
-  created_by: string;
-  created_at: string;
-  event_count: number | null;
-}
-
-export interface HistoryEvent {
-  id: string;
-  store_id: string;
-  agent_name: string;
-  event_type: string;
-  session_id: string | null;
-  tool_name: string | null;
-  content: string;
-  metadata: Record<string, unknown>;
-  attachments?: Attachment[] | null;
-  created_at: string;
-  created_by: string | null;
-  created_by_name: string | null;
-}
-
-export interface HistoryWithWorkspace extends History {
-  workspace_name: string | null;
-}
-
-export interface HistoryEventWithContext extends HistoryEvent {
-  store_name: string;
-  workspace_id: string | null;
-  workspace_name: string | null;
-}
-
-// --- Permissions ---
-
-export interface ObjectPermission {
-  object_type: string;
-  object_id: string;
-  visibility: "inherit" | "private" | "public";
-  shares: Share[];
-}
-
-export interface Share {
-  user_id: string;
-  user_name: string;
-  permission: "read" | "write" | "admin";
-  granted_by: string;
-  created_at: string;
 }
 
 // --- Tables ---
@@ -201,8 +139,6 @@ export interface TableWithWorkspace extends Table {
   workspace_name: string | null;
 }
 
-// (No NotebookWithWorkspace anymore — wikis hang directly off the workspace.)
-
 // --- Files ---
 
 export interface FileInfo {
@@ -222,21 +158,6 @@ export interface Attachment {
   file_id: string;
   name: string;
   content_type: string;
-}
-
-// --- Wiki / Page Links ---
-
-export interface PageLink {
-  id: string;
-  name: string;
-  workspace_id: string;
-  link_text: string;
-  created_at: string;
-}
-
-export interface PageGraph {
-  nodes: { id: string; name: string }[];
-  edges: { source: string; target: string; label: string }[];
 }
 
 // --- Dashboard Visualizations ---
@@ -271,26 +192,6 @@ export interface EmbeddingProjection {
   points: EmbeddingProjectionPoint[];
   stats: { total_embeddings: number; projected: number };
   cached: boolean;
-}
-
-// --- Join Requests ---
-
-export interface JoinRequest {
-  id: string;
-  workspace_id: string;
-  user_id: string;
-  status: "pending" | "approved" | "denied";
-  created_at: string;
-  resolved_at: string | null;
-  resolved_by: string | null;
-  user_name: string | null;
-  user_display_name: string | null;
-}
-
-export interface WorkspacePublicInfo {
-  id: string;
-  name: string;
-  member_count: number;
 }
 
 // --- Search ---

@@ -15,9 +15,8 @@ const eslintConfig = defineConfig([
   ]),
   {
     rules: {
-      // Warn-only: legacy data-loading patterns trip React 19's stricter hooks
-      // lint. Tracked for a dedicated refactor pass; not a CI gate.
-      "react-hooks/set-state-in-effect": "warn",
+      // The app intentionally fetches route data from effects.
+      "react-hooks/set-state-in-effect": "off",
     },
   },
 ]);

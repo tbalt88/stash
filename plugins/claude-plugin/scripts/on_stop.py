@@ -6,11 +6,11 @@ responding), not per-session. We only push assistant_message here;
 session_end lives in on_session_end.py.
 """
 
+from adapt import adapt_stop
 from config import DATA_DIR, get_client, get_config, get_stdin_data, is_configured
+
 from stashai.plugin.hooks import stream_assistant_message
 from stashai.plugin.state import load_state
-
-from adapt import adapt_stop
 
 
 def main():

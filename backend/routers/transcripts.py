@@ -20,11 +20,21 @@ from fastapi.responses import PlainTextResponse
 
 from ..auth import get_current_user
 from ..database import get_pool
-from ..services import memory_service, transcript_import, workspace_service
+from ..services import (
+    memory_service,
+    session_service,
+    stash_service,
+    transcript_import,
+    workspace_service,
+)
 
 router = APIRouter(prefix="/api/v1/workspaces/{workspace_id}/transcripts", tags=["transcripts"])
 
 MAX_TRANSCRIPT_SIZE = 50 * 1024 * 1024
+
+
+def _is_jsonl(filename: str | None) -> bool:
+    return bool(filename and filename.lower().endswith(".jsonl"))
 
 
 async def _check_member(workspace_id: UUID, user_id: UUID) -> None:
@@ -39,11 +49,14 @@ async def upload_transcript(
     session_id: str = Form(...),
     agent_name: str = Form(...),
     cwd: str | None = Form(None),
+    default_stash_id: UUID | None = Form(None),
     current_user: dict = Depends(get_current_user),
 ):
     """Parse the uploaded JSONL into history_events rows. No-op if the
     session already has events."""
     await _check_member(workspace_id, current_user["id"])
+    if not _is_jsonl(file.filename):
+        raise HTTPException(status_code=400, detail="Session uploads must be .JSONL files")
     if not session_id.strip():
         raise HTTPException(status_code=400, detail="session_id is required")
 
@@ -58,6 +71,25 @@ async def upload_transcript(
         session_id,
     )
     if existing:
+        if not await memory_service.can_read_session(workspace_id, session_id, current_user["id"]):
+            raise HTTPException(status_code=404, detail="Transcript not found")
+        await session_service.upsert_session(
+            workspace_id,
+            session_id,
+            agent_name=agent_name,
+            cwd=cwd,
+            created_by=current_user["id"],
+        )
+        if default_stash_id:
+            try:
+                await stash_service.add_sessions_to_stash(
+                    stash_id=default_stash_id,
+                    workspace_id=workspace_id,
+                    user_id=current_user["id"],
+                    session_ids=[session_id],
+                )
+            except ValueError as e:
+                raise HTTPException(status_code=400, detail=str(e))
         return {
             "session_id": session_id,
             "imported": 0,
@@ -73,6 +105,16 @@ async def upload_transcript(
             e["metadata"] = {**(e.get("metadata") or {}), "cwd": cwd}
 
     inserted = await memory_service.push_events_batch(workspace_id, current_user["id"], events)
+    if default_stash_id:
+        try:
+            await stash_service.add_sessions_to_stash(
+                stash_id=default_stash_id,
+                workspace_id=workspace_id,
+                user_id=current_user["id"],
+                session_ids=[session_id],
+            )
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
     return {
         "session_id": session_id,
         "imported": len(inserted),
@@ -81,19 +123,19 @@ async def upload_transcript(
 
 
 def _event_role(event_type: str | None) -> str | None:
-    """user/assistant projection for the chat viewer.
+    """user/assistant projection for the session viewer.
 
     tool_use events fold into 'assistant' so the timeline shows tool calls
     inline with assistant turns instead of dropping them silently."""
-    if event_type == "user_message":
+    if event_type in ("user_message", "prompt", "user"):
         return "user"
-    if event_type in ("assistant_message", "tool_use"):
+    if event_type in ("assistant_message", "assistant", "tool_use", "tool_call", "tool_result"):
         return "assistant"
     return None
 
 
 def _events_to_viewer_shape(events: list[dict]) -> list[dict]:
-    """Project history_events rows into the shape the chat viewer renders.
+    """Project history_events rows into the shape the session viewer renders.
     One dict per turn; downstream renderers don't need to know about row
     columns, just role + content + timing."""
     out: list[dict] = []
@@ -123,7 +165,7 @@ async def get_transcript_metadata(
     """Metadata-only response. The frontend follows up with /events for
     the bytes."""
     await _check_member(workspace_id, current_user["id"])
-    events = await memory_service.read_session_events(workspace_id, session_id)
+    events = await memory_service.read_session_events(workspace_id, session_id, current_user["id"])
     if not events:
         raise HTTPException(status_code=404, detail="Transcript not found")
     agent_name = events[0]["agent_name"] or ""
@@ -155,7 +197,7 @@ async def get_transcript_events(
     """Chat-thread turns for a session, in render order. Sourced directly
     from history_events — no JSONL serialization round-trip."""
     await _check_member(workspace_id, current_user["id"])
-    events = await memory_service.read_session_events(workspace_id, session_id)
+    events = await memory_service.read_session_events(workspace_id, session_id, current_user["id"])
     if not events:
         raise HTTPException(status_code=404, detail="Transcript not found")
     return {"events": _events_to_viewer_shape(events)}
@@ -171,7 +213,7 @@ async def export_transcript_jsonl(
     import json as json_mod
 
     await _check_member(workspace_id, current_user["id"])
-    events = await memory_service.read_session_events(workspace_id, session_id)
+    events = await memory_service.read_session_events(workspace_id, session_id, current_user["id"])
     if not events:
         raise HTTPException(status_code=404, detail="Transcript not found")
 

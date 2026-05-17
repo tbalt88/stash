@@ -45,7 +45,7 @@ export default function ContactSalesPage() {
           <p className="mt-6 max-w-[440px] text-[17px] leading-[1.6] text-foreground">
             Tell us a bit about your team and we&apos;ll set up a 30-minute
             walkthrough. We&apos;ll cover how Stash captures every agent run,
-            curates a shared wiki, and answers questions across your team&apos;s
+            keeps a shared files, and answers questions across your team&apos;s
             history.
           </p>
 

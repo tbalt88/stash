@@ -3,10 +3,10 @@
   <a href="https://joinstash.ai"><img src="docs/assets/logo.svg" alt="Stash" width="320" /></a>
 </p>
 
-<h3 align="center">Your team's AI work, compounding.</h3>
+<h3 align="center">Sessions, files, and Product Stashes for agent work.</h3>
 
 <p align="center">
-  Stash is a CLI to search over your team's coding agent sessions. <br> It captures every coding-agent run across your team and turns <br> it into a shared, evolving asset every agent can build on.
+  Stash is a workspace for coding-agent sessions, pages, and publishable Product Stashes. <br> It captures every coding-agent run across your team and makes <br> the important work easy to search, organize, and share.
 </p>
 
 
@@ -25,9 +25,9 @@
 
 <!-- GIF #1 — Visualizations of the workspace knowledge base -->
 <p align="center">
-  <img src="docs/assets/visualizations.gif" alt="Stash visualizations — embedding space, page graph, agent activity" width="900" />
+  <img src="docs/assets/visualizations.gif" alt="Stash visualizations — embedding space, file tree, agent activity" width="900" />
 </p>
-<!-- GIF #2 — The product in action: agent runs `stash history search`, gets a cited answer -->
+<!-- GIF #2 — The product in action: agent runs `stash sessions search`, gets a cited answer -->
 
 <p align="center">
   <img src="docs/assets/product.gif" alt="Stash in action — agent queries shared memory and gets cited answers" width="900" />
@@ -36,8 +36,8 @@
 ## How it works
 
 - Stash installs a hook for your coding agents that automatically uploads session transcripts to a shared store.
-- Then, it exposes a CLI that allows you and your teammates to query this shared store.
-- It automatically builds a [Karpathy-style wiki](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f) on top of the set of session transcripts to make it easier for your coding agents to query its contents.
+- It exposes a CLI and MCP server that let humans and agents query sessions, write pages, and create Product Stashes.
+- Product Stashes bundle pages and sessions into shareable links. You can publish them publicly, list them in Discover, or fork external Stashes into your workspace.
 
 ## Why shared beats individual
 
@@ -50,11 +50,11 @@ With Stash, every agent on the repo has context about every session created from
 - **Don't Be Blocked on Collaborators**: "Why did Sam increase the timeout to 30s? The git history is unhelpful."
 - **Align With Your Team Faster**: "Please add a feedback endpoint to our API" -> Claude: "FYI, Sam decided not to add a feedback endpoint since we want to encourage churned users to hop on a call directly"
 
-> "raw data from a given number of sources is collected, then compiled by an LLM into a .md wiki, then operated on by various CLIs by the LLM to do Q&A and to incrementally enhance the wiki… **I think there is room here for an incredible new product instead of a hacky collection of scripts.**"
+> "raw data from a given number of sources is collected, then compiled by an LLM into a .md knowledge base, then operated on by various CLIs by the LLM to do Q&A and to incrementally enhance it… **I think there is room here for an incredible new product instead of a hacky collection of scripts.**"
 >
 > — Andrej Karpathy, *LLM Knowledge Bases*
 
-**Stash is that product. For teams of coding agents working on the same repo.** Your agents' streamed sessions are the raw data. The wiki is curated automatically by our sleep agent. Everything lands in one workspace your whole team can query. AI usage becomes a shared, evolving asset, not individual effort.
+**Stash is that product. For teams of coding agents working on the same repo.** Your agents' streamed sessions are the raw data. Files is where humans and agents write durable pages. Product Stashes are the publishable bundles you share with collaborators or add back into a workspace. AI usage becomes a shared, searchable asset, not individual effort.
 
 ## Quick Start
 
@@ -105,18 +105,30 @@ Set `EMBEDDING_PROVIDER` to use a third-party embedding provider (otherwise we'l
 
 > Local development? Use `docker compose up -d` (no `-f` flag) — simple setup with hardcoded dev credentials.
 
+### Local seed data
+
+Once PostgreSQL is running, populate a realistic local dataset for UI smoke testing:
+
+```bash
+python scripts/seed_dev_data.py
+```
+
+The seeder creates demo users, one shared workspace, folders/pages, sessions, tables, stashes, and
+sample table/file-collection data when S3 storage is configured. If `S3_*` is not set, file rows are
+skipped with a warning.
+
 ## Privacy
 
 Stash is built for engineering teams working in private repos.
 
-- **No LLM calls from the server.** Curation and search run inside your agent (Claude Code, Cursor, etc.) using the keys it already has. The Stash backend itself makes no model calls.
-- **Permissioned workspaces.** Only invited members can access a workspace. Public visibility is per-resource.
+- **No LLM calls from the server.** Search runs inside your agent (Claude Code, Cursor, etc.) using the keys it already has. The Stash backend itself makes no model calls.
+- **Permissioned workspaces.** Only invited members can access a workspace. Public visibility is controlled by Product Stashes.
 - **Transcripts are opt-in.** If you don't want to share your agent trasncripts, you can give your agent shared *read* access to the workspace's memory without uploading any of your own session data.
   
 ## FAQ
 
 **What LLMs does Stash use?**
-None on the server. Your coding agent is responsible for curation of the knowledge base that gets built on top of uploaded transcripts. There's a hook that's debounced to run at most once every 24 hours which asks your coding agent to look through the knowledge base and add new information, remove duplicates, etc. 
+None on the server. Agents can use the CLI and MCP server to search sessions, write pages, and create Product Stashes, but there is no background page-writing agent in v0.
 
 **Can I use this without Claude Code?**
 Yes. You can use the CLI with anything, and Stash has native plugins for Cursor, Codex, Opencode, Gemini CLI, and more.

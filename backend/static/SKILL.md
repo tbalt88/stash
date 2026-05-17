@@ -1,19 +1,18 @@
-# Stash — Shared Stashes, Skills, and Memory System
+# Stash — Workspaces, Skills, and Memory System
 
-## Concept: Stashes and Skills
+## Concept: Stash Workspaces and Skills
 
-A **stash** is a shared bundle a team works out of. Each stash maps to three
-folders matching how memory works for an agent:
+A **Stash Workspace** is a shared home for agent work. Each workspace has three
+primary surfaces:
 
-- **Sessions** (episodic) — agent transcripts uploaded under
-  `/api/v1/stashes/{id}/transcripts`.
-- **Skills** (procedural) — wiki folders that contain a `SKILL.md`
-  frontmatter file. See below.
-- **Drive** (semantic) — files + non-skill wiki pages.
+- **Sessions** — agent transcripts uploaded under
+  `/api/v1/workspaces/{id}/sessions`.
+- **Files** — folders, markdown pages, HTML pages, uploads, and tables.
+- **Stashes** — shareable bundles of sessions and Files.
 
-To give your agents a skill, **create a wiki folder** in a stash whose immediate
-children include a file named `SKILL.md`. The body of `SKILL.md` starts with
-YAML frontmatter:
+To give your agents a skill, **create a Files folder** in a workspace whose
+immediate children include a file named `SKILL.md`. The body of `SKILL.md`
+starts with YAML frontmatter:
 
 ```yaml
 ---
@@ -29,23 +28,23 @@ The folder may contain any number of supporting `.md` files (`examples.md`,
 `checklist.md`, etc.) — they all become part of the skill payload. Stash
 exposes skills via:
 
-- `GET /api/v1/stashes/{id}/skills` — list skills in a stash
-- `GET /api/v1/stashes/{id}/skills/{name}` — full skill (SKILL.md + siblings)
+- `GET /api/v1/workspaces/{id}/skills` — list skills in a workspace
+- `GET /api/v1/workspaces/{id}/skills/{name}` — full skill (SKILL.md + siblings)
 - MCP: `stash_list_skills`, `stash_read_skill`
 
 This is the same skills convention Claude Code uses, so a skill authored in a
-stash works directly when dropped into any agent's `~/.claude/skills/` folder.
+workspace works directly when dropped into any agent's `~/.claude/skills/` folder.
 
 ## Overview
 Stash is the shared product surface for humans and agents.
 
 It provides:
 - workspace membership and permissions
-- wiki pages organized in nestable folders (markdown content, wiki-style backlinks, semantic search)
+- pages organized in nestable folders
 - tables (typed columns, rows, CSV import/export, semantic row search)
-- structured history/memory events (with file attachments)
+- session events (with file attachments)
 - file uploads (S3-backed; PDF/image text extraction when available)
-- decks (standalone — see deck endpoints)
+- Stashes for publishing sets of pages, sessions, and files
 
 Design boundary:
 - Stash owns persistent shared state and plugin-based memory access
@@ -79,15 +78,15 @@ curl -X POST {{BASE_URL}}/api/v1/workspaces \
   -d '{"name": "Project", "description": "Shared workspace"}'
 ```
 
-### 3. Push a History Event
+### 3. Push a Session Event
 ```bash
-curl -X POST {{BASE_URL}}/api/v1/workspaces/$WS/memory/events \
+curl -X POST {{BASE_URL}}/api/v1/workspaces/$WS/sessions/events \
   -H "Authorization: Bearer $API_KEY" \
   -H "Content-Type: application/json" \
   -d '{"agent_name":"cli","event_type":"note","content":"Hello"}'
 ```
 
-### 4. Create a Wiki Page
+### 4. Create a Page
 ```bash
 curl -X POST {{BASE_URL}}/api/v1/workspaces/$WS/pages/new \
   -H "Authorization: Bearer $API_KEY" \
@@ -124,9 +123,9 @@ scope — pick or create a workspace first.
 | Tables | `/api/v1/workspaces/{ws}/tables` |
 | Rows | `/api/v1/workspaces/{ws}/tables/{t}/rows` |
 | Files | `/api/v1/workspaces/{ws}/files` |
-| Memory / History | `/api/v1/workspaces/{ws}/memory/events` |
+| Session events | `/api/v1/workspaces/{ws}/sessions/events` |
 | Transcripts | `/api/v1/workspaces/{ws}/transcripts` |
-| Aggregate (across the user's workspaces) | `/api/v1/me/{pages,tables,history-events,decks}` |
+| Aggregate (across the user's workspaces) | `/api/v1/me/{pages,tables,session-events}` |
 
 CRUD verbs are standard: `POST` to create, `GET` list/detail, `PATCH` update,
 `DELETE` remove. Semantic search hangs off the workspace
@@ -144,18 +143,15 @@ Use ordinary markdown links for everything:
 
 | Target | Shape |
 |---|---|
-| Another page in the same workspace | `[text](/wiki?ws=<ws>&page=<uuid>)` |
+| Another page in the same workspace | `[text](/workspaces/<ws>/p/<uuid>)` |
 | A file uploaded to the workspace | `[text](/api/v1/workspaces/<ws>/files/<uuid>/download)` |
 | External URL | `[text](https://…)` |
 
 The viewer renders all three with the same style; an `↗` glyph marks
-off-origin URLs. Internal `/wiki?…` and stash absolute URLs are
+off-origin URLs. Internal `/workspaces/<ws>/p/<uuid>` and stash absolute URLs are
 SPA-routed (same tab, no reload); externals open in a new tab.
 
-There is no `[[wiki-link]]` syntax. The TipTap editor offers an
-autocomplete triggered by typing `[[`, but what it inserts is a
-markdown link with the page's id URL — the `[[…]]` brackets never
-reach storage.
+There is no `[[...]]` syntax. Use ordinary markdown links with the page's id URL.
 
 ### Block elements
 
@@ -197,12 +193,12 @@ you'll round-trip cleanly through edit mode:
 3. Don't rely on H4 or deeper headings. Restructure with H3 + bold.
 4. Images need an absolute URL (external or `/files/<id>/download`).
 
-## History / Memory Events
+## Session Events
 
 Events are structured append-only records keyed by `(workspace, agent_name, event_type)`.
 
 ```json
-POST /api/v1/workspaces/{ws}/memory/events
+POST /api/v1/workspaces/{ws}/sessions/events
 {
   "agent_name": "cli",
   "event_type": "note",
@@ -217,7 +213,7 @@ POST /api/v1/workspaces/{ws}/memory/events
 ```
 
 `attachments` entries must reference a previously-uploaded file. The CLI
-wrapper (`stash history push --attach ./path`) uploads and attaches in one step.
+wrapper (`stash sessions push --attach ./path`) uploads and attaches in one step.
 
 Query/search:
 - `GET /events?agent_name=&event_type=&limit=&after=`
@@ -247,9 +243,7 @@ Query/search:
   returns `status` alongside the text so you can distinguish "still
   extracting" (`pending`/`processing`) from "done, no text available"
   (`done` with `text: null`).
-- Attach files to history events rather than embedding base64 — keeps event
+- Attach files to session events rather than embedding base64 — keeps event
   payloads small and allows reuse across events.
-- When authoring page content that links to other pages in the same
-  workspace, use `[[folder/page]]` or `[[a/b/page]]` for nested
-  disambiguation. Unqualified `[[page]]` falls back to the first match
-  by name across the workspace.
+- When authoring page content that links to another page in the same
+  workspace, use the page id URL form: `[text](/workspaces/<ws>/p/<uuid>)`.

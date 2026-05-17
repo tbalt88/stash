@@ -15,9 +15,8 @@ import Image from "@tiptap/extension-image";
 import Placeholder from "@tiptap/extension-placeholder";
 import { Table, TableCell, TableHeader, TableRow } from "@tiptap/extension-table";
 import EditorToolbar from "./EditorToolbar";
-import WikiLink from "./extensions/WikiLink";
 import { Page, FileInfo } from "../../lib/types";
-import { listFiles, WorkspacePageEntry } from "../../lib/api";
+import { listFiles } from "../../lib/api";
 
 const AUTOSAVE_DEBOUNCE_MS = 1500;
 
@@ -25,28 +24,23 @@ export type SaveStatus = "saved" | "dirty" | "saving";
 
 interface MarkdownEditorProps {
   workspaceId: string | null;
-  /** Folder names from workspace root down to the page's folder, for sibling
-   *  detection in `[[` autocomplete. Empty for pages at the workspace root. */
-  folderPath?: string[];
   file: Page;
   onSave: (content: string) => void;
+  confirmSave?: () => boolean;
   onSaveStatusChange?: (status: SaveStatus) => void;
   onRename?: (name: string) => void;
-  /** Every page in the workspace, used to seed `[[` autocomplete. */
-  pageIndex?: WorkspacePageEntry[];
-  /** Called on clicks to same-origin stash routes so the wiki page
+  /** Called on clicks to same-origin stash routes so the page
    *  can SPA-select the target instead of reloading. */
   onNavigateInternal?: (href: string) => void;
 }
 
 export default function MarkdownEditor({
   workspaceId,
-  folderPath = [],
   file,
   onSave,
+  confirmSave,
   onSaveStatusChange,
   onRename,
-  pageIndex = [],
   onNavigateInternal,
 }: MarkdownEditorProps) {
   const [dirty, setDirty] = useState(false);
@@ -128,24 +122,16 @@ export default function MarkdownEditor({
       }),
       Table.configure({
         resizable: false,
-        HTMLAttributes: { class: "wiki-table" },
+        HTMLAttributes: { class: "file-page-table" },
       }),
       TableRow,
       TableHeader,
       TableCell,
-      WikiLink.configure({
-        pageIndex,
-        workspaceId: workspaceId ?? "",
-        context: {
-          folderId: file.folder_id ?? null,
-          folderPath,
-        },
-      }),
       Placeholder.configure({ placeholder: "Start typing..." }),
     ],
     editorProps: {
       attributes: {
-        class: "max-w-none min-h-[200px] focus:outline-none wiki-body",
+        class: "max-w-none min-h-[200px] focus:outline-none file-page-body",
       },
       handleDOMEvents: {
         click: (_view, event) => {
@@ -185,6 +171,7 @@ export default function MarkdownEditor({
       setDirty(true);
       if (saveTimer.current) clearTimeout(saveTimer.current);
       saveTimer.current = setTimeout(() => {
+        if (confirmSave && !confirmSave()) return;
         setSaving(true);
         lastSaved.current = md;
         onSave(md);
@@ -222,13 +209,14 @@ export default function MarkdownEditor({
         if (editor) {
           const md = serializeMarkdown(editor.getJSON(), lastSaved.current);
           if (md !== lastSaved.current) {
+            if (confirmSave && !confirmSave()) return;
             lastSaved.current = md;
             onSave(md);
           }
         }
       }
     };
-  }, [editor, onSave]);
+  }, [confirmSave, editor, onSave]);
 
   // Ctrl/Cmd+S → flush immediately
   useEffect(() => {
@@ -241,6 +229,7 @@ export default function MarkdownEditor({
           saveTimer.current = null;
         }
         const md = serializeMarkdown(editor.getJSON(), lastSaved.current);
+        if (confirmSave && !confirmSave()) return;
         lastSaved.current = md;
         onSave(md);
         setDirty(false);
@@ -248,7 +237,7 @@ export default function MarkdownEditor({
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [editor, onSave]);
+  }, [confirmSave, editor, onSave]);
 
   const [title, setTitle] = useState(file.name);
   const titleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -288,7 +277,7 @@ export default function MarkdownEditor({
               className="w-full border-none bg-transparent font-display text-[40px] font-bold leading-[1.05] tracking-[-0.02em] text-foreground outline-none placeholder:text-muted/40"
             />
           </header>
-          <EditorContent editor={editor} className="wiki-content" />
+          <EditorContent editor={editor} className="file-page-content" />
         </div>
       </div>
     </div>
@@ -311,7 +300,7 @@ function isAbsoluteUrl(url: string): boolean {
 
 function parseInlineMarkdown(text: string): JSONNode[] {
   // Inline grammar, ordered by priority:
-  //   [[wiki link]]            — wiki node
+  //   [[bracketed text]]       — plain text
   //   [![alt](src)](href)      — image inside a link (matched before plain image
   //                              so the outer brackets don't swallow the image)
   //   ![alt](src)              — image node (absolute URLs only)
@@ -331,8 +320,7 @@ function parseInlineMarkdown(text: string): JSONNode[] {
     }
 
     if (match[2] !== undefined) {
-      // Legacy `[[...]]` from old imports — pass through as plain text.
-      // New content uses markdown links with id URLs instead.
+      // The filesystem has no bracket-link syntax; bracket refs stay plain.
       nodes.push({ type: "text", text: match[0] });
     } else if (match[3] !== undefined) {
       // [![alt](src)](href) — linked image. Render as the image (TipTap's

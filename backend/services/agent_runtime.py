@@ -1,15 +1,14 @@
-"""Claude Agent SDK runtime for ask-the-stash, the handoff writer, and the
-session summarizer.
+"""Claude Agent SDK runtime for ask-the-workspace and the session summarizer.
 
 Replaces the old hand-rolled agent harness (`backend/services/llm.py`).
-The eight stash tools are exposed as an in-process MCP server attached to
+The workspace tools are exposed as an in-process MCP server attached to
 every call. Workspace scoping is handled through a ContextVar so each tool
-implementation can find the active stash without threading the id through
-the SDK.
+implementation can find the active Stash Workspace without threading the id
+through the SDK.
 
 Two call shapes:
 - `run_agent(...)` aggregates the full query stream into an `AgentResult`
-  (used by handoff_writer + session_summarizer).
+  (used by the session summarizer).
 - `stream_agent(...)` yields SSE-encoded chunks for the ask endpoint.
 """
 
@@ -36,12 +35,23 @@ from claude_agent_sdk import (
 )
 
 from ..config import settings
-from . import memory_service, skill_service, table_service, wiki_service
+from ..models import StashItem
+from . import (
+    files_tree_service,
+    memory_service,
+    permission_service,
+    skill_service,
+    stash_service,
+    table_service,
+)
 
 logger = logging.getLogger(__name__)
 
 _workspace_ctx: contextvars.ContextVar[UUID | None] = contextvars.ContextVar(
     "stash_workspace_id", default=None
+)
+_user_ctx: contextvars.ContextVar[UUID | None] = contextvars.ContextVar(
+    "stash_user_id", default=None
 )
 
 
@@ -65,15 +75,58 @@ def _require_api_key() -> None:
         raise LLMNotConfiguredError("ANTHROPIC_API_KEY is not set")
 
 
-def _current_stash() -> UUID:
-    ws = _workspace_ctx.get()
-    if ws is None:
+def _current_workspace() -> UUID:
+    workspace_id = _workspace_ctx.get()
+    if workspace_id is None:
         raise RuntimeError("agent_runtime: no workspace_id in context")
-    return ws
+    return workspace_id
+
+
+def _current_user() -> UUID:
+    user_id = _user_ctx.get()
+    if user_id is None:
+        raise RuntimeError("agent_runtime: no user_id in context")
+    return user_id
 
 
 def _text_result(text: str) -> dict:
     return {"content": [{"type": "text", "text": text}]}
+
+
+def _stash_item_to_dict(item: dict) -> dict:
+    return {
+        "object_type": item["object_type"],
+        "object_id": str(item["object_id"]),
+        "position": item["position"],
+        "label_override": item.get("label_override"),
+    }
+
+
+def _stash_to_dict(stash: dict) -> dict:
+    return {
+        "id": str(stash["id"]),
+        "workspace_id": str(stash["workspace_id"]),
+        "slug": stash["slug"],
+        "title": stash["title"],
+        "description": stash["description"],
+        "access": stash["access"],
+        "discoverable": bool(stash["discoverable"]),
+        "view_count": stash["view_count"],
+        "items": [_stash_item_to_dict(item) for item in stash.get("items", [])],
+        "created_at": str(stash["created_at"]),
+        "updated_at": str(stash["updated_at"]),
+    }
+
+
+async def _parse_stash_items(raw_items: list[dict], workspace_id: UUID) -> list[StashItem]:
+    items = [StashItem(**item) for item in raw_items]
+    for item in items:
+        item_workspace_id = await permission_service.resolve_workspace_id(
+            item.object_type, item.object_id
+        )
+        if item_workspace_id != workspace_id:
+            raise ValueError("Stash items must be in the active workspace")
+    return items
 
 
 # --- Tool implementations --------------------------------------------------
@@ -81,7 +134,7 @@ def _text_result(text: str) -> dict:
 
 @tool(
     "search_history",
-    "Full-text search across this stash's agent transcripts and history events.",
+    "Full-text search across this Stash Workspace's agent transcripts and session events.",
     {
         "type": "object",
         "properties": {
@@ -92,9 +145,13 @@ def _text_result(text: str) -> dict:
     },
 )
 async def _search_history(args: dict) -> dict:
-    stash_id = _current_stash()
+    workspace_id = _current_workspace()
+    user_id = _current_user()
     rows = await memory_service.search_workspace_events(
-        stash_id, args.get("query", ""), limit=int(args.get("limit", 10))
+        workspace_id,
+        user_id,
+        args.get("query", ""),
+        limit=int(args.get("limit", 10)),
     )
     out = [
         {
@@ -111,7 +168,7 @@ async def _search_history(args: dict) -> dict:
 
 @tool(
     "read_page",
-    "Read the full markdown body of a wiki page by id.",
+    "Read the full markdown body of a page by id.",
     {
         "type": "object",
         "properties": {"page_id": {"type": "string"}},
@@ -119,8 +176,9 @@ async def _search_history(args: dict) -> dict:
     },
 )
 async def _read_page(args: dict) -> dict:
-    stash_id = _current_stash()
-    page = await wiki_service.get_page(UUID(args["page_id"]), stash_id)
+    workspace_id = _current_workspace()
+    user_id = _current_user()
+    page = await files_tree_service.get_page(UUID(args["page_id"]), workspace_id, user_id)
     if not page:
         return _text_result(json.dumps({"error": "not found"}))
     return _text_result(
@@ -136,7 +194,7 @@ async def _read_page(args: dict) -> dict:
 
 @tool(
     "grep_pages",
-    "Full-text search across wiki pages in this stash. Returns page id + snippet.",
+    "Full-text search across pages in this Stash Workspace. Returns page id + snippet.",
     {
         "type": "object",
         "properties": {
@@ -147,9 +205,13 @@ async def _read_page(args: dict) -> dict:
     },
 )
 async def _grep_pages(args: dict) -> dict:
-    stash_id = _current_stash()
-    rows = await wiki_service.search_pages_fts(
-        stash_id, args.get("pattern", ""), limit=int(args.get("limit", 10))
+    workspace_id = _current_workspace()
+    user_id = _current_user()
+    rows = await files_tree_service.search_pages_fts(
+        workspace_id,
+        args.get("pattern", ""),
+        limit=int(args.get("limit", 10)),
+        user_id=user_id,
     )
     out = [
         {
@@ -164,18 +226,28 @@ async def _grep_pages(args: dict) -> dict:
 
 @tool(
     "list_files",
-    "List files (PDFs, docs, images) uploaded to this stash.",
+    "List files (PDFs, docs, images) uploaded to this Stash Workspace.",
     {"type": "object", "properties": {}},
 )
 async def _list_files(args: dict) -> dict:
     from ..database import get_pool
 
-    stash_id = _current_stash()
+    workspace_id = _current_workspace()
+    user_id = _current_user()
     rows = await get_pool().fetch(
         "SELECT id, name, content_type, size_bytes FROM files WHERE workspace_id = $1 "
         "ORDER BY created_at DESC LIMIT 50",
-        stash_id,
+        workspace_id,
     )
+    visible_rows = []
+    for row in rows:
+        if await permission_service.check_access(
+            "file",
+            row["id"],
+            user_id,
+            workspace_id=workspace_id,
+        ):
+            visible_rows.append(row)
     out = [
         {
             "id": str(r["id"]),
@@ -183,14 +255,14 @@ async def _list_files(args: dict) -> dict:
             "content_type": r["content_type"],
             "size_bytes": r["size_bytes"],
         }
-        for r in rows
+        for r in visible_rows
     ]
     return _text_result(json.dumps(out))
 
 
 @tool(
     "read_file",
-    "Read extracted text content from a stash file by id.",
+    "Read extracted text content from a Stash Workspace file by id.",
     {
         "type": "object",
         "properties": {"file_id": {"type": "string"}},
@@ -200,13 +272,22 @@ async def _list_files(args: dict) -> dict:
 async def _read_file(args: dict) -> dict:
     from ..database import get_pool
 
-    stash_id = _current_stash()
+    workspace_id = _current_workspace()
+    user_id = _current_user()
+    file_id = UUID(args["file_id"])
     row = await get_pool().fetchrow(
         "SELECT name, extracted_text FROM files WHERE id = $1 AND workspace_id = $2",
-        UUID(args["file_id"]),
-        stash_id,
+        file_id,
+        workspace_id,
     )
     if not row:
+        return _text_result(json.dumps({"error": "not found"}))
+    if not await permission_service.check_access(
+        "file",
+        file_id,
+        user_id,
+        workspace_id=workspace_id,
+    ):
         return _text_result(json.dumps({"error": "not found"}))
     return _text_result(
         json.dumps({"name": row["name"], "text": (row["extracted_text"] or "")[:6000]})
@@ -228,8 +309,9 @@ async def _read_file(args: dict) -> dict:
 async def _query_table(args: dict) -> dict:
     from ..database import get_pool
 
-    stash_id = _current_stash()
-    tables = await table_service.list_tables(stash_id)
+    workspace_id = _current_workspace()
+    user_id = _current_user()
+    tables = await table_service.list_tables(workspace_id, user_id)
     match = next(
         (t for t in tables if t.get("name", "").lower() == args.get("table_name", "").lower()),
         None,
@@ -247,12 +329,13 @@ async def _query_table(args: dict) -> dict:
 
 @tool(
     "list_skills",
-    "List skills (folders with SKILL.md frontmatter) defined in this stash.",
+    "List skills (folders with SKILL.md frontmatter) defined in this Stash Workspace.",
     {"type": "object", "properties": {}},
 )
 async def _list_skills(args: dict) -> dict:
-    stash_id = _current_stash()
-    skills = await skill_service.list_skills(stash_id)
+    workspace_id = _current_workspace()
+    user_id = _current_user()
+    skills = await skill_service.list_skills(workspace_id, user_id)
     out = [
         {"name": s["name"], "description": s["description"], "files": s["file_count"]}
         for s in skills
@@ -270,11 +353,156 @@ async def _list_skills(args: dict) -> dict:
     },
 )
 async def _read_skill(args: dict) -> dict:
-    stash_id = _current_stash()
-    skill = await skill_service.read_skill(stash_id, args.get("name", ""))
+    workspace_id = _current_workspace()
+    user_id = _current_user()
+    skill = await skill_service.read_skill(workspace_id, args.get("name", ""), user_id)
     if not skill:
         return _text_result(json.dumps({"error": "not found"}))
     return _text_result(json.dumps({"name": skill["name"], "combined": skill["combined"]}))
+
+
+@tool(
+    "list_stashes",
+    "List Stashes from the active Stash Workspace.",
+    {"type": "object", "properties": {}},
+)
+async def _list_stashes(args: dict) -> dict:
+    workspace_id = _current_workspace()
+    user_id = _current_user()
+    stashes = await stash_service.list_workspace_stashes(workspace_id, user_id)
+    return _text_result(json.dumps([_stash_to_dict(stash) for stash in stashes]))
+
+
+@tool(
+    "create_stash",
+    "Create a Stash from workspace items.",
+    {
+        "type": "object",
+        "properties": {
+            "title": {"type": "string"},
+            "description": {"type": "string", "default": ""},
+            "access": {
+                "type": "string",
+                "enum": ["workspace", "private", "public"],
+                "default": "workspace",
+            },
+            "discoverable": {"type": "boolean", "default": False},
+            "items": {
+                "type": "array",
+                "default": [],
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "object_type": {
+                            "type": "string",
+                            "enum": ["folder", "page", "table", "file", "session"],
+                        },
+                        "object_id": {"type": "string"},
+                        "position": {"type": "integer", "default": 0},
+                        "label_override": {"type": "string"},
+                    },
+                    "required": ["object_type", "object_id"],
+                },
+            },
+        },
+        "required": ["title"],
+    },
+)
+async def _create_stash(args: dict) -> dict:
+    workspace_id = _current_workspace()
+    user_id = _current_user()
+    access = args.get("access") or "workspace"
+    discoverable = bool(args.get("discoverable", False))
+    if discoverable and access != "public":
+        return _text_result(json.dumps({"error": "Discover Stashes must be public"}))
+    items = await _parse_stash_items(args.get("items") or [], workspace_id)
+    stash = await stash_service.create_stash(
+        workspace_id=workspace_id,
+        owner_id=user_id,
+        title=args["title"],
+        description=args.get("description") or "",
+        access=access,
+        discoverable=discoverable,
+        cover_image_url=None,
+        items=items,
+    )
+    return _text_result(json.dumps(_stash_to_dict(stash)))
+
+
+@tool(
+    "update_stash",
+    "Update Stash metadata or replace its item list.",
+    {
+        "type": "object",
+        "properties": {
+            "stash_id": {"type": "string"},
+            "title": {"type": "string"},
+            "description": {"type": "string"},
+            "access": {
+                "type": "string",
+                "enum": ["workspace", "private", "public"],
+            },
+            "discoverable": {"type": "boolean"},
+            "items": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "object_type": {
+                            "type": "string",
+                            "enum": ["folder", "page", "table", "file", "session"],
+                        },
+                        "object_id": {"type": "string"},
+                        "position": {"type": "integer", "default": 0},
+                        "label_override": {"type": "string"},
+                    },
+                    "required": ["object_type", "object_id"],
+                },
+            },
+        },
+        "required": ["stash_id"],
+    },
+)
+async def _update_stash(args: dict) -> dict:
+    workspace_id = _current_workspace()
+    user_id = _current_user()
+    stash_id = UUID(args["stash_id"])
+    if not await stash_service.user_can_manage(stash_id, user_id):
+        return _text_result(json.dumps({"error": "not allowed"}))
+
+    items = None
+    if "items" in args:
+        items = await _parse_stash_items(args.get("items") or [], workspace_id)
+    stash = await stash_service.update_stash(
+        stash_id,
+        user_id,
+        title=args.get("title"),
+        description=args.get("description"),
+        access=args.get("access"),
+        discoverable=args.get("discoverable"),
+        items=items,
+    )
+    if not stash:
+        return _text_result(json.dumps({"error": "not found"}))
+    return _text_result(json.dumps(_stash_to_dict(stash)))
+
+
+@tool(
+    "delete_stash",
+    "Delete a Stash by id.",
+    {
+        "type": "object",
+        "properties": {"stash_id": {"type": "string"}},
+        "required": ["stash_id"],
+    },
+)
+async def _delete_stash(args: dict) -> dict:
+    user_id = _current_user()
+    stash_id = UUID(args["stash_id"])
+    if not await stash_service.user_can_manage(stash_id, user_id):
+        return _text_result(json.dumps({"error": "not allowed"}))
+    deleted = await stash_service.delete_stash(stash_id, user_id)
+    return _text_result(json.dumps({"deleted": deleted, "stash_id": str(stash_id)}))
 
 
 _TOOLS_BY_NAME = {
@@ -286,6 +514,10 @@ _TOOLS_BY_NAME = {
     "query_table": _query_table,
     "list_skills": _list_skills,
     "read_skill": _read_skill,
+    "list_stashes": _list_stashes,
+    "create_stash": _create_stash,
+    "update_stash": _update_stash,
+    "delete_stash": _delete_stash,
 }
 
 
@@ -341,14 +573,14 @@ async def run_agent(
     tier: ModelTier,
     system: str,
     prompt: str,
-    stash_id: UUID,
+    workspace_id: UUID,
+    user_id: UUID | None = None,
     tool_set: tuple[str, ...] = (),
     max_turns: int = 8,
     max_output_tokens: int = 4096,
 ) -> AgentResult:
     """Single-turn or multi-turn agent call. Aggregates the SDK message
-    stream into one result. Used by the handoff writer and the session
-    summarizer (the latter with no tools and max_turns=1)."""
+    stream into one result."""
     _require_api_key()
     model = _model_for(tier)
     options = _build_options(system=system, tool_set=tool_set, model=model, max_turns=max_turns)
@@ -360,7 +592,8 @@ async def run_agent(
     tool_calls = 0
     terminated_by = "end_turn"
 
-    token = _workspace_ctx.set(stash_id)
+    workspace_token = _workspace_ctx.set(workspace_id)
+    user_token = _user_ctx.set(user_id)
     try:
         async for msg in query(prompt=prompt, options=options):
             if isinstance(msg, AssistantMessage):
@@ -388,7 +621,8 @@ async def run_agent(
                 if msg.subtype == "error_max_turns":
                     terminated_by = "max_turns"
     finally:
-        _workspace_ctx.reset(token)
+        _user_ctx.reset(user_token)
+        _workspace_ctx.reset(workspace_token)
 
     return AgentResult(
         text=final_text,
@@ -410,18 +644,19 @@ async def stream_agent(
     tier: ModelTier,
     system: str,
     prompt: str,
-    stash_id: UUID,
+    workspace_id: UUID,
+    user_id: UUID | None = None,
     tool_set: tuple[str, ...],
     max_turns: int = 8,
 ) -> AsyncIterator[str]:
-    """SSE generator for ask-the-stash. Forwards assistant text deltas + a
+    """SSE generator for ask-the-workspace. Forwards assistant text deltas + a
     summary line per tool call."""
     if not settings.ANTHROPIC_API_KEY:
         yield _sse(
             {
                 "type": "text",
                 "delta": (
-                    "Ask-the-stash needs ANTHROPIC_API_KEY set on the backend. "
+                    "Ask-the-workspace needs ANTHROPIC_API_KEY set on the backend. "
                     "Drop a key into backend/.env and restart."
                 ),
             }
@@ -432,7 +667,8 @@ async def stream_agent(
     model = _model_for(tier)
     options = _build_options(system=system, tool_set=tool_set, model=model, max_turns=max_turns)
 
-    token = _workspace_ctx.set(stash_id)
+    workspace_token = _workspace_ctx.set(workspace_id)
+    user_token = _user_ctx.set(user_id)
     try:
         async for msg in query(prompt=prompt, options=options):
             if isinstance(msg, AssistantMessage):
@@ -464,6 +700,7 @@ async def stream_agent(
                 # SDK init/system noise — drop.
                 continue
     finally:
-        _workspace_ctx.reset(token)
+        _user_ctx.reset(user_token)
+        _workspace_ctx.reset(workspace_token)
 
     yield _sse({"type": "end"})

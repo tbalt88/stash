@@ -1,4 +1,4 @@
-"""History router: workspace and personal agent event storage.
+"""Session event router: workspace agent event storage.
 
 Events belong directly to workspaces. No intermediate "store" abstraction.
 Hierarchy: Workspace → Agent → Session → Events
@@ -16,9 +16,9 @@ from ..models import (
     HistoryEventListResponse,
     HistoryEventResponse,
 )
-from ..services import memory_service, workspace_service
+from ..services import memory_service, stash_service, workspace_service
 
-ws_router = APIRouter(prefix="/api/v1/workspaces/{workspace_id}/memory", tags=["memory"])
+ws_router = APIRouter(prefix="/api/v1/workspaces/{workspace_id}/sessions", tags=["sessions"])
 
 
 # --- Shared auth helpers ---
@@ -52,6 +52,16 @@ async def push_ws_event(
         attachments=attachments,
         created_at=req.created_at,
     )
+    if req.default_stash_id and req.session_id:
+        try:
+            await stash_service.add_sessions_to_stash(
+                stash_id=req.default_stash_id,
+                workspace_id=workspace_id,
+                user_id=current_user["id"],
+                session_ids=[req.session_id],
+            )
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
     return HistoryEventResponse(**event)
 
 
@@ -64,6 +74,17 @@ async def push_ws_events_batch(
     await _check_member(workspace_id, current_user["id"])
     events_data = [e.model_dump() for e in req.events]
     events = await memory_service.push_events_batch(workspace_id, current_user["id"], events_data)
+    if req.default_stash_id:
+        session_ids = sorted({event.session_id for event in req.events if event.session_id})
+        try:
+            await stash_service.add_sessions_to_stash(
+                stash_id=req.default_stash_id,
+                workspace_id=workspace_id,
+                user_id=current_user["id"],
+                session_ids=session_ids,
+            )
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
     return [HistoryEventResponse(**e) for e in events]
 
 
@@ -82,6 +103,7 @@ async def query_ws_events(
     await _check_member(workspace_id, current_user["id"])
     events, has_more = await memory_service.query_workspace_events(
         workspace_id,
+        current_user["id"],
         agent_name=agent_name,
         session_id=session_id,
         event_type=event_type,
@@ -104,7 +126,12 @@ async def search_ws_events(
     current_user: dict = Depends(get_current_user),
 ):
     await _check_member(workspace_id, current_user["id"])
-    events = await memory_service.search_workspace_events(workspace_id, q, limit=limit)
+    events = await memory_service.search_workspace_events(
+        workspace_id,
+        current_user["id"],
+        q,
+        limit=limit,
+    )
     return HistoryEventListResponse(
         events=[HistoryEventResponse(**e) for e in events],
         has_more=False,
@@ -118,7 +145,7 @@ async def get_ws_event(
     current_user: dict = Depends(get_current_user),
 ):
     await _check_member(workspace_id, current_user["id"])
-    event = await memory_service.get_workspace_event(event_id, workspace_id)
+    event = await memory_service.get_workspace_event(event_id, workspace_id, current_user["id"])
     if not event:
         raise HTTPException(status_code=404, detail="Event not found")
     return HistoryEventResponse(**event)
@@ -132,6 +159,9 @@ async def delete_ws_agent(
 ):
     """Delete all events for an agent in this workspace."""
     await _check_member(workspace_id, current_user["id"])
+    role = await workspace_service.get_member_role(workspace_id, current_user["id"])
+    if role not in ("owner", "admin"):
+        raise HTTPException(status_code=403, detail="Workspace admin required")
     await memory_service.delete_workspace_agent_events(agent_name, workspace_id)
 
 
@@ -147,7 +177,10 @@ async def list_ws_agent_names(
     pool = get_pool()
     rows = await pool.fetch(
         "SELECT DISTINCT agent_name FROM history_events "
-        "WHERE workspace_id = $1 ORDER BY agent_name",
+        "WHERE workspace_id = $1 "
+        f"AND {memory_service.readable_session_event_condition('history_events', 2)} "
+        "ORDER BY agent_name",
         workspace_id,
+        current_user["id"],
     )
     return {"agent_names": [r["agent_name"] for r in rows]}

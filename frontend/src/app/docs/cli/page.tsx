@@ -5,7 +5,7 @@ export default function CLIPage() {
     <>
       <Title>CLI Reference</Title>
       <Subtitle>
-        A command-line interface for managing Stash from your terminal — push history events
+        A command-line interface for managing Stash from your terminal — push session events
         and manage all resources.
       </Subtitle>
 
@@ -21,7 +21,7 @@ export default function CLIPage() {
       <CodeBlock>{`stash connect`}</CodeBlock>
       <P>
         The wizard saves everything to <Code>~/.stash/config.json</Code>. Once complete,
-        commands like <Code>stash history push</Code> work without extra flags.
+        commands like <Code>stash sessions push</Code> work without extra flags.
       </P>
 
       <H3>Auth commands</H3>
@@ -40,21 +40,30 @@ stash config [key] [value]              # View or update any config value`}</Cod
         CI and scripts.
       </Callout>
 
-      <H3>Wiki</H3>
-      <CodeBlock>{`stash wiki tree [--ws ID]
-stash wiki folders [--ws ID]
-stash wiki create-folder <name> [--ws ID] [--parent FOLDER_ID]
-stash wiki pages [--ws ID] [--all]
-stash wiki add-page <name> [--ws ID] [--folder FOLDER_ID] [--content "..."]
-stash wiki read-page <page_id> [--ws ID]
-stash wiki edit-page <page_id> --content "..."`}</CodeBlock>
+      <H3>Files</H3>
+      <CodeBlock>{`stash files tree [--ws ID]
+stash files folders [--ws ID]
+stash files create-folder <name> [--ws ID] [--parent FOLDER_ID]
+stash files pages [--ws ID] [--all]
+stash files add-page <name> [--ws ID] [--folder FOLDER_ID] [--content "..."]
+stash files read-page <page_id> [--ws ID]
+stash files edit-page <page_id> --content "..."`}</CodeBlock>
 
-      <H3>History</H3>
-      <CodeBlock>{`stash history push <content> [--ws ID] [--agent cli] [--type message]
-stash history query [--ws ID] [--agent X] [--type Y] [-n 50] [--all]
-stash history search <query> [--ws ID] [-n 50]
-stash history agents [--ws ID]
-stash history transcript <session_id> [--ws ID]`}</CodeBlock>
+      <H3>Sessions</H3>
+      <CodeBlock>{`stash sessions push <content> [--ws ID] [--agent cli] [--type message]
+stash sessions query [--ws ID] [--agent X] [--type Y] [-n 50] [--all]
+stash sessions search <query> [--ws ID] [-n 50]
+stash sessions agents [--ws ID]
+stash sessions transcript <session_id> [--ws ID]`}</CodeBlock>
+
+      <H3>Stashes</H3>
+      <CodeBlock>{`stash stashes list [WORKSPACE_ID] [--json]
+stash stashes create <title> [--workspace ID] [--items JSON] [--public] [--discover]
+stash stashes publish <stash_id> [--private|--workspace-access|--discover]
+stash stashes default [stash_id] [--clear] [--workspace ID]
+stash stashes delete <stash_id>
+stash stashes add-external <slug> [--workspace ID]    # fork into workspace
+stash stashes remove-external <stash_id> [--workspace ID]`}</CodeBlock>
 
       <H3>Tables</H3>
       <CodeBlock>{`stash tables list [--ws ID] [--all] [--personal]
@@ -67,7 +76,7 @@ stash tables count <table_id>
 stash tables update-row <table_id> <row_id> <data_json>
 stash tables delete-row <table_id> <row_id>`}</CodeBlock>
 
-      <H3>Files</H3>
+      <H3>Uploaded files</H3>
       <CodeBlock>{`stash files upload <path> [--ws ID]
 stash files list [--ws ID]
 stash files rm <file_id>

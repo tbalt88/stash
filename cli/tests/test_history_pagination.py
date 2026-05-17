@@ -27,7 +27,7 @@ def test_all_events_client_sends_cursor_params() -> None:
 
     assert client.calls == [
         (
-            "/api/v1/me/history-events",
+            "/api/v1/me/session-events",
             "events",
             {
                 "limit": 7,

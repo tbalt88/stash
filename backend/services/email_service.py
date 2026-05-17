@@ -37,50 +37,6 @@ def _send(payload: dict) -> None:
         logger.error("Postmark send failed (%s): %s", res.status_code, res.text)
 
 
-def send_join_request_email(
-    admin_emails: list[str],
-    requester_name: str,
-    workspace_name: str,
-    workspace_id: str,
-) -> None:
-    if not admin_emails:
-        return
-
-    review_url = f"{settings.PUBLIC_URL}/workspaces/{workspace_id}/requests"
-    html = (
-        f"<p><strong>{requester_name}</strong> requested to join "
-        f"<strong>{workspace_name}</strong> on Stash.</p>"
-        f'<p><a href="{review_url}">Review request</a></p>'
-    )
-
-    for admin in admin_emails:
-        _send(
-            {
-                "From": DEFAULT_FROM,
-                "To": admin,
-                "Subject": f"{requester_name} wants to join {workspace_name}",
-                "HtmlBody": html,
-            }
-        )
-
-
-def send_join_approved_email(user_email: str, workspace_name: str) -> None:
-    if not user_email:
-        return
-
-    _send(
-        {
-            "From": DEFAULT_FROM,
-            "To": user_email,
-            "Subject": f"You're in! Welcome to {workspace_name}",
-            "HtmlBody": (
-                f"<p>Your request to join <strong>{workspace_name}</strong> has been approved.</p>"
-                "<p>Next time you run a stash command in the repo, streaming will start automatically.</p>"
-            ),
-        }
-    )
-
-
 def send_welcome_email(user_email: str, first_name: str | None = None) -> None:
     if not user_email:
         return
@@ -111,7 +67,7 @@ def send_welcome_email(user_email: str, first_name: str | None = None) -> None:
 <ul>
   <li>Live docs for an engineering team, kept in sync with a GitHub repo.</li>
   <li>A shared repository of papers and blog posts, so the team stays up to date without re-sending links.</li>
-  <li>A knowledge base for marketing, sales, and content. Every brief, draft, and customer quote in one place.</li>
+  <li>Shared workspace context for marketing, sales, and content. Every brief, draft, and customer quote in one place.</li>
   <li>Onboarding context for new hires: the decisions, dead-ends, and "why we did X" that never made it into the README.</li>
   <li>Customer research and call notes pooled across PM, design, and GTM.</li>
   <li>On-call runbooks and incident retros, queryable by the next person paged.</li>

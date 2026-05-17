@@ -1,18 +1,6 @@
 from pathlib import Path
 
-from cli.main import _is_upload_text_file, _parse_workspace_id
-
-
-def test_parse_workspace_id_accepts_bare_id() -> None:
-    assert _parse_workspace_id("abc-123") == "abc-123"
-
-
-def test_parse_workspace_id_accepts_share_url() -> None:
-    assert _parse_workspace_id("https://joinstash.ai/s/abc-123?tab=wiki") == "abc-123"
-
-
-def test_parse_workspace_id_accepts_workspace_url() -> None:
-    assert _parse_workspace_id("https://joinstash.ai/workspaces/abc-123/requests") == "abc-123"
+from cli.main import _is_upload_text_file
 
 
 def test_upload_text_file_detection() -> None:

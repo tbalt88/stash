@@ -9,7 +9,7 @@ type GraphNode = {
   degree: number;
 };
 
-// Wiki page graph for "memory_reading_store". Positions are hand-chosen to
+// Files file tree for "memory_reading_store". Positions are hand-chosen to
 // resemble a force-directed layout; degree drives node size + color.
 const GRAPH_NODES: GraphNode[] = [
   { id: "pgvector-howto", x: 295, y: 170, degree: 7 },
@@ -21,7 +21,7 @@ const GRAPH_NODES: GraphNode[] = [
   { id: "embedding-models", x: 70, y: 150, degree: 3 },
   { id: "cost-per-1k", x: 100, y: 300, degree: 2 },
   { id: "eval-harness", x: 220, y: 310, degree: 2 },
-  { id: "sleep-time-curation", x: 500, y: 300, degree: 1 },
+  { id: "release-notes", x: 500, y: 300, degree: 1 },
   { id: "index-playbook", x: 510, y: 60, degree: 1 },
   { id: "filter-push-down", x: 520, y: 165, degree: 1 },
 ];
@@ -43,7 +43,7 @@ const GRAPH_EDGES: Array<[string, string]> = [
   ["chunking-strategy", "rerank-patterns"],
   ["chunking-strategy", "eval-harness"],
   ["rerank-patterns", "eval-harness"],
-  ["rerank-patterns", "sleep-time-curation"],
+  ["rerank-patterns", "release-notes"],
   ["recall-at-k", "eval-harness"],
   ["embedding-models", "cost-per-1k"],
 ];
@@ -68,13 +68,13 @@ function PageGraphMock() {
       <div className="flex items-center justify-between border-b border-border-subtle bg-surface px-4 py-3">
         <div className="flex items-center gap-2.5">
           <span className="h-2 w-2 rounded-full bg-brand" />
-          <span className="text-[13px] font-semibold text-ink">page graph</span>
+          <span className="text-[13px] font-semibold text-ink">file tree</span>
           <span className="font-mono text-[11px] text-muted">
-            wiki · reading-store
+            files · reading-store
           </span>
         </div>
         <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-dim">
-          12 pages · 19 backlinks
+          12 pages · 19 Stashes
         </span>
       </div>
       <div className="relative aspect-[600/360] w-full">
@@ -82,11 +82,11 @@ function PageGraphMock() {
           viewBox={`0 0 ${width} ${height}`}
           className="absolute inset-0 h-full w-full"
           role="img"
-          aria-label="Wiki page graph"
+          aria-label="Files file tree"
         >
           <defs>
             <pattern
-              id="graph-grid"
+              id="tree-grid"
               width="40"
               height="40"
               patternUnits="userSpaceOnUse"
@@ -99,7 +99,7 @@ function PageGraphMock() {
               />
             </pattern>
           </defs>
-          <rect width={width} height={height} fill="url(#graph-grid)" />
+          <rect width={width} height={height} fill="url(#tree-grid)" />
 
           <g stroke="rgba(15,23,42,0.22)" strokeWidth="1">
             {GRAPH_EDGES.map(([a, b], i) => {
@@ -185,23 +185,23 @@ export default function VisualizationsShowcase() {
           <p className="max-w-[620px] text-[17px] leading-[1.55] text-dim">
             Every session, page, and table gets embedded into one space. Stash
             plots them so you can see how your team&apos;s knowledge clusters,
-            and which pages have become hubs the graph leans on.
+            and which pages have become hubs the tree leans on.
           </p>
         </div>
         <div className="mt-12 grid grid-cols-1 gap-5 lg:grid-cols-2">
           <div>
             <EmbeddingProjection3D />
             <p className="mt-4 text-[13.5px] leading-[1.6] text-dim">
-              <span className="text-ink">3D embedding projection.</span> History
-              events, notebooks, and tables projected with PCA. Clusters form
+              <span className="text-ink">3D embedding projection.</span> Sessions,
+              pages, and tables projected with PCA. Clusters form
               around topics — not folders.
             </p>
           </div>
           <div>
             <PageGraphMock />
             <p className="mt-4 text-[13.5px] leading-[1.6] text-dim">
-              <span className="text-ink">Wiki page graph.</span> Nodes are
-              pages, edges are <span className="font-mono text-brand">[[backlinks]]</span>.
+              <span className="text-ink">Files file tree.</span> Nodes are
+              pages, edges are <span className="font-mono text-brand">Stashes</span>.
               Orange nodes are the hubs your agents keep citing.
             </p>
           </div>

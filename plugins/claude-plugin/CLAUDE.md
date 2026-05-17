@@ -6,30 +6,24 @@ IMPORTANT: You have the `stash` CLI on your PATH. When the user mentions "Stash"
 
 Most things are plain `stash` CLI subcommands. Always use `--json` for machine-readable output when parsing results.
 
-### Slash commands
-```
-/curate                            # Run the sleep-time wiki curation workflow in this session.
-```
-
 ### Plugin control
 ```bash
 stash connect                      # Interactive setup (auth + workspace + store)
 stash settings                     # Interactive settings page (streaming, scope, endpoint, …)
 stash disconnect                   # Pause event streaming across every plugin
-stash prompts curate               # Print the sleep-time curation prompt to stdout
 ```
 
-### Workspaces, notebooks, history, tables
+### Workspaces, files, history, tables
 
-### Notebooks
+### Files
 ```bash
-stash notebooks list --all                                        # List all notebooks
-stash notebooks list --ws <workspace_id>                          # List workspace notebooks
-stash notebooks create "name" --ws <workspace_id>                 # Create notebook
-stash notebooks pages <notebook_id> --ws <workspace_id>           # List pages
-stash notebooks read-page <notebook_id> <page_id> --ws <ws_id>   # Read a page
-stash notebooks add-page <notebook_id> "title" --ws <ws_id> --content "markdown content"
-stash notebooks edit-page <notebook_id> <page_id> --ws <ws_id> --content "new content"
+stash files tree --ws <workspace_id>                               # Show folders and pages
+stash pages --ws <workspace_id>                              # List workspace pages
+stash pages --all                                            # List shared pages across workspaces
+stash files create-folder "name" --ws <workspace_id>               # Create a folder
+stash files add-page "title" --ws <ws_id> --content "markdown content"
+stash files read-page <page_id> --ws <ws_id>                       # Read a page
+stash files edit-page <page_id> --ws <ws_id> --content "new content"
 ```
 
 ### History (Agent Event Logs)
@@ -49,7 +43,7 @@ stash tables search <table_id> "query" --ws <workspace_id>      # Search rows
 
 ### Workspaces
 ```bash
-stash workspaces list --mine                # List your workspaces
+stash workspaces list                # List your workspaces
 stash workspaces members <workspace_id>     # List workspace members
 ```
 

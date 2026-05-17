@@ -13,7 +13,7 @@ type Props = {
 // Iframes don't auto-size to their content — the parent has to decide the
 // box. Two modes:
 //
-// - "fixed-aspect": locks a 16:9 canvas. Right for slides/decks where the
+// - "fixed-aspect": locks a 16:9 canvas. Right for slides where the
 //   page has an intentional design size.
 // - "responsive": injects a tiny bootstrap into the sandboxed document that
 //   reports its scrollHeight back on every ResizeObserver tick AND on demand

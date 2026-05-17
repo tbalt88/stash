@@ -1,20 +1,30 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
-import { usePathname } from "next/navigation";
+import { useCallback, useEffect, useRef, useState, type DragEvent, type FormEvent, type MouseEvent } from "react";
+import { usePathname, useRouter } from "next/navigation";
 import {
+  createPage,
   type FolderContents,
-  type StashSidebar,
-  type WikiFile,
+  type StashItemSpec,
+  type WorkspaceFile,
+  type WorkspaceFolder,
+  type WorkspacePage,
+  type WorkspaceSidebar,
+  type WorkspaceSidebarSession,
+  uploadFile,
+  uploadTranscript,
 } from "../lib/api";
+import { useShareModal } from "../lib/shareModalContext";
+import { displaySessionUserName } from "../lib/sessionGrouping";
 import {
   getCachedFolderContents,
-  getCachedStashSidebar,
+  getCachedWorkspaceSidebar,
   getCachedWorkspaces,
   readCachedFolderContents,
   readCachedSidebars,
   readCachedWorkspaces,
+  refreshWorkspaceSidebar,
 } from "../lib/stashNavigationCache";
 import type { User, Workspace } from "../lib/types";
 import {
@@ -24,11 +34,11 @@ import {
   FolderIcon,
   HelpIcon,
   PageIcon,
+  PersonIcon,
   SessionsIcon,
   SettingsIcon,
   StashIcon,
   TableIcon,
-  WikiIcon,
 } from "./StashIcons";
 
 interface AppSidebarProps {
@@ -36,53 +46,139 @@ interface AppSidebarProps {
   onLogout?: () => void;
   cmdkOpen?: boolean;
   onCmdkOpen?: () => void;
+  activeWorkspaceId?: string | null;
 }
 
-interface StashNode extends Workspace {
+interface WorkspaceNode extends Workspace {
   shared?: boolean;
 }
 
-type SidebarSection = "sessions" | "wiki";
+type SidebarSection = "sessions" | "files" | "stashes";
+type DropSection = "sessions" | "files";
+type DropStatus = "idle" | "over" | "saving" | "done" | "error";
+type PinMenuState = {
+  kind: PinKind;
+  id: string;
+  label: string;
+  pinned: boolean;
+  x: number;
+  y: number;
+};
 
-const OPEN_STASHES_KEY = "stash_sidebar_open_stashes";
+interface SidebarDropState {
+  key: string | null;
+  status: DropStatus;
+  message: string;
+}
+
+const OPEN_WORKSPACES_KEY = "stash_sidebar_open_workspaces";
 const OPEN_SECTIONS_KEY = "stash_sidebar_open_sections";
+const COLLAPSED_STASHES_KEY = "stash_sidebar_collapsed_stashes";
+const PINNED_FS_KEY = "stash_sidebar_pinned_files_folders";
+const PINNED_FS_LABELS_KEY = "stash_sidebar_pinned_files_folders_labels";
+const PREVIEW_ITEM_LIMIT = 10;
+const EMPTY_PIN_STATE = { folders: [], files: [] };
 
-function readOpenMap(key: string): Record<string, boolean> {
+type PinKind = "folder" | "file";
+type PinnedLabels = {
+  folders: Record<string, string>;
+  files: Record<string, string>;
+};
+
+function readBooleanMap(key: string): Record<string, boolean> {
   if (typeof window === "undefined") return {};
 
   const raw = window.localStorage.getItem(key);
   if (!raw) return {};
 
-  // New format: JSON object with explicit true/false values so we can
-  // distinguish "user closed this" from "no preference yet".
-  if (raw.startsWith("{")) {
-    try {
-      const parsed = JSON.parse(raw);
-      if (parsed && typeof parsed === "object") return parsed;
-    } catch {
-      // fall through to legacy format
-    }
+  try {
+    const parsed = JSON.parse(raw);
+    return typeof parsed === "object" && parsed !== null ? parsed : {};
+  } catch {
+    window.localStorage.removeItem(key);
+    return {};
   }
-
-  // Legacy format: newline-separated IDs (presence = open).
-  return Object.fromEntries(
-    raw
-      .split("\n")
-      .filter(Boolean)
-      .map((id) => [id, true])
-  );
 }
 
-function writeOpenMap(key: string, value: Record<string, boolean>) {
+function writeBooleanMap(key: string, value: Record<string, boolean>) {
   if (typeof window === "undefined") return;
   window.localStorage.setItem(key, JSON.stringify(value));
 }
 
-function sectionKey(stashId: string, section: SidebarSection): string {
-  return `${stashId}:${section}`;
+function readPinnedMap(): Record<string, { folders: string[]; files: string[] }> {
+  if (typeof window === "undefined") return {};
+
+  const raw = window.localStorage.getItem(PINNED_FS_KEY);
+  if (!raw) return {};
+
+  try {
+    const parsed = JSON.parse(raw);
+    return typeof parsed === "object" && parsed !== null ? parsed : {};
+  } catch {
+    window.localStorage.removeItem(PINNED_FS_KEY);
+    return {};
+  }
 }
 
-function ChevronToggle({ onToggle }: { onToggle: () => void }) {
+function writePinnedMap(value: Record<string, { folders: string[]; files: string[] }>) {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(PINNED_FS_KEY, JSON.stringify(value));
+}
+
+function readPinnedLabelMap(): Record<string, PinnedLabels> {
+  if (typeof window === "undefined") return {};
+
+  const raw = window.localStorage.getItem(PINNED_FS_LABELS_KEY);
+  if (!raw) return {};
+
+  try {
+    const parsed = JSON.parse(raw);
+    return typeof parsed === "object" && parsed !== null ? parsed : {};
+  } catch {
+    window.localStorage.removeItem(PINNED_FS_KEY);
+    window.localStorage.removeItem(PINNED_FS_LABELS_KEY);
+    return {};
+  }
+}
+
+function writePinnedLabelMap(value: Record<string, PinnedLabels>) {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(PINNED_FS_LABELS_KEY, JSON.stringify(value));
+}
+
+function sectionKey(workspaceId: string, section: SidebarSection): string {
+  return `${workspaceId}:${section}`;
+}
+
+function stashCollapseKey(workspaceId: string, stashId: string): string {
+  return `${workspaceId}:${stashId}`;
+}
+
+function dropKey(workspaceId: string, section: DropSection): string {
+  return `${workspaceId}:${section}`;
+}
+
+function isFilesDrag(event: DragEvent<HTMLElement>): boolean {
+  return Array.from(event.dataTransfer.types).includes("Files");
+}
+
+function isJsonl(file: File): boolean {
+  return file.name.toLowerCase().endsWith(".jsonl");
+}
+
+function sessionIdFromFile(file: File): string {
+  return file.name.replace(/\.jsonl$/i, "").trim();
+}
+
+function ChevronToggle({
+  open,
+  ariaLabel,
+  onToggle,
+}: {
+  open?: boolean;
+  ariaLabel?: string;
+  onToggle: () => void;
+}) {
   return (
     <button
       type="button"
@@ -92,10 +188,11 @@ function ChevronToggle({ onToggle }: { onToggle: () => void }) {
         onToggle();
       }}
       className="-ml-0.5 flex h-4 w-4 items-center justify-center rounded text-muted hover:bg-base/60 hover:text-foreground"
-      aria-label="Toggle"
+      aria-expanded={open}
+      aria-label={ariaLabel ?? "Toggle"}
     >
       <svg
-        className="chev h-3 w-3"
+        className={"chev h-3 w-3" + (open ? " rotate-90" : "")}
         viewBox="0 0 24 24"
         fill="none"
         stroke="currentColor"
@@ -114,12 +211,16 @@ function NavRow({
   icon,
   label,
   active,
+  onClick,
+  onContextMenu,
   trailing,
 }: {
   href: string;
   icon: React.ReactNode;
   label: string;
   active?: boolean;
+  onClick?: (event: MouseEvent<HTMLAnchorElement>) => void;
+  onContextMenu?: (event: MouseEvent<HTMLAnchorElement>) => void;
   trailing?: React.ReactNode;
 }) {
   return (
@@ -131,6 +232,8 @@ function NavRow({
           ? "bg-[var(--color-brand-50)] text-[var(--color-brand-800)]"
           : "text-dim hover:bg-raised hover:text-foreground")
       }
+      onClick={onClick}
+      onContextMenu={onContextMenu}
     >
       <span className="flex h-4 w-4 items-center justify-center text-[14px]">{icon}</span>
       <span className="flex-1 truncate">{label}</span>
@@ -139,80 +242,283 @@ function NavRow({
   );
 }
 
-function StashTree({
-  stash,
-  spine,
-  open,
-  onOpenChange,
-  openSections,
-  onSectionOpenChange,
-  pathname,
+function DisabledNavRow({
+  icon,
+  label,
 }: {
-  stash: StashNode;
-  spine: StashSidebar | null;
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  openSections: Record<SidebarSection, boolean>;
-  onSectionOpenChange: (section: SidebarSection, open: boolean) => void;
-  pathname: string;
+  icon: React.ReactNode;
+  label: string;
 }) {
-  const isActive = pathname === `/stashes/${stash.id}`;
+  return (
+    <div className="page-row flex cursor-not-allowed items-center gap-2 rounded-md px-2 py-1 text-[13px] text-muted/50">
+      <span className="flex h-4 w-4 items-center justify-center">{icon}</span>
+      <span className="truncate">{label}</span>
+    </div>
+  );
+}
+
+function PinMenu({
+  state,
+  onClose,
+  onTogglePin,
+  menuRef,
+}: {
+      state: PinMenuState;
+      onClose: () => void;
+      onTogglePin: () => void;
+      menuRef: { current: HTMLDivElement | null };
+}) {
+  return (
+    <div
+      ref={menuRef}
+      className="fixed z-40 rounded-md border border-border bg-surface py-1 text-[13px] shadow-lg"
+      style={{ left: state.x, top: state.y }}
+      role="menu"
+    >
+      <button
+        type="button"
+        role="menuitem"
+        onClick={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          onTogglePin();
+          onClose();
+        }}
+        className="w-full px-3 py-1.5 text-left text-foreground hover:bg-raised"
+      >
+        {state.pinned ? `Unpin ${state.label}` : `Pin ${state.label}`}
+      </button>
+    </div>
+  );
+}
+
+function CreatePageModal({
+  onClose,
+  onCreate,
+}: {
+  onClose: () => void;
+  onCreate: (name: string) => Promise<void>;
+}) {
+  const [name, setName] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState("");
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    inputRef.current?.focus();
+  }, []);
+
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    const trimmed = name.trim();
+    if (!trimmed) return;
+
+    setSubmitting(true);
+    setError("");
+    try {
+      await onCreate(trimmed);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to create page");
+      setSubmitting(false);
+    }
+  }
 
   return (
-    <details
-      open={open}
-      onToggle={(e) => onOpenChange(e.currentTarget.open)}
-      className="group/stash"
+    <div
+      className="fixed inset-0 z-[70] flex items-start justify-center bg-black/30 px-4 pt-[18vh]"
+      onClick={onClose}
     >
-      <summary
-        onClick={(e) => e.preventDefault()}
-        className="page-row flex items-center gap-1 rounded-md px-2 py-1 text-[13px] hover:bg-raised"
+      <form
+        onSubmit={submit}
+        onClick={(event) => event.stopPropagation()}
+        className="w-full max-w-sm overflow-hidden rounded-lg border border-border bg-base shadow-2xl"
       >
-        <ChevronToggle onToggle={() => onOpenChange(!open)} />
-        <span className="flex h-4 w-4 items-center justify-center text-[14px] text-muted">
-          <StashIcon />
-        </span>
-        <Link
-          href={`/stashes/${stash.id}`}
-          className={
-            "flex-1 truncate font-medium " +
-            (isActive ? "text-[var(--color-brand-800)]" : "text-foreground")
-          }
-        >
-          {stash.name}
-        </Link>
-      </summary>
-      <div className="ml-3 space-y-0.5 border-l border-border pl-2">
-        <details
-          open={openSections.sessions}
-          onToggle={(e) => onSectionOpenChange("sessions", e.currentTarget.open)}
-          className="text-[13px]"
+        <div className="border-b border-border px-4 py-3">
+          <h2 className="font-display text-[17px] font-semibold text-foreground">
+            New page
+          </h2>
+          <p className="mt-1 text-[12px] text-muted">
+            Name the page before adding it to Files.
+          </p>
+        </div>
+        <div className="p-4">
+          <input
+            ref={inputRef}
+            value={name}
+            onChange={(event) => setName(event.target.value)}
+            placeholder="Untitled"
+            className="w-full rounded-md border border-border bg-surface px-3 py-2 text-[14px] text-foreground outline-none placeholder:text-muted focus:border-[var(--color-brand-400)]"
+          />
+          {error ? (
+            <div className="mt-3 rounded-md border border-red-300 bg-red-50 px-3 py-2 text-[12px] text-red-700">
+              {error}
+            </div>
+          ) : null}
+          <div className="mt-4 flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-md border border-border px-3 py-1.5 text-[13px] text-muted hover:bg-raised hover:text-foreground"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={submitting || !name.trim()}
+              className="rounded-md bg-[var(--color-brand-600)] px-3 py-1.5 text-[13px] font-medium text-white hover:bg-[var(--color-brand-700)] disabled:opacity-50"
+            >
+              {submitting ? "Creating..." : "Create"}
+            </button>
+          </div>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+function SectionAddButton({
+  label,
+  onClick,
+}: {
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      title={label}
+      onClick={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        onClick();
+      }}
+      className="ml-1 flex h-5 w-5 items-center justify-center rounded-md border border-border-subtle bg-base text-[13px] font-medium text-muted hover:border-[var(--color-brand-300)] hover:bg-[var(--color-brand-50)] hover:text-[var(--color-brand-800)]"
+    >
+      +
+    </button>
+  );
+}
+
+function WorkspaceTree({
+  workspace,
+  spine,
+  showName,
+  pathname,
+  openSections,
+  onSectionOpenChange,
+  dropState,
+  onDropFiles,
+  onDropHover,
+  pinnedFolders,
+  pinnedFiles,
+  pinnedLabels,
+  collapsedStashes,
+  onPinToggle,
+  onUnpinAll,
+  onStashCollapsedChange,
+  onAddSession,
+  onAddPage,
+  onAddStash,
+}: {
+  workspace: WorkspaceNode;
+  spine: WorkspaceSidebar | null;
+  showName?: boolean;
+  pathname: string;
+  openSections: Record<SidebarSection, boolean>;
+  onSectionOpenChange: (section: SidebarSection, open: boolean) => void;
+  dropState: SidebarDropState;
+  onDropFiles: (workspaceId: string, section: DropSection, files: FileList) => void;
+  onDropHover: (workspaceId: string, section: DropSection, active: boolean) => void;
+  pinnedFolders: string[];
+  pinnedFiles: string[];
+  pinnedLabels: PinnedLabels;
+  collapsedStashes: Record<string, boolean>;
+  onPinToggle: (kind: PinKind, workspaceId: string, id: string, label?: string) => void;
+  onUnpinAll: (workspaceId: string) => void;
+  onStashCollapsedChange: (workspaceId: string, stashId: string, collapsed: boolean) => void;
+  onAddSession: (workspaceId: string) => void;
+  onAddPage: (workspaceId: string) => void;
+  onAddStash: (workspaceId: string) => void;
+}) {
+  const dropProps = (section: DropSection) => ({
+    onDragOver(event: DragEvent<HTMLElement>) {
+      if (!isFilesDrag(event)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      event.dataTransfer.dropEffect = "copy";
+      onDropHover(workspace.id, section, true);
+    },
+    onDragLeave(event: DragEvent<HTMLElement>) {
+      if (!isFilesDrag(event)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      onDropHover(workspace.id, section, false);
+    },
+    onDrop(event: DragEvent<HTMLElement>) {
+      if (!isFilesDrag(event)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      onDropFiles(workspace.id, section, event.dataTransfer.files);
+    },
+  });
+  const sessionsDrop = dropState.key === dropKey(workspace.id, "sessions") ? dropState : null;
+
+  return (
+      <div className="space-y-0.5">
+      {showName && (
+        <NavRow
+          href={`/workspaces/${workspace.id}`}
+          icon={<StashIcon />}
+          label={workspace.name}
+          active={pathname === `/workspaces/${workspace.id}`}
+        />
+      )}
+      <details
+        open={openSections.sessions}
+        onToggle={(e) => onSectionOpenChange("sessions", e.currentTarget.open)}
+        className="text-[13px]"
+        {...dropProps("sessions")}
         >
           <summary
-            onClick={(e) => e.preventDefault()}
-            className="page-row flex items-center gap-1 rounded-md px-2 py-1 hover:bg-raised"
+            onClick={(e) => {
+              e.preventDefault();
+              onSectionOpenChange("sessions", true);
+            }}
+            className={
+              "page-row flex items-center gap-1 rounded-md px-2 py-1 hover:bg-raised " +
+              (sessionsDrop?.status === "over"
+                ? "bg-[var(--color-brand-50)] text-[var(--color-brand-800)] ring-1 ring-[var(--color-brand-300)]"
+                : "")
+            }
           >
             <ChevronToggle
+              open={openSections.sessions}
               onToggle={() => onSectionOpenChange("sessions", !openSections.sessions)}
             />
-            <span className="flex h-4 w-4 items-center justify-center text-[14px] text-muted">
-              <SessionsIcon />
-            </span>
             <Link
-              href={`/stashes/${stash.id}/sessions`}
+              href={`/workspaces/${workspace.id}/sessions`}
+              onClick={(event) => {
+                event.stopPropagation();
+                onSectionOpenChange("sessions", true);
+              }}
               className="flex-1 truncate font-medium text-foreground hover:text-[var(--color-brand-700)]"
             >
               Sessions
             </Link>
             <span className="text-[10.5px] text-muted">{spine?.sessions.length ?? 0}</span>
+            <SectionAddButton
+              label="Add session"
+              onClick={() => onAddSession(workspace.id)}
+            />
           </summary>
-          <div className="ml-3 space-y-0.5 border-l border-border pl-2">
-            {spine?.sessions.slice(0, 8).map((s) => (
-              <NavRow
-                key={s.session_id}
-                href={`/stashes/${stash.id}/sessions/${encodeURIComponent(s.session_id)}`}
-                icon={<span className="text-muted">#</span>}
-                label={s.session_id.length > 22 ? s.session_id.slice(0, 22) + "…" : s.session_id}
+        <div className="ml-3 space-y-0.5 border-l border-border pl-2">
+            {sessionsDrop?.message ? <DropMessage state={sessionsDrop} /> : null}
+            {groupSidebarSessions(spine?.sessions ?? []).map((group) => (
+              <SessionTreeDetails
+                key={group.dateKey}
+                workspaceId={workspace.id}
+                group={group}
               />
             ))}
             {(!spine || spine.sessions.length === 0) && (
@@ -221,14 +527,32 @@ function StashTree({
           </div>
         </details>
 
-        <WikiBlock
-          stash={stash}
+        <FilesBlock
+          workspace={workspace}
           spine={spine}
-          open={openSections.wiki}
-          onOpenChange={(nextOpen) => onSectionOpenChange("wiki", nextOpen)}
+          open={openSections.files}
+          onOpenChange={(nextOpen) => onSectionOpenChange("files", nextOpen)}
+          dropState={dropState}
+          dropProps={dropProps("files")}
+          pinnedFolders={pinnedFolders}
+          pinnedFiles={pinnedFiles}
+          pinnedLabels={pinnedLabels}
+          onPinToggle={(kind, id, label) => onPinToggle(kind, workspace.id, id, label)}
+          onUnpinAll={() => onUnpinAll(workspace.id)}
+          onAddPage={() => onAddPage(workspace.id)}
         />
-      </div>
-    </details>
+        <StashesBlock
+          workspace={workspace}
+          spine={spine}
+          open={openSections.stashes}
+          onOpenChange={(nextOpen) => onSectionOpenChange("stashes", nextOpen)}
+          collapsedStashes={collapsedStashes}
+          onStashCollapsedChange={(stashId, collapsed) =>
+            onStashCollapsedChange(workspace.id, stashId, collapsed)
+          }
+          onAddStash={() => onAddStash(workspace.id)}
+        />
+    </div>
   );
 }
 
@@ -239,18 +563,318 @@ function fileIconClass(contentType: string | undefined): string {
   return "text-muted";
 }
 
-function FileNavRow({
-  stashId,
-  file,
+function sessionLabelForSidebar(session: WorkspaceSidebarSession): string {
+  const raw = (session.title || session.session_id).trim();
+  return raw.length > 26 ? `${raw.slice(0, 26)}…` : raw;
+}
+
+function displaySidebarSessionUser(raw: string | null | undefined): string {
+  return displaySessionUserName(raw, "Unknown user");
+}
+
+type SessionTreeDayGroup = {
+  dateKey: string;
+  label: string;
+  total: number;
+  users: Array<{ user: string; sessions: WorkspaceSidebarSession[] }>;
+};
+
+const UNKNOWN_SESSION_DATE = "Unknown date";
+
+function sessionDateKey(iso: string | null | undefined): string {
+  if (!iso) return UNKNOWN_SESSION_DATE;
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return UNKNOWN_SESSION_DATE;
+  return date.toISOString().slice(0, 10);
+}
+
+function formatSessionDateKey(key: string): string {
+  if (key === UNKNOWN_SESSION_DATE) return key;
+  return new Date(`${key}T12:00:00`).toLocaleDateString(undefined, {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+  });
+}
+
+function groupSidebarSessions(sessions: WorkspaceSidebarSession[]): SessionTreeDayGroup[] {
+  const byDate = new Map<string, Map<string, WorkspaceSidebarSession[]>>();
+  for (const session of sessions) {
+    const dateKey = sessionDateKey(session.last_at || session.updated_at);
+    const user = displaySidebarSessionUser(session.agent_name);
+    const users = byDate.get(dateKey) ?? new Map<string, WorkspaceSidebarSession[]>();
+    users.set(user, [...(users.get(user) ?? []), session]);
+    byDate.set(dateKey, users);
+  }
+
+  return Array.from(byDate.entries())
+    .sort(([a], [b]) => {
+      if (a === UNKNOWN_SESSION_DATE) return 1;
+      if (b === UNKNOWN_SESSION_DATE) return -1;
+      return b.localeCompare(a);
+    })
+    .map(([dateKey, usersByName]) => {
+      const users = Array.from(usersByName.entries())
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([user, sessionRows]) => ({
+          user,
+          sessions: sessionRows,
+        }));
+      const total = users.reduce((sum, bucket) => sum + bucket.sessions.length, 0);
+      return {
+        dateKey,
+        label: formatSessionDateKey(dateKey),
+        total,
+        users,
+      };
+    });
+}
+
+function SessionTreeDetails({
+  workspaceId,
+  group,
 }: {
-  stashId: string;
-  file: Pick<WikiFile, "id" | "name" | "content_type" | "linked_table_id">;
+  workspaceId: string;
+  group: SessionTreeDayGroup;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <details open={open} className="text-[12.5px]">
+      <summary
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          setOpen(true);
+        }}
+        className="page-row flex items-center gap-1 rounded-md px-2 py-1 hover:bg-raised"
+      >
+        <ChevronToggle open={open} onToggle={() => setOpen((current) => !current)} />
+        <span className="flex h-4 w-4 items-center justify-center text-[14px] text-muted">
+          <FolderIcon />
+        </span>
+        <span className="flex-1 truncate text-foreground">{group.label}</span>
+        <span className="text-[10.5px] text-muted">{group.total}</span>
+      </summary>
+      <div className="ml-2.5 space-y-0.5 border-l border-border pl-2">
+        {group.users.length === 0 ? (
+          <div className="px-2 py-1 text-[11px] italic text-muted">no sessions</div>
+        ) : (
+          group.users.map((bucket) => (
+            <SessionUserFolder
+              key={`${group.dateKey}-${bucket.user}`}
+              workspaceId={workspaceId}
+              bucket={bucket}
+            />
+          ))
+        )}
+      </div>
+    </details>
+  );
+}
+
+function SessionUserFolder({
+  workspaceId,
+  bucket,
+}: {
+  workspaceId: string;
+  bucket: { user: string; sessions: WorkspaceSidebarSession[] };
+}) {
+  const [open, setOpen] = useState(true);
+  return (
+    <details open={open} className="text-[12px]">
+      <summary
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          setOpen(true);
+        }}
+        className="page-row flex items-center gap-1 rounded-md px-2 py-0.5 hover:bg-raised"
+      >
+        <ChevronToggle open={open} onToggle={() => setOpen((current) => !current)} />
+        <span className="flex h-4 w-4 items-center justify-center text-[13px] text-muted">
+          <PersonIcon />
+        </span>
+        <span className="flex-1 truncate text-muted">{bucket.user}</span>
+        <span className="text-[10px] text-muted">{bucket.sessions.length}</span>
+      </summary>
+      <div className="ml-2.5 space-y-0.5 border-l border-border pl-2">
+        {bucket.sessions.map((s) => (
+          <NavRow
+            key={s.session_id}
+            href={`/workspaces/${workspaceId}/sessions/${encodeURIComponent(s.session_id)}`}
+            icon={<span className="text-muted"><SessionsIcon /></span>}
+            label={sessionLabelForSidebar(s)}
+          />
+        ))}
+      </div>
+    </details>
+  );
+}
+
+type StashTreeKind = "session" | "folder" | "page" | "file" | "table" | "other";
+
+type StashTreeItem = {
+  kind: StashTreeKind;
+  key: string;
+  href?: string;
+  label: string;
+  icon: React.ReactNode;
+};
+
+function resolveFolderPath(
+  folderId: string | null,
+  foldersById: Map<string, WorkspaceFolder>,
+  cache: Map<string, string>,
+  stack = new Set<string>()
+): string {
+  if (!folderId) return "";
+  const cached = cache.get(folderId);
+  if (cached !== undefined) return cached;
+  if (stack.has(folderId)) return "";
+  const folder = foldersById.get(folderId);
+  if (!folder) return "";
+
+  stack.add(folderId);
+  const parentPath = resolveFolderPath(folder.parent_folder_id, foldersById, cache, stack);
+  const next = parentPath ? `${parentPath}/${folder.name}` : folder.name;
+  cache.set(folderId, next);
+  return next;
+}
+
+function buildStashTreeItems(
+  workspaceId: string,
+  items: StashItemSpec[],
+  folderById: Map<string, WorkspaceFolder>,
+  pageById: Map<string, WorkspacePage>,
+  fileById: Map<string, WorkspaceFile>,
+  sessionById: Map<string, WorkspaceSidebarSession>,
+  sessionBySessionId: Map<string, WorkspaceSidebarSession>
+): StashTreeItem[] {
+  const pathCache = new Map<string, string>();
+  return [...items]
+    .sort((a, b) => (a.position ?? 0) - (b.position ?? 0))
+    .map((item, index) => {
+      if (item.object_type === "session") {
+        const session = sessionById.get(item.object_id) ?? sessionBySessionId.get(item.object_id);
+        const fallback = `Session ${item.object_id}`;
+        return {
+          kind: "session",
+          key: `${item.object_id}:${index}`,
+          href: session ? `/workspaces/${workspaceId}/sessions/${encodeURIComponent(session.session_id)}` : undefined,
+          icon: <span className="text-muted"><SessionsIcon /></span>,
+          label: item.label_override ?? (session ? session.title || session.session_id : fallback),
+        };
+      }
+
+      if (item.object_type === "folder") {
+        const folder = folderById.get(item.object_id);
+        return {
+          kind: "folder",
+          key: `${item.object_id}:${index}`,
+          href: folder ? `/workspaces/${workspaceId}/folders/${item.object_id}` : undefined,
+          icon: <span className="text-muted"><FolderIcon /></span>,
+          label:
+            item.label_override ??
+            (folder ? resolveFolderPath(folder.id, folderById, pathCache) : `Folder ${item.object_id}`),
+        };
+      }
+
+      if (item.object_type === "page") {
+        const page = pageById.get(item.object_id);
+        if (!page) {
+          return {
+            kind: "page",
+            key: `${item.object_id}:${index}`,
+            icon: <span className="text-muted"><PageIcon /></span>,
+            label: item.label_override ?? `Page ${item.object_id}`,
+          };
+        }
+
+        const folderPath = resolveFolderPath(page.folder_id, folderById, pathCache);
+        const pagePath = folderPath ? `${folderPath}/${page.name}` : page.name;
+        return {
+          kind: "page",
+          key: `${item.object_id}:${index}`,
+          href: `/workspaces/${workspaceId}/p/${page.id}`,
+          icon: <span className="text-muted"><PageIcon /></span>,
+          label: item.label_override ?? pagePath,
+        };
+      }
+
+      if (item.object_type === "file") {
+        const file = fileById.get(item.object_id);
+        if (!file) {
+          return {
+            kind: "file",
+            key: `${item.object_id}:${index}`,
+            icon: <span className={fileIconClass(undefined)}><FileIcon /></span>,
+            label: item.label_override ?? `File ${item.object_id}`,
+          };
+        }
+
+        const folderPath = resolveFolderPath(file.folder_id, folderById, pathCache);
+        const filePath = folderPath ? `${folderPath}/${file.name}` : file.name;
+        return {
+          kind: "file",
+          key: `${item.object_id}:${index}`,
+          href: `/workspaces/${workspaceId}/f/${file.id}`,
+          icon: <span className={fileIconClass(file.content_type)}><FileIcon /></span>,
+          label: item.label_override ?? filePath,
+        };
+      }
+
+      if (item.object_type === "table") {
+        return {
+          kind: "table",
+          key: `${item.object_id}:${index}`,
+          href: `/tables/${item.object_id}?workspaceId=${workspaceId}`,
+          icon: <span className="text-muted"><TableIcon /></span>,
+          label: item.label_override ?? `Table ${item.object_id}`,
+        };
+      }
+
+      return {
+        kind: "other",
+        key: `${item.object_id}:${index}`,
+        icon: <span className="text-muted"><FolderIcon /></span>,
+        label: item.label_override ?? `${item.object_type} ${item.object_id}`,
+      };
+    });
+}
+
+function StashTreeRow({ row }: { row: StashTreeItem }) {
+  if (!row.href) {
+    return (
+      <div className="page-row flex items-center gap-2 rounded-md px-2 py-0.5 text-[12.5px] text-muted">
+        <span className="flex h-4 w-4 items-center justify-center text-[14px]">{row.icon}</span>
+        <span className="flex-1 truncate">{row.label}</span>
+      </div>
+    );
+  }
+
+  return (
+    <NavRow href={row.href} icon={row.icon} label={row.label} />
+  );
+}
+
+function FileNavRow({
+  workspaceId,
+  file,
+  label,
+  onClick,
+  onPinMenu,
+}: {
+  workspaceId: string;
+  file: Pick<WorkspaceFile, "id" | "name" | "content_type" | "linked_table_id">;
+  label: string;
+  onClick?: (event: MouseEvent<HTMLAnchorElement>) => void;
+  onPinMenu?: (event: MouseEvent<HTMLAnchorElement>) => void;
 }) {
   const isCsvLinked =
     file.content_type?.includes("csv") && file.linked_table_id;
   const href = isCsvLinked
-    ? `/tables/${file.linked_table_id}?workspaceId=${stashId}`
-    : `/stashes/${stashId}/f/${file.id}`;
+    ? `/tables/${file.linked_table_id}?workspaceId=${workspaceId}`
+    : `/workspaces/${workspaceId}/f/${file.id}`;
   return (
     <NavRow
       href={href}
@@ -259,56 +883,105 @@ function FileNavRow({
           {file.content_type?.includes("csv") ? <TableIcon /> : <FileIcon />}
         </span>
       }
-      label={file.name}
+      label={label}
+      onClick={onClick}
+      trailing={null}
+      onContextMenu={onPinMenu}
     />
   );
 }
 
+function DropMessage({ state }: { state: SidebarDropState }) {
+  const tone =
+    state.status === "error"
+      ? "text-red-600"
+      : state.status === "done"
+        ? "text-[var(--color-brand-700)]"
+        : "text-muted";
+
+  return (
+    <div className={"px-2 py-1 text-[11px] " + tone}>
+      {state.message}
+    </div>
+  );
+}
+
 function FolderTreeNode({
-  stashId,
+  workspaceId,
   folderId,
   name,
+  isFolderPinned,
+  isFilePinned,
+  onPinMenu,
 }: {
-  stashId: string;
+  workspaceId: string;
   folderId: string;
   name: string;
+  isFolderPinned: (folderId: string) => boolean;
+  isFilePinned: (fileId: string) => boolean;
+  onPinMenu?: (event: MouseEvent<HTMLElement>, kind: PinKind, id: string, label: string, pinned: boolean) => void;
 }) {
   const cachedContents = readCachedFolderContents(folderId);
   const [contents, setContents] = useState<FolderContents | null>(cachedContents);
   const [loaded, setLoaded] = useState(!!cachedContents);
   const [open, setOpen] = useState(false);
 
+  const loadContents = useCallback(() => {
+    if (loaded) return;
+    setLoaded(true);
+    getCachedFolderContents(workspaceId, folderId)
+      .then(setContents)
+      .catch(() =>
+        setContents({
+          folder: { id: folderId, name, parent_folder_id: null },
+          breadcrumbs: [],
+          subfolders: [],
+          pages: [],
+          files: [],
+        })
+      );
+  }, [loaded, workspaceId, folderId, name]);
+
+  const openFolder = useCallback(() => {
+    setOpen(true);
+    loadContents();
+  }, [loadContents]);
+
   const handleToggle = useCallback(() => {
     const next = !open;
     setOpen(next);
-    if (next && !loaded) {
-      setLoaded(true);
-      getCachedFolderContents(stashId, folderId)
-        .then(setContents)
-        .catch(() =>
-          setContents({
-            folder: { id: folderId, name, parent_folder_id: null },
-            breadcrumbs: [],
-            subfolders: [],
-            pages: [],
-            files: [],
-          })
-        );
-    }
-  }, [open, loaded, stashId, folderId, name]);
+    if (next) loadContents();
+  }, [open, loadContents]);
 
   return (
     <details open={open} className="text-[12.5px]">
       <summary
-        onClick={(e) => e.preventDefault()}
+        onContextMenu={(event) => {
+          event.preventDefault();
+          onPinMenu?.(
+            event,
+            "folder",
+            folderId,
+            name,
+            isFolderPinned(folderId)
+          );
+        }}
+        onClick={(e) => {
+          e.preventDefault();
+          openFolder();
+        }}
         className="page-row flex items-center gap-1 rounded-md px-2 py-0.5 hover:bg-raised"
       >
-        <ChevronToggle onToggle={handleToggle} />
+        <ChevronToggle open={open} onToggle={handleToggle} />
         <span className="flex h-4 w-4 items-center justify-center text-muted">
           <FolderIcon />
         </span>
         <Link
-          href={`/stashes/${stashId}/folders/${folderId}`}
+          href={`/workspaces/${workspaceId}/folders/${folderId}`}
+          onClick={(event) => {
+            event.stopPropagation();
+            openFolder();
+          }}
           className="flex-1 truncate text-left text-foreground hover:text-[var(--color-brand-700)]"
         >
           {name}
@@ -318,24 +991,39 @@ function FolderTreeNode({
         {contents === null && loaded && (
           <div className="px-2 py-1 text-[11px] italic text-muted">loading…</div>
         )}
-        {contents?.subfolders.map((sub) => (
-          <FolderTreeNode
-            key={sub.id}
-            stashId={stashId}
-            folderId={sub.id}
-            name={sub.name}
-          />
-        ))}
+        {contents?.subfolders
+          .filter((sub) => !isFolderPinned(sub.id))
+          .map((sub) => (
+            <FolderTreeNode
+              key={sub.id}
+              workspaceId={workspaceId}
+              folderId={sub.id}
+              name={sub.name}
+              isFolderPinned={isFolderPinned}
+              isFilePinned={isFilePinned}
+              onPinMenu={onPinMenu}
+            />
+          ))}
         {contents?.pages.map((p) => (
           <NavRow
             key={p.id}
-            href={`/stashes/${stashId}/p/${p.id}`}
+            href={`/workspaces/${workspaceId}/p/${p.id}`}
             icon={<PageIcon className="text-muted" />}
             label={p.name}
           />
         ))}
-        {contents?.files.map((f) => (
-          <FileNavRow key={f.id} stashId={stashId} file={f} />
+        {contents?.files
+          .filter((f) => !isFilePinned(f.id))
+          .map((f) => (
+            <FileNavRow
+              key={f.id}
+              workspaceId={workspaceId}
+              file={f}
+              label={f.name}
+              onPinMenu={(event) =>
+                onPinMenu?.(event, "file", f.id, f.name, isFilePinned(f.id))
+              }
+            />
         ))}
         {contents &&
           contents.subfolders.length === 0 &&
@@ -348,24 +1036,382 @@ function FolderTreeNode({
   );
 }
 
-function WikiBlock({
-  stash,
+function FilesBlock({
+  workspace,
   spine,
   open,
   onOpenChange,
+  dropState,
+  dropProps,
+  pinnedFolders,
+  pinnedFiles,
+  pinnedLabels,
+  onPinToggle,
+  onUnpinAll,
+  onAddPage,
 }: {
-  stash: StashNode;
-  spine: StashSidebar | null;
+  workspace: WorkspaceNode;
+  spine: WorkspaceSidebar | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  dropState: SidebarDropState;
+  dropProps: {
+    onDragOver: (event: DragEvent<HTMLElement>) => void;
+    onDragLeave: (event: DragEvent<HTMLElement>) => void;
+    onDrop: (event: DragEvent<HTMLElement>) => void;
+  };
+  pinnedFolders: string[];
+  pinnedFiles: string[];
+  pinnedLabels: PinnedLabels;
+  onPinToggle: (kind: PinKind, id: string, label?: string) => void;
+  onUnpinAll: () => void;
+  onAddPage: () => void;
 }) {
-  const folders = spine?.wiki.folders ?? [];
-  const pages = spine?.wiki.pages ?? [];
-  const files = spine?.wiki.files ?? [];
-  const rootFolders = folders.filter((f) => !f.parent_folder_id);
+  const tree = spine?.files;
+  const folders = tree?.folders ?? [];
+  const pages = tree?.pages ?? [];
+  const files = tree?.files ?? [];
+  const pinnedFolderSet = new Set(pinnedFolders);
+  const pinnedFileSet = new Set(pinnedFiles);
+  const visibleFolders = folders.filter((folder) => !pinnedFolderSet.has(folder.id));
+  const visibleFiles = files.filter((file) => !pinnedFileSet.has(file.id));
+  const rootFolders = visibleFolders.filter((f) => !f.parent_folder_id);
   const rootPages = pages.filter((p) => !p.folder_id);
-  const rootFiles = files.filter((f) => !f.folder_id);
+  const rootFiles = visibleFiles.filter((f) => !f.folder_id);
+  const folderById = new Map((tree?.folders ?? []).map((folder) => [folder.id, folder]));
+  const fileById = new Map((tree?.files ?? []).map((file) => [file.id, file]));
+  const pinnedFolderRows = pinnedFolders.map((id) => {
+    const folder = folderById.get(id);
+    const label = pinnedLabels.folders[id] ?? folder?.name ?? "Folder";
+    return {
+      id,
+      label,
+      href: `/workspaces/${workspace.id}/folders/${id}`,
+      icon: <FolderIcon />,
+    };
+  });
+  const pinnedFileRows = pinnedFiles.map((id) => {
+    const file = fileById.get(id);
+    if (!file) {
+      return {
+        id,
+        label: "File",
+        href: `/workspaces/${workspace.id}/f/${id}`,
+        icon: <span className={fileIconClass(undefined)}><FileIcon /></span>,
+      };
+    }
+    const label = pinnedLabels.files[id] ?? file.name;
+    const isCsvLinked = file.content_type?.includes("csv") && file.linked_table_id;
+    return {
+      id,
+      label,
+      href: isCsvLinked
+        ? `/tables/${file.linked_table_id}?workspaceId=${workspace.id}`
+        : `/workspaces/${workspace.id}/f/${id}`,
+      icon:
+        <span className={fileIconClass(file.content_type)}>
+          {file.content_type?.includes("csv") ? <TableIcon /> : <FileIcon />}
+        </span>,
+    };
+  });
   const total = folders.length + pages.length + files.length;
+  const filesDrop = dropState.key === dropKey(workspace.id, "files") ? dropState : null;
+  const [pinMenu, setPinMenu] = useState<PinMenuState | null>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const menuClamp =
+    pinMenu && typeof window !== "undefined"
+      ? {
+          x: Math.max(0, Math.min(pinMenu.x, window.innerWidth - 190)),
+          y: Math.max(0, Math.min(pinMenu.y, window.innerHeight - 72)),
+        }
+      : pinMenu;
+
+  useEffect(() => {
+    if (!pinMenu) return;
+
+    const onDown = (event: globalThis.MouseEvent) => {
+      if (menuRef.current && menuRef.current.contains(event.target as Node)) return;
+      setPinMenu(null);
+    };
+    const onKey = (event: globalThis.KeyboardEvent) => {
+      if (event.key === "Escape") setPinMenu(null);
+    };
+
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [pinMenu]);
+
+  const pinnedCount = pinnedFolders.length + pinnedFiles.length;
+  const renderPinned = pinnedCount > 0;
+
+  function showPinMenu(
+    event: MouseEvent<HTMLElement>,
+    kind: PinKind,
+    id: string,
+    label: string,
+    pinned: boolean
+  ) {
+    event.preventDefault();
+    event.stopPropagation();
+    setPinMenu({ kind, id, label, pinned, x: event.clientX, y: event.clientY });
+  }
+
+  return (
+    <details
+      open={open}
+      onToggle={(e) => onOpenChange(e.currentTarget.open)}
+      className="text-[13px]"
+      {...dropProps}
+    >
+      <summary
+        onClick={(e) => {
+          e.preventDefault();
+          onOpenChange(true);
+        }}
+        className={
+          "page-row flex items-center gap-1 rounded-md px-2 py-1 hover:bg-raised " +
+          (filesDrop?.status === "over"
+            ? "bg-[var(--color-brand-50)] text-[var(--color-brand-800)] ring-1 ring-[var(--color-brand-300)]"
+            : "")
+        }
+      >
+        <ChevronToggle open={open} onToggle={() => onOpenChange(!open)} />
+        <span className="flex-1 truncate font-medium text-foreground">Files</span>
+        <span className="text-[10.5px] text-muted">{total}</span>
+        <SectionAddButton label="Add page" onClick={onAddPage} />
+      </summary>
+      <div className="ml-3 space-y-0.5 border-l border-border pl-2">
+        {filesDrop?.message ? <DropMessage state={filesDrop} /> : null}
+            {renderPinned ? (
+              <div className="space-y-0.5">
+                <div className="flex items-center justify-between gap-2 px-2 py-0.5">
+                  <span className="text-[10px] uppercase tracking-wide text-muted">
+                    Pinned ({pinnedCount})
+                  </span>
+              <button
+                type="button"
+                onClick={(event) => {
+                  event.preventDefault();
+                  onUnpinAll();
+                }}
+                className="rounded px-1 py-0.5 text-[10px] text-[var(--color-brand-700)] hover:bg-[var(--color-brand-50)]"
+                aria-label="Unpin all files and folders"
+              >
+                    Unpin all
+                  </button>
+                </div>
+                {pinnedFolderRows.map((folder) => (
+                  <NavRow
+                    key={`pinned-folder-${folder.id}`}
+                    href={folder.href}
+                    icon={folder.icon}
+                    label={folder.label}
+                    onContextMenu={(event) =>
+                      showPinMenu(event, "folder", folder.id, folder.label, true)
+                    }
+                  />
+                ))}
+                {pinnedFileRows.map((file) => (
+                  <NavRow
+                    key={`pinned-file-${file.id}`}
+                    href={file.href}
+                    icon={file.icon}
+                    label={file.label}
+                    onContextMenu={(event) =>
+                      showPinMenu(event, "file", file.id, file.label, true)
+                    }
+                  />
+                ))}
+              </div>
+            ) : null}
+        {rootFolders.map((f) => (
+          <FolderTreeNode
+            key={f.id}
+            workspaceId={workspace.id}
+            folderId={f.id}
+            name={f.name}
+            isFolderPinned={(folderId) => pinnedFolderSet.has(folderId)}
+            isFilePinned={(fileId) => pinnedFileSet.has(fileId)}
+            onPinMenu={showPinMenu}
+          />
+        ))}
+        {rootPages.slice(0, PREVIEW_ITEM_LIMIT).map((p) => (
+          <NavRow
+            key={p.id}
+            href={`/workspaces/${workspace.id}/p/${p.id}`}
+            icon={<PageIcon className="text-muted" />}
+            label={p.name}
+            onClick={() => onOpenChange(true)}
+          />
+        ))}
+        {rootFiles.slice(0, PREVIEW_ITEM_LIMIT).map((f) => (
+          <FileNavRow
+            key={f.id}
+            workspaceId={workspace.id}
+            file={f}
+            label={f.name}
+            onClick={() => onOpenChange(true)}
+            onPinMenu={(event) =>
+              showPinMenu(event, "file", f.id, f.name, pinnedFileSet.has(f.id))
+            }
+          />
+        ))}
+        {!spine || total === 0 ? (
+          <div className="px-2 py-1 text-[11px] italic text-muted">empty</div>
+        ) : null}
+        {pinMenu && menuClamp ? (
+          <PinMenu
+            state={{
+              ...pinMenu,
+              x: menuClamp.x,
+              y: menuClamp.y,
+            }}
+            onClose={() => setPinMenu(null)}
+            onTogglePin={() => onPinToggle(pinMenu.kind, pinMenu.id, pinMenu.label)}
+            menuRef={menuRef}
+          />
+        ) : null}
+      </div>
+    </details>
+  );
+}
+
+function StashesBlock({
+  workspace,
+  spine,
+  open,
+  onOpenChange,
+  collapsedStashes,
+  onStashCollapsedChange,
+  onAddStash,
+}: {
+  workspace: WorkspaceNode;
+  spine: WorkspaceSidebar | null;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  collapsedStashes: Record<string, boolean>;
+  onStashCollapsedChange: (stashId: string, collapsed: boolean) => void;
+  onAddStash: () => void;
+}) {
+  const stashes = spine?.stashes ?? [];
+  const tree = spine?.files;
+  const foldersById = new Map(
+    (tree?.folders ?? []).map((folder) => [folder.id, folder])
+  );
+  const pagesById = new Map(
+    (tree?.pages ?? []).map((page) => [page.id, page])
+  );
+  const filesById = new Map(
+    (tree?.files ?? []).map((file) => [file.id, file])
+  );
+
+  const sessionById = new Map<string, WorkspaceSidebarSession>();
+  const sessionBySessionId = new Map<string, WorkspaceSidebarSession>();
+  for (const session of spine?.sessions ?? []) {
+    if (session.id) sessionById.set(session.id, session);
+    sessionBySessionId.set(session.session_id, session);
+  }
+
+  const nativeStashes = stashes.filter((stash) => !stash.forked_from_stash_id);
+  const forkedStashes = stashes.filter((stash) => stash.forked_from_stash_id);
+
+  function renderStashGroup(
+    title: string | null,
+    items: typeof stashes,
+    includeEmpty = false
+  ) {
+    if (items.length === 0 && !includeEmpty) return null;
+
+    return (
+      <div className="space-y-0.5 border-l border-border pl-2">
+        {title ? (
+          <div className="px-2 py-0.5 text-[10px] uppercase tracking-wide text-muted">
+            {title}
+          </div>
+        ) : null}
+        {items.length === 0 ? (
+          <div className="px-2 py-1 text-[11px] italic text-muted">empty</div>
+        ) : (
+          items.map((stash) => {
+            const collapsed =
+              collapsedStashes[stashCollapseKey(workspace.id, stash.id)] === true;
+            const children = buildStashTreeItems(
+              workspace.id,
+              stash.items ?? [],
+              foldersById,
+              pagesById,
+              filesById,
+              sessionById,
+              sessionBySessionId
+            );
+            const sessions = children.filter((item) => item.kind === "session");
+            const files = children.filter((item) => item.kind !== "session");
+
+            function renderChildGroup(label: string, group: StashTreeItem[]) {
+              if (group.length === 0) return null;
+
+              return (
+                <div className="space-y-0.5">
+                  <div className="rounded bg-base px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted">
+                    {label}
+                  </div>
+                  <div className="ml-2.5 space-y-0.5 border-l border-border pl-2">
+                    {group.map((item) => (
+                      <StashTreeRow key={`${label}:${item.key}`} row={item} />
+                    ))}
+                  </div>
+                </div>
+              );
+            }
+
+            return (
+              <div key={`${title}-${stash.id}`} className="space-y-0.5">
+                <div className="page-row flex items-center gap-1 rounded-md px-2 py-0.5 hover:bg-raised">
+                  <ChevronToggle
+                    open={!collapsed}
+                    ariaLabel={`${collapsed ? "Expand" : "Collapse"} ${stash.title}`}
+                    onToggle={() => onStashCollapsedChange(stash.id, !collapsed)}
+                  />
+                  <span className="flex h-4 w-4 items-center justify-center text-[14px] text-muted">
+                    <StashIcon />
+                  </span>
+                  <Link
+                    href={`/stashes/${stash.slug}`}
+                    className="flex-1 truncate text-foreground hover:text-[var(--color-brand-700)]"
+                  >
+                    {stash.title}
+                  </Link>
+                  <span className="text-[10px] text-muted">
+                    {stash.items?.length ?? stash.item_count}
+                  </span>
+                </div>
+                {!collapsed ? (
+                  <div className="ml-2.5 space-y-0.5 border-l border-border pl-2">
+                    {children.length === 0 ? (
+                      <div className="px-2 py-1 text-[11px] italic text-muted">
+                        no visible items
+                      </div>
+                    ) : (
+                      <>
+                        {renderChildGroup("Sessions", sessions)}
+                        {renderChildGroup("Files", files)}
+                      </>
+                    )}
+                  </div>
+                ) : null}
+              </div>
+            );
+          })
+        )}
+      </div>
+    );
+  }
+
   return (
     <details
       open={open}
@@ -380,65 +1426,75 @@ function WikiBlock({
         className="page-row flex items-center gap-1 rounded-md px-2 py-1 hover:bg-raised"
       >
         <ChevronToggle onToggle={() => onOpenChange(!open)} />
-        <span className="flex h-4 w-4 items-center justify-center text-[14px] text-muted">
-          <WikiIcon />
-        </span>
-        <span className="flex-1 truncate font-medium text-foreground">Wiki</span>
-        <span className="text-[10.5px] text-muted">{total}</span>
+        <Link
+          href={`/workspaces/${workspace.id}/stashes`}
+          className="flex-1 truncate font-medium text-foreground hover:text-[var(--color-brand-700)]"
+        >
+          Stashes
+        </Link>
+        <span className="text-[10.5px] text-muted">{stashes.length}</span>
+        <SectionAddButton label="Add Stash" onClick={onAddStash} />
       </summary>
       <div className="ml-3 space-y-0.5 border-l border-border pl-2">
-        {rootFolders.map((f) => (
-          <FolderTreeNode
-            key={f.id}
-            stashId={stash.id}
-            folderId={f.id}
-            name={f.name}
-          />
-        ))}
-        {rootPages.slice(0, 10).map((p) => (
-          <NavRow
-            key={p.id}
-            href={`/stashes/${stash.id}/p/${p.id}`}
-            icon={<PageIcon className="text-muted" />}
-            label={p.name}
-          />
-        ))}
-        {rootFiles.slice(0, 12).map((f) => (
-          <FileNavRow key={f.id} stashId={stash.id} file={f} />
-        ))}
-        {!spine || total === 0 ? (
+        {nativeStashes.length === 0 && forkedStashes.length === 0 ? (
           <div className="px-2 py-1 text-[11px] italic text-muted">empty</div>
         ) : null}
+        {renderStashGroup(null, nativeStashes, false)}
+        {renderStashGroup("Forked stashes", forkedStashes, false)}
       </div>
     </details>
   );
 }
 
-export default function AppSidebar({ user, onCmdkOpen }: AppSidebarProps) {
+export default function AppSidebar({
+  user,
+  activeWorkspaceId,
+}: AppSidebarProps) {
   const pathname = usePathname();
+  const router = useRouter();
+  const shareModal = useShareModal();
   const userId = user?.id;
   const cachedWorkspaces = readCachedWorkspaces(userId);
   const activeTreeMatch = pathname.match(
-    /^\/stashes\/([^/]+)\/(sessions|folders|p|f|skills)(?:\/|$)/
+    /^\/workspaces\/([^/]+)\/(sessions|folders|p|f|stashes)(?:\/|$)/
   );
-  const activeTreeStashId = activeTreeMatch?.[1] ?? null;
+  const activeTreeWorkspaceId = activeTreeMatch?.[1] ?? null;
   const activeTreeSection: SidebarSection | null =
     activeTreeMatch?.[2] === "sessions"
       ? "sessions"
+      : activeTreeMatch?.[2] === "stashes"
+        ? "stashes"
       : activeTreeMatch
-        ? "wiki"
+        ? "files"
         : null;
+  const routeWorkspaceId = pathname.match(/^\/workspaces\/([^/]+)/)?.[1] ?? null;
+  const currentWorkspaceId = activeWorkspaceId ?? routeWorkspaceId;
   const [mine, setMine] = useState<Workspace[]>(cachedWorkspaces?.mine ?? []);
   const [shared, setShared] = useState<Workspace[]>(cachedWorkspaces?.shared ?? []);
-  const [openStashes, setOpenStashes] = useState<Record<string, boolean>>(() =>
-    readOpenMap(OPEN_STASHES_KEY)
+  const [openWorkspaces] = useState<Record<string, boolean>>(() =>
+    readBooleanMap(OPEN_WORKSPACES_KEY)
   );
   const [openSections, setOpenSections] = useState<Record<string, boolean>>(() =>
-    readOpenMap(OPEN_SECTIONS_KEY)
+    readBooleanMap(OPEN_SECTIONS_KEY)
   );
-  const [spines, setSpines] = useState<Record<string, StashSidebar>>(() =>
+  const [spines, setSpines] = useState<Record<string, WorkspaceSidebar>>(() =>
     readCachedSidebars()
   );
+  const [dropState, setDropState] = useState<SidebarDropState>({
+    key: null,
+    status: "idle",
+    message: "",
+  });
+  const [pinnedState, setPinnedState] = useState<Record<string, { folders: string[]; files: string[] }>>(
+    () => readPinnedMap()
+  );
+  const [pinnedLabelsState, setPinnedLabelsState] = useState<Record<string, PinnedLabels>>(
+    () => readPinnedLabelMap()
+  );
+  const [collapsedStashes, setCollapsedStashes] = useState<Record<string, boolean>>(
+    () => readBooleanMap(COLLAPSED_STASHES_KEY)
+  );
+  const [pageCreateWorkspaceId, setPageCreateWorkspaceId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!userId) return;
@@ -451,83 +1507,404 @@ export default function AppSidebar({ user, onCmdkOpen }: AppSidebarProps) {
       .catch(() => {});
   }, [userId]);
 
-  const setOpenStash = useCallback((stashId: string, open: boolean) => {
-    setOpenStashes((current) => {
-      const next = { ...current, [stashId]: open };
-      writeOpenMap(OPEN_STASHES_KEY, next);
-      return next;
-    });
-  }, []);
-
   const setOpenSection = useCallback((
-    stashId: string,
+    workspaceId: string,
     section: SidebarSection,
     open: boolean
   ) => {
     setOpenSections((current) => {
-      const next = { ...current, [sectionKey(stashId, section)]: open };
-      writeOpenMap(OPEN_SECTIONS_KEY, next);
+      const next = { ...current, [sectionKey(workspaceId, section)]: open };
+      writeBooleanMap(OPEN_SECTIONS_KEY, next);
       return next;
     });
   }, []);
 
   useEffect(() => {
-    const openIds = Object.keys(openStashes).filter((stashId) => openStashes[stashId]);
-    if (activeTreeStashId) openIds.push(activeTreeStashId);
+    const workspaceIds = new Set<string>([
+      ...Object.keys(openWorkspaces).filter((workspaceId) => openWorkspaces[workspaceId]),
+      ...mine.map((workspace) => workspace.id),
+      ...shared.map((workspace) => workspace.id),
+    ]);
 
-    Array.from(new Set(openIds))
-      .filter((stashId) => !spines[stashId])
-      .forEach((stashId) => {
-        getCachedStashSidebar(stashId)
-          .then((sp) => setSpines((all) => ({ ...all, [stashId]: sp })))
+    if (activeTreeWorkspaceId) workspaceIds.add(activeTreeWorkspaceId);
+
+    Array.from(workspaceIds)
+      .filter((workspaceId) => !spines[workspaceId])
+      .forEach((workspaceId) => {
+        getCachedWorkspaceSidebar(workspaceId)
+          .then((sp) => setSpines((all) => ({ ...all, [workspaceId]: sp })))
           .catch(() => {});
       });
-  }, [activeTreeStashId, openStashes, spines]);
+  }, [activeTreeWorkspaceId, mine, shared, openWorkspaces, spines]);
 
-  function sectionOpen(stashId: string, section: SidebarSection): boolean {
-    // Explicit user preference (open or closed) wins. Otherwise fall back to
-    // route-derived open (so the active page's accordion expands by default).
-    const explicit = openSections[sectionKey(stashId, section)];
+  function sectionOpen(workspaceId: string, section: SidebarSection): boolean {
+    // Explicit user preference (open or closed) wins. Otherwise default open.
+    const explicit = openSections[sectionKey(workspaceId, section)];
     if (explicit !== undefined) return explicit;
-    return activeTreeStashId === stashId && activeTreeSection === section;
+    return true;
   }
 
-  function getOpenSections(stashId: string): Record<SidebarSection, boolean> {
+  function getOpenSections(workspaceId: string): Record<SidebarSection, boolean> {
     return {
-      sessions: sectionOpen(stashId, "sessions"),
-      wiki: sectionOpen(stashId, "wiki"),
+      sessions: sectionOpen(workspaceId, "sessions"),
+      files: sectionOpen(workspaceId, "files"),
+      stashes: sectionOpen(workspaceId, "stashes"),
     };
   }
 
-  function isStashOpen(stashId: string): boolean {
-    const explicit = openStashes[stashId];
-    if (explicit !== undefined) return explicit;
-    return activeTreeStashId === stashId;
-  }
-
-  function handleStashOpenChange(stashId: string, open: boolean) {
-    // Skip persisting the auto-open that fires when a route activates this
-    // stash and no explicit user preference exists yet. Otherwise route nav
-    // would write a "true" override that survives forever.
-    const explicit = openStashes[stashId];
-    const routeOpen = activeTreeStashId === stashId;
-    if (open && routeOpen && explicit === undefined) return;
-    setOpenStash(stashId, open);
-  }
-
   function handleSectionOpenChange(
-    stashId: string,
+    workspaceId: string,
     section: SidebarSection,
     open: boolean
   ) {
-    const explicit = openSections[sectionKey(stashId, section)];
+    const explicit = openSections[sectionKey(workspaceId, section)];
     const routeOpen =
-      activeTreeStashId === stashId && activeTreeSection === section;
+      activeTreeWorkspaceId === workspaceId && activeTreeSection === section;
     if (open && routeOpen && explicit === undefined) return;
-    setOpenSection(stashId, section, open);
+    setOpenSection(workspaceId, section, open);
   }
 
+  function handleStashCollapsedChange(
+    workspaceId: string,
+    stashId: string,
+    collapsed: boolean
+  ) {
+    setCollapsedStashes((current) => {
+      const key = stashCollapseKey(workspaceId, stashId);
+      const next = { ...current };
+      if (collapsed) {
+        next[key] = true;
+      } else {
+        delete next[key];
+      }
+      writeBooleanMap(COLLAPSED_STASHES_KEY, next);
+      return next;
+    });
+  }
+
+  function clearDropLater(workspaceId: string, section: DropSection) {
+    window.setTimeout(() => {
+      setDropState((current) =>
+        current.key === dropKey(workspaceId, section)
+          ? { key: null, status: "idle", message: "" }
+          : current
+      );
+    }, 2500);
+  }
+
+  function handleDropHover(workspaceId: string, section: DropSection, active: boolean) {
+    const key = dropKey(workspaceId, section);
+    setDropState((current) => {
+      if (!active && current.key === key && current.status === "over") {
+        return { key: null, status: "idle", message: "" };
+      }
+      if (!active) return current;
+      return {
+        key,
+        status: "over",
+        message:
+          section === "sessions"
+            ? "Drop .JSONL transcript files"
+            : "Drop files (any type)",
+      };
+    });
+  }
+
+  async function refreshSidebar(workspaceId: string) {
+    const sidebar = await refreshWorkspaceSidebar(workspaceId);
+    setSpines((all) => ({ ...all, [workspaceId]: sidebar }));
+  }
+
+  function handleAddSession(workspaceId: string) {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = ".jsonl,application/jsonl,application/x-ndjson";
+    input.multiple = true;
+    input.onchange = () => {
+      if (input.files) handleDropFiles(workspaceId, "sessions", input.files);
+    };
+    input.click();
+  }
+
+  function handleAddPage(workspaceId: string) {
+    setPageCreateWorkspaceId(workspaceId);
+  }
+
+  async function handleCreatePage(workspaceId: string, name: string) {
+    setDropState({
+      key: dropKey(workspaceId, "files"),
+      status: "saving",
+      message: `Creating ${name}...`,
+    });
+    try {
+      const page = await createPage(workspaceId, name);
+      await refreshSidebar(workspaceId);
+      setDropState({
+        key: dropKey(workspaceId, "files"),
+        status: "done",
+        message: `Created ${page.name}.`,
+      });
+      clearDropLater(workspaceId, "files");
+      setPageCreateWorkspaceId(null);
+      router.push(`/workspaces/${workspaceId}/p/${page.id}`);
+    } catch (error) {
+      setDropState({
+        key: dropKey(workspaceId, "files"),
+        status: "error",
+        message: error instanceof Error ? error.message : "Failed to create page",
+      });
+      clearDropLater(workspaceId, "files");
+      throw error;
+    }
+  }
+
+  function handleAddStash(workspaceId: string) {
+    shareModal.open({ workspaceId, tab: "new" });
+  }
+
+  async function handleDropFiles(workspaceId: string, section: DropSection, files: FileList) {
+    const list = Array.from(files);
+    const key = dropKey(workspaceId, section);
+    if (list.length === 0) return;
+
+    if (section === "sessions") {
+      const badFile = list.find((file) => !isJsonl(file));
+      if (badFile) {
+        setDropState({
+          key,
+          status: "error",
+          message: "Sessions only accept .jsonl transcripts.",
+        });
+        clearDropLater(workspaceId, section);
+        return;
+      }
+
+      const badSession = list.find((file) => !sessionIdFromFile(file));
+      if (badSession) {
+        setDropState({
+          key,
+          status: "error",
+          message: "Transcript filename must include a session id.",
+        });
+        clearDropLater(workspaceId, section);
+        return;
+      }
+    }
+
+    setDropState({
+      key,
+      status: "saving",
+      message: list.length === 1 ? `Uploading ${list[0].name}...` : `Uploading ${list.length} files...`,
+    });
+
+    try {
+      if (section === "sessions") {
+        for (const file of list) {
+          await uploadTranscript(workspaceId, file, sessionIdFromFile(file), "manual-upload");
+        }
+      } else {
+        for (const file of list) {
+          await uploadFile(workspaceId, file);
+        }
+      }
+      await refreshSidebar(workspaceId);
+    } catch (error) {
+      setDropState({
+        key,
+        status: "error",
+        message: error instanceof Error ? error.message : "Upload failed",
+      });
+      clearDropLater(workspaceId, section);
+      return;
+    }
+
+    setDropState({
+      key,
+      status: "done",
+      message:
+        section === "sessions"
+          ? `${list.length} session${list.length === 1 ? "" : "s"} added.`
+          : `${list.length} file${list.length === 1 ? "" : "s"} added.`,
+    });
+    clearDropLater(workspaceId, section);
+  }
+
+  function handlePinToggle(
+    kind: PinKind,
+    workspaceId: string,
+    id: string,
+    label?: string
+  ) {
+    setPinnedState((current) => {
+      const workspacePins = current[workspaceId] ?? EMPTY_PIN_STATE;
+      if (kind === "folder") {
+        const isPinned = workspacePins.folders.includes(id);
+        const nextFolders = isPinned
+          ? workspacePins.folders.filter((value) => value !== id)
+          : [...workspacePins.folders, id];
+        const nextWorkspace = { ...workspacePins, folders: nextFolders };
+        const nextState = { ...current, [workspaceId]: nextWorkspace };
+        writePinnedMap(nextState);
+        if (!isPinned && label) {
+          setPinnedLabelsState((currentLabels) => {
+            const nextLabels = {
+              ...currentLabels,
+              [workspaceId]: {
+                ...(currentLabels[workspaceId] ?? { folders: {}, files: {} }),
+                folders: {
+                  ...(currentLabels[workspaceId]?.folders ?? {}),
+                  [id]: label,
+                },
+              },
+            };
+            writePinnedLabelMap(nextLabels);
+            return nextLabels;
+          });
+        }
+        if (isPinned) {
+          setPinnedLabelsState((currentLabels) => {
+            const workspaceLabels = currentLabels[workspaceId];
+            if (!workspaceLabels) return currentLabels;
+
+            const nextFolders = { ...workspaceLabels.folders };
+            delete nextFolders[id];
+            const nextLabels = {
+              ...currentLabels,
+              [workspaceId]: {
+                ...workspaceLabels,
+                folders: nextFolders,
+              },
+            };
+            writePinnedLabelMap(nextLabels);
+            return nextLabels;
+          });
+        }
+        return nextState;
+      }
+
+      const isPinned = workspacePins.files.includes(id);
+      const nextFiles = isPinned
+        ? workspacePins.files.filter((value) => value !== id)
+        : [...workspacePins.files, id];
+      const nextWorkspace = { ...workspacePins, files: nextFiles };
+      const nextState = { ...current, [workspaceId]: nextWorkspace };
+      writePinnedMap(nextState);
+      if (!isPinned && label) {
+        setPinnedLabelsState((currentLabels) => {
+          const nextLabels = {
+            ...currentLabels,
+            [workspaceId]: {
+              ...(currentLabels[workspaceId] ?? { folders: {}, files: {} }),
+              files: {
+                ...(currentLabels[workspaceId]?.files ?? {}),
+                [id]: label,
+              },
+            },
+          };
+          writePinnedLabelMap(nextLabels);
+          return nextLabels;
+        });
+      }
+        if (isPinned) {
+          setPinnedLabelsState((currentLabels) => {
+            const workspaceLabels = currentLabels[workspaceId];
+            if (!workspaceLabels) return currentLabels;
+
+            const nextFiles = { ...workspaceLabels.files };
+            delete nextFiles[id];
+            const nextLabels = {
+              ...currentLabels,
+              [workspaceId]: {
+                ...workspaceLabels,
+                files: nextFiles,
+              },
+            };
+            writePinnedLabelMap(nextLabels);
+            return nextLabels;
+          });
+        }
+      return nextState;
+    });
+  }
+
+  function handleUnpinAll(workspaceId: string) {
+      setPinnedState((current) => {
+        const workspacePins = current[workspaceId];
+        if (!workspacePins || (workspacePins.folders.length === 0 && workspacePins.files.length === 0)) {
+          return current;
+        }
+        const nextState = {
+          ...current,
+          [workspaceId]: { folders: [], files: [] },
+        };
+        writePinnedMap(nextState);
+        setPinnedLabelsState((currentLabels) => {
+          const workspaceLabels = currentLabels[workspaceId];
+          if (!workspaceLabels) return currentLabels;
+
+          const nextLabels = {
+            ...currentLabels,
+            [workspaceId]: { folders: {}, files: {} },
+          };
+          writePinnedLabelMap(nextLabels);
+          return nextLabels;
+        });
+      return nextState;
+    });
+  }
+
+  useEffect(() => {
+    setPinnedLabelsState((currentLabels) => {
+      const nextLabels: Record<string, PinnedLabels> = { ...currentLabels };
+      let changed = false;
+
+      for (const [workspaceId, workspacePins] of Object.entries(pinnedState)) {
+        const tree = spines[workspaceId]?.files;
+        const folderById = new Map((tree?.folders ?? []).map((folder) => [folder.id, folder]));
+        const fileById = new Map((tree?.files ?? []).map((file) => [file.id, file]));
+
+        const workspaceLabels = nextLabels[workspaceId] ?? { folders: {}, files: {} };
+        let workspaceChanged = false;
+        const nextWorkspaceFolders = { ...workspaceLabels.folders };
+        const nextWorkspaceFiles = { ...workspaceLabels.files };
+
+        for (const folderId of workspacePins.folders) {
+          if (nextWorkspaceFolders[folderId]) continue;
+
+          const folderName = folderById.get(folderId)?.name;
+          if (!folderName) continue;
+
+          nextWorkspaceFolders[folderId] = folderName;
+          workspaceChanged = true;
+        }
+
+        for (const fileId of workspacePins.files) {
+          if (nextWorkspaceFiles[fileId]) continue;
+
+          const fileName = fileById.get(fileId)?.name;
+          if (!fileName) continue;
+
+          nextWorkspaceFiles[fileId] = fileName;
+          workspaceChanged = true;
+        }
+
+        if (!workspaceChanged) continue;
+
+        nextLabels[workspaceId] = {
+          folders: nextWorkspaceFolders,
+          files: nextWorkspaceFiles,
+        };
+        changed = true;
+      }
+
+      if (!changed) return currentLabels;
+      writePinnedLabelMap(nextLabels);
+      return nextLabels;
+    });
+  }, [pinnedState, spines]);
+
   return (
+    <>
     <aside className="scroll-thin overflow-y-auto border-r border-border bg-surface">
       <div className="px-3 pb-1 pt-3">
         <Link href="/" className="flex items-center gap-2">
@@ -540,28 +1917,16 @@ export default function AppSidebar({ user, onCmdkOpen }: AppSidebarProps) {
       </div>
 
       <nav className="px-2 pt-2 text-[13px]">
-        <button
-          onClick={onCmdkOpen}
-          className="flex w-full items-center gap-2 rounded-md px-2 py-1 text-muted hover:bg-raised"
-        >
-          <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <circle cx="11" cy="11" r="8" />
-            <path d="m21 21-4.3-4.3" />
-          </svg>
-          Search
-          <span className="ml-auto rounded bg-base px-1 py-0 font-mono text-[10px] text-muted ring-1 ring-border">
-            ⌘K
-          </span>
-        </button>
-        <Link
-          href="/stashes/new"
-          className="mt-0.5 flex w-full items-center gap-2 rounded-md px-2 py-1 text-foreground hover:bg-raised"
-        >
-          <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M12 5v14M5 12h14" />
-          </svg>
-          New stash
-        </Link>
+        <NavRow
+          href={currentWorkspaceId ? `/workspaces/${currentWorkspaceId}` : "/"}
+          icon={<StashIcon />}
+          label="Home"
+          active={
+            currentWorkspaceId
+              ? pathname === `/workspaces/${currentWorkspaceId}`
+              : pathname === "/"
+          }
+        />
         <NavRow
           href="/discover"
           icon={<DiscoverIcon />}
@@ -580,60 +1945,93 @@ export default function AppSidebar({ user, onCmdkOpen }: AppSidebarProps) {
         <>
           <div className="mt-4 flex items-center justify-between px-3 pb-1">
             <span className="text-[11px] font-semibold tracking-wide text-muted">
-              SHARED WITH ME
+              SHARED WORKSPACES
             </span>
           </div>
           <nav className="px-1 text-[13.5px]">
             {shared.map((s) => (
-              <StashTree
+              <WorkspaceTree
                 key={s.id}
-                stash={{ ...s, shared: true }}
+                workspace={{ ...s, shared: true }}
                 spine={spines[s.id] ?? null}
-                open={isStashOpen(s.id)}
-                onOpenChange={(open) => handleStashOpenChange(s.id, open)}
+                showName
+                pathname={pathname}
                 openSections={getOpenSections(s.id)}
                 onSectionOpenChange={(section, open) =>
                   handleSectionOpenChange(s.id, section, open)
                 }
-                pathname={pathname}
+                dropState={dropState}
+                onDropFiles={handleDropFiles}
+                onDropHover={handleDropHover}
+                pinnedFolders={pinnedState[s.id]?.folders ?? EMPTY_PIN_STATE.folders}
+                pinnedFiles={pinnedState[s.id]?.files ?? EMPTY_PIN_STATE.files}
+                pinnedLabels={pinnedLabelsState[s.id] ?? { folders: {}, files: {} }}
+                collapsedStashes={collapsedStashes}
+                onPinToggle={(kind, id, label) => handlePinToggle(kind, s.id, id, label)}
+                onUnpinAll={handleUnpinAll}
+                onStashCollapsedChange={handleStashCollapsedChange}
+                onAddSession={handleAddSession}
+                onAddPage={handleAddPage}
+                onAddStash={handleAddStash}
               />
             ))}
           </nav>
         </>
       )}
 
-      <div className="mt-4 px-3 pb-1">
-        <span className="text-[11px] font-semibold tracking-wide text-muted">MY STASHES</span>
-      </div>
-      <nav className="px-1 text-[13.5px]">
+      <nav className="mt-4 px-1 text-[13.5px]">
         {mine.map((s) => (
-          <StashTree
+          <WorkspaceTree
             key={s.id}
-            stash={s}
+            workspace={s}
             spine={spines[s.id] ?? null}
-            open={isStashOpen(s.id)}
-            onOpenChange={(open) => handleStashOpenChange(s.id, open)}
+            pathname={pathname}
             openSections={getOpenSections(s.id)}
             onSectionOpenChange={(section, open) =>
               handleSectionOpenChange(s.id, section, open)
             }
-            pathname={pathname}
+            dropState={dropState}
+            onDropFiles={handleDropFiles}
+            onDropHover={handleDropHover}
+            pinnedFolders={pinnedState[s.id]?.folders ?? EMPTY_PIN_STATE.folders}
+            pinnedFiles={pinnedState[s.id]?.files ?? EMPTY_PIN_STATE.files}
+            pinnedLabels={pinnedLabelsState[s.id] ?? { folders: {}, files: {} }}
+            collapsedStashes={collapsedStashes}
+            onPinToggle={(kind, id, label) => handlePinToggle(kind, s.id, id, label)}
+            onUnpinAll={handleUnpinAll}
+            onStashCollapsedChange={handleStashCollapsedChange}
+            onAddSession={handleAddSession}
+            onAddPage={handleAddPage}
+            onAddStash={handleAddStash}
           />
         ))}
         {mine.length === 0 && (
           <div className="px-3 py-1.5 text-[12px] italic text-muted">
-            No stashes yet —{" "}
-            <Link href="/stashes/new" className="text-[var(--color-brand-700)] underline">
-              create one
-            </Link>
+            No workspaces yet.
           </div>
         )}
       </nav>
 
       <div className="mt-6 border-t border-border px-2 py-2">
         <NavRow href="/docs" icon={<HelpIcon />} label="Docs" active={pathname.startsWith("/docs")} />
-        <NavRow href="/settings" icon={<SettingsIcon />} label="Settings" active={pathname.startsWith("/settings")} />
+        {currentWorkspaceId ? (
+          <NavRow
+            href={`/workspaces/${currentWorkspaceId}/settings`}
+            icon={<SettingsIcon />}
+            label="Settings"
+            active={pathname === `/workspaces/${currentWorkspaceId}/settings`}
+          />
+        ) : (
+          <DisabledNavRow icon={<SettingsIcon />} label="Settings" />
+        )}
       </div>
     </aside>
+    {pageCreateWorkspaceId ? (
+      <CreatePageModal
+        onClose={() => setPageCreateWorkspaceId(null)}
+        onCreate={(name) => handleCreatePage(pageCreateWorkspaceId, name)}
+      />
+    ) : null}
+    </>
   );
 }

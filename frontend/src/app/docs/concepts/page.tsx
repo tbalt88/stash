@@ -1,54 +1,46 @@
-import { Code, P, Title, Subtitle } from "../components";
+import { P, Title, Subtitle } from "../components";
 
 const CONCEPTS: { name: string; badge: string; badgeColor: string; desc: React.ReactNode }[] = [
   {
     name: "Workspace",
     badge: "Container",
     badgeColor: "bg-blue-500/10 text-blue-500",
-    desc: "Top-level permissioned container. Members share all resources — wiki pages, history, tables, files. Invite others with a short code. Set visibility to public or private.",
+    desc: "Top-level permissioned container. Members share sessions, Files, tables, and Stashes. Invite others with a short code.",
   },
   {
-    name: "History",
+    name: "Sessions",
     badge: "Events",
     badgeColor: "bg-brand/10 text-brand",
-    desc: "Append-only event log scoped to a workspace. Every tool call, message, and session event is recorded with timestamps, agent names, and metadata. Events are grouped by agent_name and session_id for a conversation-like view. Searchable via full-text search.",
+    desc: "Append-only event log scoped to a workspace. Every tool call, message, and session event is recorded with timestamps, agent names, and metadata. Sessions are grouped by day and user for a conversation-like reader. Searchable via full-text search.",
   },
   {
-    name: "Wiki",
+    name: "Files",
     badge: "Pages",
     badgeColor: "bg-green-500/10 text-green-600",
     desc: (
       <>
-        Wiki-style markdown pages organized in nested folders, scoped to a workspace. Supports{" "}
-        <Code>{"[[Page Name]]"}</Code> and <Code>{"[[folder/Page]]"}</Code> wiki links with
-        backlinks, page graph visualization, and semantic search. Rich-text editor with autosave.
-        The curation tool writes here when invoked.
+        Markdown and HTML pages organized in folders, scoped to a workspace. Rich-text editor with
+        autosave, semantic search, and file attachments.
       </>
     ),
   },
   {
     name: "Table",
-    badge: "Wiki",
+    badge: "Files",
     badgeColor: "bg-green-500/10 text-green-600",
-    desc: "Structured data with typed columns (text, number, date, select, etc.). Filters, sorting, views, CSV import/export. Optional row embeddings for semantic search — configure which columns to embed.",
+    desc: "Tables with typed columns (text, number, date, select, etc.). Filters, sorting, saved layouts, CSV import/export. Optional row embeddings for semantic search — configure which columns to embed.",
   },
   {
     name: "File",
     badge: "Attachment",
     badgeColor: "bg-muted/20 text-muted",
-    desc: "Images, PDFs, and documents stored in S3-compatible storage (Cloudflare R2, AWS S3, or MinIO). Uploadable as attachments via the API or wiki editor.",
+    desc: "Images, PDFs, and documents stored in S3-compatible storage (Cloudflare R2, AWS S3, or MinIO). Uploadable through Files or the API.",
   },
   {
     name: "Search",
     badge: "Cross-cutting",
     badgeColor: "bg-muted/20 text-muted",
-    desc: "Universal cross-resource AI search. Ask a natural language question and get a synthesized answer across wiki pages, tables, history, and files. Supports workspace scoping and resource type filtering.",
-  },
-  {
-    name: "Curation",
-    badge: "Tool",
-    badgeColor: "bg-amber-500/10 text-amber-600",
-    desc: "Automated process that reads workspace data (history, wiki, tables) and calls Claude to organize it into categorized wiki pages — merging duplicates, creating backlinks, and organizing folders. Runs automatically after agent sessions (with a 24-hour cooldown) or on demand via the /curate slash command in supported agents.",
+    desc: "Cross-resource search across pages, tables, sessions, files, and Stashes. Supports workspace, Stash, folder, page, and internal-only scoping.",
   },
 ];
 

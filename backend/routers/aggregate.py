@@ -1,4 +1,4 @@
-"""Aggregate router: cross-workspace views for the authenticated user."""
+"""Aggregate router: cross-workspace indexes for the authenticated user."""
 
 from datetime import datetime
 from uuid import UUID
@@ -8,21 +8,26 @@ from fastapi import APIRouter, Depends, Query
 from ..auth import get_current_user
 from ..database import get_pool
 from ..models import UserPageEntry, UserPageListResponse
-from ..services import analytics_service, memory_service, table_service, wiki_service
+from ..services import (
+    analytics_service,
+    files_tree_service,
+    memory_service,
+    permission_service,
+    table_service,
+)
 
 router = APIRouter(prefix="/api/v1/me", tags=["aggregate"])
 
 
 @router.get("/pages", response_model=UserPageListResponse)
 async def list_all_pages(current_user: dict = Depends(get_current_user)):
-    """Every page across every workspace the user is a member of, with the
-    folder path so wiki-link autocomplete can resolve `[[a/b/page]]`."""
-    rows = await wiki_service.list_user_pages(current_user["id"])
+    """Every page across every workspace the user is a member of."""
+    rows = await files_tree_service.list_user_pages(current_user["id"])
     return UserPageListResponse(pages=[UserPageEntry(**r) for r in rows])
 
 
-@router.get("/history-events")
-async def list_all_history_events(
+@router.get("/session-events")
+async def list_all_session_events(
     agent_name: str | None = Query(None),
     event_type: str | None = Query(None),
     after: datetime | None = Query(None),
@@ -31,7 +36,7 @@ async def list_all_history_events(
     order: str = Query("desc", pattern="^(asc|desc)$"),
     current_user: dict = Depends(get_current_user),
 ):
-    """Events across all accessible workspaces + personal, with filters."""
+    """Session events across all accessible workspaces, with filters."""
     events, has_more = await memory_service.query_all_user_events(
         current_user["id"],
         agent_name=agent_name,
@@ -47,9 +52,10 @@ async def list_all_history_events(
 @router.get("/activity")
 async def list_activity(
     limit: int = Query(100, ge=1, le=200),
+    workspace_id: UUID | None = Query(None),
     current_user: dict = Depends(get_current_user),
 ):
-    """Recent product activity across every stash the user can access."""
+    """Recent product activity across accessible workspaces, optionally one workspace."""
     pool = get_pool()
     events = await pool.fetch(
         """
@@ -58,6 +64,7 @@ async def list_activity(
           FROM workspaces w
           JOIN workspace_members wm ON wm.workspace_id = w.id
           WHERE wm.user_id = $1
+          AND ($3::uuid IS NULL OR w.id = $3)
         )
         (
           SELECT 'session.uploaded' AS kind,
@@ -71,11 +78,12 @@ async def list_activity(
                    ARRAY_AGG(he.agent_name ORDER BY he.created_at DESC)
                    FILTER (WHERE he.agent_name IS NOT NULL)
                  )[1] || ': ' || he.session_id AS target_label,
-                 aw.id AS stash_id,
-                 aw.name AS stash_name
+                 aw.id AS workspace_id,
+                 aw.name AS workspace_name
           FROM history_events he
           JOIN accessible_workspaces aw ON aw.id = he.workspace_id
           WHERE he.session_id IS NOT NULL
+            AND """ + memory_service.readable_session_event_condition("he", 1) + """
           GROUP BY aw.id, aw.name, he.session_id
         )
         UNION ALL
@@ -85,10 +93,12 @@ async def list_activity(
                  COALESCE(p.updated_by, p.created_by) AS actor_id,
                  p.id::text AS target_id,
                  p.name AS target_label,
-                 aw.id AS stash_id,
-                 aw.name AS stash_name
+                 aw.id AS workspace_id,
+                 aw.name AS workspace_name
           FROM pages p
           JOIN accessible_workspaces aw ON aw.id = p.workspace_id
+          WHERE COALESCE(p.metadata->>'shared_in_stash_id', '') = ''
+            AND """ + permission_service.readable_content_condition("page", "p", 1) + """
         )
         UNION ALL
         (
@@ -97,10 +107,11 @@ async def list_activity(
                  f.uploaded_by AS actor_id,
                  f.id::text AS target_id,
                  f.name AS target_label,
-                 aw.id AS stash_id,
-                 aw.name AS stash_name
+                 aw.id AS workspace_id,
+                 aw.name AS workspace_name
           FROM files f
           JOIN accessible_workspaces aw ON aw.id = f.workspace_id
+          WHERE """ + permission_service.readable_content_condition("file", "f", 1) + """
         )
         UNION ALL
         (
@@ -109,8 +120,8 @@ async def list_activity(
                  wm.user_id AS actor_id,
                  wm.user_id::text AS target_id,
                  '' AS target_label,
-                 aw.id AS stash_id,
-                 aw.name AS stash_name
+                 aw.id AS workspace_id,
+                 aw.name AS workspace_name
           FROM workspace_members wm
           JOIN accessible_workspaces aw ON aw.id = wm.workspace_id
         )
@@ -118,6 +129,7 @@ async def list_activity(
         """,
         current_user["id"],
         limit,
+        workspace_id,
     )
     user_ids = list({r["actor_id"] for r in events if r["actor_id"]})
     users = {}
@@ -135,8 +147,8 @@ async def list_activity(
             "actor": users.get(r["actor_id"], {"name": "unknown", "display_name": None}),
             "target_id": r["target_id"],
             "target_label": r["target_label"],
-            "stash_id": r["stash_id"],
-            "stash_name": r["stash_name"],
+            "workspace_id": r["workspace_id"],
+            "workspace_name": r["workspace_name"],
         }
         for r in events
     ]

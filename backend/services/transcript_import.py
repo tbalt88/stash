@@ -7,7 +7,7 @@ The CLI writes a JSONL line per turn. Each line is shaped roughly:
      [{"type": "text"|"tool_use"|"tool_result", ...}]}, "timestamp": "...",
      "uuid": "...", ...}
 
-We map each line to a `history_events` row so the chat viewer can
+We map each line to a session event row so the session viewer can
 reconstruct the conversation by querying rows ordered by created_at.
 
 Reuses the parsing pattern from `routers/stashes.py:get_stash_transcript_messages`

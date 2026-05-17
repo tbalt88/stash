@@ -34,6 +34,7 @@ function LoginPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const cliSession = searchParams.get("cli");
+  const nextPath = localNextPath(searchParams.get("next"));
   const { user, loading, logout, refresh } = useAuth();
   const [mode, setMode] = useState<"login" | "register">("login");
   const [name, setName] = useState("");
@@ -46,6 +47,11 @@ function LoginPageInner() {
   useEffect(() => {
     if (loading || !user || cliSession) return;
 
+    if (nextPath) {
+      router.push(nextPath);
+      return;
+    }
+
     listMyWorkspaces().then(({ workspaces }) => {
       if (workspaces.length === 1) {
         router.push(`/workspaces/${workspaces[0].id}`);
@@ -55,7 +61,7 @@ function LoginPageInner() {
     }).catch(() => {
       router.push("/");
     });
-  }, [user, loading, cliSession, router]);
+  }, [user, loading, cliSession, nextPath, router]);
 
   // Wait for useAuth to load before rendering — otherwise the signed-out form
   // flashes on every /login hit even for already-signed-in users.
@@ -204,6 +210,12 @@ function LoginPageInner() {
       </main>
     </div>
   );
+}
+
+function localNextPath(value: string | null): string {
+  if (!value) return "";
+  if (!value.startsWith("/") || value.startsWith("//")) return "";
+  return value;
 }
 
 // --- Authorize CLI (already signed-in) ---------------------------------------

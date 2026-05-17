@@ -3,8 +3,8 @@
 import { useEffect, useRef, useState } from "react";
 
 const SOURCE_COLORS: Record<string, string> = {
-  history: "#8B5CF6",
-  notebook: "#22C55E",
+  sessions: "#8B5CF6",
+  files: "#22C55E",
   table: "#3B82F6",
 };
 
@@ -12,7 +12,7 @@ type Point3D = {
   x: number;
   y: number;
   z: number;
-  source: "history" | "notebook" | "table";
+  source: "sessions" | "files" | "table";
 };
 
 // Seeded cluster layout in [-1, 1]^3. Three clusters + a few bridge points,
@@ -46,12 +46,12 @@ function buildPoints(): Point3D[] {
   };
 
   return [
-    ...cluster(-0.7, 0.35, -0.1, 0.32, 16, "history", 1.1),
-    ...cluster(0.05, -0.05, 0.25, 0.38, 14, "notebook", 2.3),
+    ...cluster(-0.7, 0.35, -0.1, 0.32, 16, "sessions", 1.1),
+    ...cluster(0.05, -0.05, 0.25, 0.38, 14, "files", 2.3),
     ...cluster(0.72, -0.5, 0.15, 0.24, 10, "table", 3.7),
     // bridges
-    { x: -0.25, y: 0.15, z: 0.0, source: "history" },
-    { x: 0.35, y: -0.25, z: 0.2, source: "notebook" },
+    { x: -0.25, y: 0.15, z: 0.0, source: "sessions" },
+    { x: 0.35, y: -0.25, z: 0.2, source: "files" },
     { x: 0.5, y: -0.4, z: 0.35, source: "table" },
   ];
 }
@@ -198,8 +198,8 @@ export default function EmbeddingProjection3D() {
 
         <div className="absolute bottom-3 left-3 flex flex-col gap-1 rounded-md border border-border-subtle bg-background/85 px-2.5 py-2 backdrop-blur">
           {[
-            { src: "history", label: "History" },
-            { src: "notebook", label: "Notebooks" },
+            { src: "sessions", label: "Sessions" },
+            { src: "files", label: "Files" },
             { src: "table", label: "Tables" },
           ].map((row) => (
             <div

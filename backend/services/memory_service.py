@@ -1,4 +1,4 @@
-"""History service: structured agent event storage with FTS, vector search, and batch insert.
+"""Session event service: structured agent event storage with FTS, vector search, and batch insert.
 
 Events belong directly to a workspace (or are personal with workspace_id=NULL).
 Grouped by agent_name → session_id for display.
@@ -15,6 +15,7 @@ import numpy as np
 
 from ..database import get_pool
 from . import embeddings as embedding_service
+from . import permission_service, session_service
 
 logger = logging.getLogger(__name__)
 
@@ -128,6 +129,14 @@ async def push_event(
     event = dict(row)
     if embedding_service.is_configured():
         _schedule_event_embed(event["id"], content, _text_hash(content))
+    if workspace_id is not None and session_id:
+        await session_service.upsert_session(
+            workspace_id,
+            session_id,
+            agent_name=agent_name,
+            cwd=meta.get("cwd") if isinstance(meta.get("cwd"), str) else None,
+            created_by=created_by,
+        )
     return event
 
 
@@ -187,6 +196,7 @@ async def push_events_batch(
         timestamps,
     )
     results = [dict(r) for r in rows]
+    await _upsert_sessions_for_events(workspace_id, created_by, events)
     if embedding_service.is_configured() and results:
         ids = [r["id"] for r in results]
         contents_for_embed = [r["content"] for r in results]
@@ -194,10 +204,102 @@ async def push_events_batch(
     return results
 
 
-async def read_session_events(workspace_id: UUID, session_id: str) -> list[dict]:
+async def _upsert_sessions_for_events(
+    workspace_id: UUID | None,
+    created_by: UUID,
+    events: list[dict],
+) -> None:
+    if workspace_id is None:
+        return
+
+    sessions: dict[str, dict] = {}
+    for event in events:
+        session_id = event.get("session_id")
+        if not session_id or session_id in sessions:
+            continue
+        metadata = event.get("metadata") or {}
+        sessions[session_id] = {
+            "agent_name": event.get("agent_name") or "",
+            "cwd": metadata.get("cwd") if isinstance(metadata.get("cwd"), str) else None,
+        }
+
+    for session_id, session in sessions.items():
+        await session_service.upsert_session(
+            workspace_id,
+            session_id,
+            agent_name=session["agent_name"],
+            cwd=session["cwd"],
+            created_by=created_by,
+        )
+
+
+def readable_session_event_condition(event_alias: str, user_arg: int) -> str:
+    return f"""
+        (
+          {event_alias}.session_id IS NULL
+          OR EXISTS (
+            SELECT 1
+            FROM sessions readable_session
+            WHERE readable_session.workspace_id = {event_alias}.workspace_id
+              AND readable_session.session_id = {event_alias}.session_id
+              AND (
+                NOT EXISTS (
+                  SELECT 1
+                  FROM stash_items session_stash_item
+                  WHERE session_stash_item.object_type = 'session'
+                    AND session_stash_item.object_id = readable_session.id
+                )
+                OR EXISTS (
+                  SELECT 1
+                  FROM stash_items session_stash_item
+                  JOIN stashes session_stash ON session_stash.id = session_stash_item.stash_id
+                  LEFT JOIN workspace_members session_workspace_member
+                    ON session_workspace_member.workspace_id = session_stash.workspace_id
+                   AND session_workspace_member.user_id = ${user_arg}
+                  LEFT JOIN stash_members session_stash_member
+                    ON session_stash_member.stash_id = session_stash.id
+                   AND session_stash_member.user_id = ${user_arg}
+                  WHERE session_stash_item.object_type = 'session'
+                    AND session_stash_item.object_id = readable_session.id
+                    AND (
+                      session_stash.access = 'public'
+                      OR (
+                        session_stash.access = 'workspace'
+                        AND session_workspace_member.user_id IS NOT NULL
+                      )
+                      OR session_stash.owner_id = ${user_arg}
+                      OR session_stash_member.user_id IS NOT NULL
+                    )
+                )
+              )
+          )
+        )
+    """
+
+
+async def can_read_session(workspace_id: UUID, session_id: str, user_id: UUID) -> bool:
+    session = await session_service.get_session(workspace_id, session_id)
+    if not session:
+        return False
+    return await permission_service.check_access(
+        "session",
+        session["id"],
+        user_id,
+        workspace_id=workspace_id,
+    )
+
+
+async def read_session_events(
+    workspace_id: UUID,
+    session_id: str,
+    user_id: UUID | None = None,
+) -> list[dict]:
     """Ordered events for a session within a workspace. The canonical
-    source for chat-thread rendering — replaces reading the R2 transcript
+    source for session-thread rendering — replaces reading the R2 transcript
     blob."""
+    if user_id is not None and not await can_read_session(workspace_id, session_id, user_id):
+        return []
+
     pool = get_pool()
     rows = await pool.fetch(
         "SELECT id, agent_name, event_type, tool_name, content, metadata, created_at "
@@ -209,32 +311,39 @@ async def read_session_events(workspace_id: UUID, session_id: str) -> list[dict]
     return [dict(r) for r in rows]
 
 
-async def list_workspace_sessions(workspace_id: UUID) -> list[dict]:
+async def list_workspace_sessions(workspace_id: UUID, user_id: UUID) -> list[dict]:
     """One row per session_id in this workspace. Powers the spine sessions
     list — replaces a SELECT against session_transcripts."""
     pool = get_pool()
     rows = await pool.fetch(
-        "SELECT session_id, "
-        "       MAX(agent_name) AS agent_name, "
+        "SELECT h.session_id, "
+        "       s.id::text AS id, "
+        "       MAX(h.agent_name) AS agent_name, "
+        "       COALESCE(MAX(s.summary), '') AS summary, "
         "       COUNT(*)::INT AS event_count, "
-        "       SUM(LENGTH(content))::BIGINT AS size_bytes, "
-        "       MIN(created_at) AS started_at, "
-        "       MAX(created_at) AS last_at "
-        "FROM history_events "
-        "WHERE workspace_id = $1 AND session_id IS NOT NULL "
-        "GROUP BY session_id "
-        "ORDER BY last_at DESC",
+        "       SUM(LENGTH(h.content))::BIGINT AS size_bytes, "
+        "       MIN(h.created_at) AS started_at, "
+        "       MAX(h.created_at) AS last_at "
+        "FROM history_events h "
+        "JOIN sessions s ON s.workspace_id = h.workspace_id AND s.session_id = h.session_id "
+        "WHERE h.workspace_id = $1 AND h.session_id IS NOT NULL "
+        f"AND {readable_session_event_condition('h', 2)} "
+        "GROUP BY h.session_id, s.id "
+        "ORDER BY last_at DESC, agent_name ASC, session_id ASC",
         workspace_id,
+        user_id,
     )
     return [dict(r) for r in rows]
 
 
-async def get_workspace_event(event_id: UUID, workspace_id: UUID) -> dict | None:
+async def get_workspace_event(event_id: UUID, workspace_id: UUID, user_id: UUID) -> dict | None:
     pool = get_pool()
     row = await pool.fetchrow(
-        "SELECT * FROM history_events WHERE id = $1 AND workspace_id = $2",
+        "SELECT * FROM history_events he WHERE he.id = $1 AND he.workspace_id = $2 "
+        f"AND {readable_session_event_condition('he', 3)}",
         event_id,
         workspace_id,
+        user_id,
     )
     return dict(row) if row else None
 
@@ -314,6 +423,7 @@ async def _query_events(
 
 async def query_workspace_events(
     workspace_id: UUID,
+    user_id: UUID,
     agent_name: str | None = None,
     session_id: str | None = None,
     event_type: str | None = None,
@@ -325,8 +435,8 @@ async def query_workspace_events(
     """Query events in a workspace. Returns (events, has_more)."""
     limit = min(limit, 200)
     where, args, next_idx = _build_event_filters(
-        "workspace_id = $1",
-        [workspace_id],
+        f"workspace_id = $1 AND {readable_session_event_condition('history_events', 2)}",
+        [workspace_id, user_id],
         agent_name,
         session_id,
         event_type,
@@ -362,6 +472,7 @@ async def query_personal_events(
 
 async def search_workspace_events(
     workspace_id: UUID,
+    user_id: UUID,
     query: str,
     limit: int = 50,
 ) -> list[dict]:
@@ -373,11 +484,14 @@ async def search_workspace_events(
         "tool_name, content, metadata, attachments, created_at, "
         "ts_rank(to_tsvector('english', content), websearch_to_tsquery('english', $2)) AS rank "
         "FROM history_events "
-        "WHERE workspace_id = $1 AND to_tsvector('english', content) @@ websearch_to_tsquery('english', $2) "
+        "WHERE workspace_id = $1 "
+        f"AND {readable_session_event_condition('history_events', 4)} "
+        "AND to_tsvector('english', content) @@ websearch_to_tsquery('english', $2) "
         "ORDER BY rank DESC LIMIT $3",
         workspace_id,
         query,
         limit,
+        user_id,
     )
     return [dict(r) for r in rows]
 
@@ -407,6 +521,7 @@ async def search_personal_events(
 
 async def search_workspace_events_vector(
     workspace_id: UUID,
+    user_id: UUID,
     query_embedding: np.ndarray,
     limit: int = 20,
 ) -> list[dict]:
@@ -418,11 +533,14 @@ async def search_workspace_events_vector(
         "tool_name, content, metadata, attachments, created_at, "
         "1 - (embedding <=> $2) AS similarity "
         "FROM history_events "
-        "WHERE workspace_id = $1 AND embedding IS NOT NULL "
+        "WHERE workspace_id = $1 "
+        f"AND {readable_session_event_condition('history_events', 4)} "
+        "AND embedding IS NOT NULL "
         "ORDER BY embedding <=> $2 LIMIT $3",
         workspace_id,
         query_embedding,
         limit,
+        user_id,
     )
     return [dict(r) for r in rows]
 
@@ -468,7 +586,8 @@ async def query_all_user_events(
 
     conditions = [
         "(he.workspace_id IN (SELECT workspace_id FROM workspace_members WHERE user_id = $1) "
-        "OR (he.workspace_id IS NULL AND he.created_by = $1))"
+        "OR (he.workspace_id IS NULL AND he.created_by = $1))",
+        f"(he.workspace_id IS NULL OR {readable_session_event_condition('he', 1)})",
     ]
     args: list = [user_id]
     idx = 2

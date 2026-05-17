@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, Field
 
 # --- Users ---
 
@@ -72,21 +72,15 @@ class ApiKeyCreateResponse(BaseModel):
 
 class WorkspaceCreateRequest(BaseModel):
     name: str = Field(..., min_length=1, max_length=128)
-    description: str = Field("", max_length=1000)
-    is_public: bool = False
+    description: str = Field("", max_length=50000)
 
 
 class WorkspaceUpdateRequest(BaseModel):
     name: str | None = Field(None, min_length=1, max_length=128)
-    description: str | None = Field(None, max_length=1000)
-    summary: str | None = Field(None, max_length=280)
-    tags: list[str] | None = None
-    category: str | None = Field(None, max_length=32)
+    description: str | None = Field(None, max_length=50000)
     cover_image_url: str | None = None
     icon_url: str | None = None
     color_gradient: str | None = Field(None, max_length=256)
-    is_public: bool | None = None
-    discoverable: bool | None = None
 
 
 class WorkspaceResponse(BaseModel):
@@ -95,178 +89,112 @@ class WorkspaceResponse(BaseModel):
     description: str
     creator_id: UUID
     invite_code: str
-    is_public: bool
     created_at: datetime
     updated_at: datetime
     member_count: int | None = None
-    summary: str | None = None
-    tags: list[str] = []
-    category: str | None = None
-    discoverable: bool = False
-    featured: bool = False
     cover_image_url: str | None = None
     icon_url: str | None = None
     color_gradient: str | None = None
-    fork_count: int = 0
-    forked_from_workspace_id: UUID | None = None
 
 
 class WorkspaceListResponse(BaseModel):
     workspaces: list[WorkspaceResponse]
 
 
-class WorkspaceForkRequest(BaseModel):
-    name: str | None = Field(None, min_length=1, max_length=128)
+# --- Stashes (publishable subsets of a workspace) ---
+
+StashObjectType = str  # 'folder' | 'page' | 'table' | 'file' | 'session'
 
 
-# --- Discover catalog ---
-
-
-class WorkspaceCatalogCard(BaseModel):
-    id: UUID
-    name: str
-    summary: str | None = None
-    description: str
-    is_public: bool
-    tags: list[str] = []
-    category: str | None = None
-    discoverable: bool = False
-    featured: bool = False
-    cover_image_url: str | None = None
-    creator_id: UUID
-    creator_name: str
-    creator_display_name: str | None = None
-    member_count: int = 0
-    fork_count: int = 0
-    page_count: int = 0
-    table_count: int = 0
-    file_count: int = 0
-    history_event_count: int = 0
-    forked_from_workspace_id: UUID | None = None
-    created_at: datetime
-    updated_at: datetime
-
-
-class CatalogListResponse(BaseModel):
-    workspaces: list[WorkspaceCatalogCard]
-    next_cursor: str | None = None
-
-
-class WorkspacePublicFolderSummary(BaseModel):
-    id: UUID
-    name: str
-    parent_folder_id: UUID | None = None
-    page_count: int
-    updated_at: datetime
-
-
-class WorkspacePublicRootPageSummary(BaseModel):
-    id: UUID
-    name: str
-    updated_at: datetime
-
-
-class WorkspacePublicTableSummary(BaseModel):
-    id: UUID
-    name: str
-    row_count: int
-    updated_at: datetime
-
-
-class WorkspacePublicFileSummary(BaseModel):
-    id: UUID
-    name: str
-    size_bytes: int
-    created_at: datetime
-
-
-class WorkspacePublicDetail(BaseModel):
-    workspace: WorkspaceCatalogCard
-    folders: list[WorkspacePublicFolderSummary]
-    root_pages: list[WorkspacePublicRootPageSummary]
-    tables: list[WorkspacePublicTableSummary]
-    files: list[WorkspacePublicFileSummary]
-
-
-class DiscoverCatalogUpdateRequest(BaseModel):
-    discoverable: bool | None = None
-    featured: bool | None = None
-    summary: str | None = Field(None, max_length=280)
-    tags: list[str] | None = None
-    category: str | None = Field(None, max_length=32)
-    cover_image_url: str | None = None
-
-
-# --- Views (curated subsets of a workspace) ---
-
-ViewObjectType = str  # 'folder' | 'page' | 'table' | 'file' | 'history'
-
-
-class ViewItem(BaseModel):
-    object_type: ViewObjectType = Field(..., pattern=r"^(folder|page|table|file|history)$")
+class StashItem(BaseModel):
+    object_type: StashObjectType = Field(..., pattern=r"^(folder|page|table|file|session)$")
     object_id: UUID
     position: int = 0
     label_override: str | None = Field(None, max_length=160)
 
 
-class ViewCreateRequest(BaseModel):
+class StashCreateRequest(BaseModel):
     title: str = Field(..., min_length=1, max_length=160)
     description: str = Field("", max_length=2000)
-    is_public: bool = False
+    access: str = Field("workspace", pattern=r"^(workspace|private|public)$")
+    discoverable: bool = False
     cover_image_url: str | None = None
-    items: list[ViewItem] = Field(default_factory=list)
+    items: list[StashItem] = Field(default_factory=list)
 
 
-class ViewUpdateRequest(BaseModel):
+class StashUpdateRequest(BaseModel):
     title: str | None = Field(None, min_length=1, max_length=160)
     description: str | None = Field(None, max_length=2000)
-    is_public: bool | None = None
+    access: str | None = Field(None, pattern=r"^(workspace|private|public)$")
+    discoverable: bool | None = None
     cover_image_url: str | None = None
-    items: list[ViewItem] | None = None
+    items: list[StashItem] | None = None
 
 
-class ViewResponse(BaseModel):
+class StashResponse(BaseModel):
     id: UUID
     workspace_id: UUID
     slug: str
     title: str
     description: str
     owner_id: UUID
-    is_public: bool
+    access: str
+    discoverable: bool
     cover_image_url: str | None = None
     view_count: int
-    items: list[ViewItem]
+    items: list[StashItem]
+    is_external: bool = False
+    added_to_workspace_id: UUID | None = None
+    forked_from_stash_id: UUID | None = None
     created_at: datetime
     updated_at: datetime
 
 
-class ViewListResponse(BaseModel):
-    views: list[ViewResponse]
+class StashListResponse(BaseModel):
+    stashes: list[StashResponse]
+
+
+class StashMemberRequest(BaseModel):
+    user_id: UUID
+    permission: str = Field("read", pattern=r"^(read|write|admin)$")
+
+
+class StashMemberResponse(BaseModel):
+    user_id: UUID
+    name: str
+    display_name: str | None
+    permission: str
+    granted_by: UUID | None
+    created_at: datetime
+
+
+class StashMembersResponse(BaseModel):
+    members: list[StashMemberResponse]
 
 
 # Public renderer payload — items are inlined with their content where it
-# makes sense (folders/pages, table rows, file metadata, history events).
+# makes sense (folders/pages, table rows, file metadata, session events).
 # The shape is intentionally permissive: each entry has the item
 # type/id/label plus an `inline` blob whose contents depend on the type.
 
 
-class ViewItemInlined(BaseModel):
-    object_type: ViewObjectType
+class StashItemInlined(BaseModel):
+    object_type: StashObjectType
     object_id: UUID
     position: int
     label: str
     inline: dict
 
 
-class ViewPublicResponse(BaseModel):
-    view: ViewResponse
+class StashPublicResponse(BaseModel):
+    stash: StashResponse
     workspace_name: str
-    workspace_is_public: bool
-    items: list[ViewItemInlined]
+    items: list[StashItemInlined]
+    can_write: bool = False
 
 
-class ViewForkRequest(BaseModel):
-    name: str | None = Field(None, min_length=1, max_length=128)
+class AddExternalStashRequest(BaseModel):
+    workspace_id: UUID
 
 
 class WorkspaceMember(BaseModel):
@@ -330,7 +258,7 @@ class RedeemInviteAuthedRequest(BaseModel):
     token: str = Field(..., min_length=8, max_length=128)
 
 
-# --- Wiki: folders (nested) and pages ---
+# --- Files: folders (nested) and pages ---
 
 
 class FolderCreateRequest(BaseModel):
@@ -423,12 +351,12 @@ class WorkspaceTreeResponse(BaseModel):
 
 
 class WorkspacePageEntry(BaseModel):
-    """Flat reference to a page for wiki-link lookups.
+    """Flat reference to a page for workspace-wide search and pickers.
 
     folder_path is the chain of folder names from the workspace root down to
     the immediate parent — empty for root pages, ['Architecture', 'API'] for
     a page nested two folders deep. Used to render and resolve
-    `[[folder/page]]` wiki links.
+    Folder path is included so callers can display disambiguated page names.
     """
 
     id: UUID
@@ -575,6 +503,7 @@ class HistoryEventCreateRequest(BaseModel):
     event_type: str = Field(..., min_length=1, max_length=64)
     content: str = Field(..., min_length=1)
     session_id: str | None = Field(None, max_length=64)
+    default_stash_id: UUID | None = None
     tool_name: str | None = Field(None, max_length=128)
     metadata: dict = Field(default_factory=dict)
     attachments: list[Attachment] | None = None
@@ -585,6 +514,7 @@ class HistoryEventCreateRequest(BaseModel):
 
 class HistoryEventBatchRequest(BaseModel):
     events: list[HistoryEventCreateRequest] = Field(..., min_length=1, max_length=100)
+    default_stash_id: UUID | None = None
 
 
 class HistoryEventResponse(BaseModel):
@@ -618,56 +548,17 @@ class HistoryQueryResponse(BaseModel):
     sources: list[HistoryEventResponse]
 
 
-# --- Object Permissions ---
-
-
-class PermissionResponse(BaseModel):
-    object_type: str
-    object_id: UUID
-    visibility: str  # inherit, private, link, public
-    shares: list["ShareResponse"] = []
-
-
-class SetVisibilityRequest(BaseModel):
-    visibility: str = Field(..., pattern=r"^(inherit|private|link|public)$")
-
-
-class ShareRequest(BaseModel):
-    user_id: UUID
-    permission: str = Field("read", pattern=r"^(read|write|admin)$")
-
-
-class ShareResponse(BaseModel):
-    user_id: UUID
-    user_name: str
-    permission: str
-    granted_by: UUID
-    created_at: datetime
-
-
-class ShareLinkResponse(BaseModel):
-    """URL the share sheet copies to clipboard. For workspaces this points at
-    /s/{slug-or-uuid}; for everything else it points at the auto-created
-    one-item View at /v/{slug}."""
-
-    url: str
-    kind: str  # 'workspace' | 'view'
-    view_id: UUID | None = None
-    view_slug: str | None = None
-
-
 class PublishRequest(BaseModel):
-    """Single-call publish: create a page from supplied content and return a
-    share URL for it. Designed for AI agents — collapses 4-5 round trips into
-    one. Folder is optional; defaults to a workspace's "AI Drafts" folder
-    that's auto-created on first use."""
+    """Single-call publish: create a Page from supplied content, wrap it in a
+    Stash, and return the Stash URL. Folder is optional; defaults to a
+    workspace's "AI Drafts" folder that's auto-created on first use."""
 
     workspace_id: UUID
     title: str = Field(..., min_length=1, max_length=255)
     content: str = ""
     content_type: str = Field("markdown", pattern=r"^(markdown|html)$")
     html_layout: str = Field("responsive", pattern=r"^(responsive|fixed-aspect)$")
-    audience: str = Field("link", pattern=r"^(link|public)$")
+    audience: str = Field("public", pattern=r"^(workspace|private|public)$")
     folder_id: UUID | None = None
 
 
@@ -677,8 +568,8 @@ class PublishResponse(BaseModel):
     workspace_id: UUID
     visibility: str
     url: str
-    view_id: UUID | None = None
-    view_slug: str | None = None
+    stash_id: UUID | None = None
+    stash_slug: str | None = None
 
 
 # --- Files ---
@@ -711,74 +602,3 @@ class SessionTranscriptResponse(BaseModel):
     download_url: str | None
     uploaded_by: UUID
     uploaded_at: datetime
-
-
-# --- Join Requests ---
-
-
-class JoinRequestResponse(BaseModel):
-    id: UUID
-    workspace_id: UUID
-    user_id: UUID
-    status: str
-    created_at: datetime
-    resolved_at: datetime | None = None
-    resolved_by: UUID | None = None
-    user_name: str | None = None
-    user_display_name: str | None = None
-
-
-class JoinRequestListResponse(BaseModel):
-    requests: list[JoinRequestResponse]
-
-
-class WorkspacePublicInfo(BaseModel):
-    id: UUID
-    name: str
-    member_count: int
-
-
-# --- Stashes ---
-
-
-class StashCreateRequest(BaseModel):
-    session_id: str = Field(..., min_length=1, max_length=128)
-    agent_name: str = Field("", max_length=64)
-    cwd: str | None = Field(None, max_length=1024)
-    files_touched: list[str] = Field(default_factory=list)
-
-
-class StashUpdateRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    summary: str | None = None
-
-
-class StashArtifactResponse(BaseModel):
-    id: UUID
-    file_path: str
-    size_bytes: int
-    created_at: datetime
-
-
-class StashResponse(BaseModel):
-    id: UUID
-    workspace_id: UUID
-    session_id: str
-    slug: str
-    agent_name: str
-    cwd: str | None
-    summary_status: str
-    summary: str | None
-    files_touched: list[str]
-    artifact_count: int = 0
-    has_transcript: bool = False
-    created_by: UUID
-    created_at: datetime
-    updated_at: datetime
-
-
-class StashCreateResponse(BaseModel):
-    id: UUID
-    slug: str
-    url: str

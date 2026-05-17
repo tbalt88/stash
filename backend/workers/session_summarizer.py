@@ -1,11 +1,8 @@
 """Server-side session summarizer worker.
 
 Claims sessions with summary_status='need_summary', assembles a transcript
-from history_events, and runs one Haiku call through the agent runtime to
+from session events, and runs one Haiku call through the agent runtime to
 populate `sessions.summary`.
-
-Each successful summary marks the corresponding stash handoff stale so the
-writer re-incorporates the new session on its next eligible run.
 """
 
 from __future__ import annotations
@@ -17,7 +14,7 @@ from uuid import UUID
 
 from ..config import settings
 from ..database import get_pool
-from ..services import agent_runtime, handoff_writer, memory_service, prompts
+from ..services import agent_runtime, memory_service, prompts
 from ._lock_helpers import advisory_lock
 
 logger = logging.getLogger(__name__)
@@ -100,7 +97,7 @@ async def summarize_one(session_id: UUID, workspace_id: UUID, session_external_i
         await get_pool().execute(
             "UPDATE sessions SET summary_status = 'failed', "
             "summary_last_attempt_at = now(), "
-            "summary_last_error = 'no history events for session' "
+            "summary_last_error = 'no session events' "
             "WHERE id = $1",
             session_id,
         )
@@ -110,7 +107,7 @@ async def summarize_one(session_id: UUID, workspace_id: UUID, session_external_i
     if len(transcript) > TRANSCRIPT_CHAR_BUDGET:
         transcript = transcript[:TRANSCRIPT_CHAR_BUDGET] + "\n\n[... transcript truncated ...]"
 
-    user = prompts.render_session_summary_user(transcript, source_label="history events")
+    user = prompts.render_session_summary_user(transcript, source_label="session events")
 
     started = datetime.now(UTC)
     try:
@@ -119,7 +116,7 @@ async def summarize_one(session_id: UUID, workspace_id: UUID, session_external_i
                 tier=agent_runtime.ModelTier.FAST,
                 system=prompts.SESSION_SUMMARY_SYSTEM,
                 prompt=user,
-                stash_id=workspace_id,
+                workspace_id=workspace_id,
                 tool_set=(),
                 max_turns=1,
                 max_output_tokens=MAX_TOKENS,
@@ -137,7 +134,6 @@ async def summarize_one(session_id: UUID, workspace_id: UUID, session_external_i
         return False
 
     await _write_summary(session_id, text, result)
-    await handoff_writer.mark_stale(workspace_id)
     latency = (datetime.now(UTC) - started).total_seconds()
     logger.info(
         "session summarizer: summarized %s (%s, in=%d out=%d, %.1fs)",

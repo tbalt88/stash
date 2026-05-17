@@ -20,7 +20,7 @@ from ..auth import get_current_user
 from ..database import get_pool
 from ..models import FileListResponse, FileResponse, TableResponse
 from ..services import (
-    handoff_writer,
+    permission_service,
     storage_service,
     table_service,
     workspace_service,
@@ -46,6 +46,24 @@ async def _check_write(workspace_id: UUID, user_id: UUID) -> None:
             status_code=403,
             detail="Viewers can read but not modify files",
         )
+
+
+async def _can_access_file(
+    file_id: UUID,
+    workspace_id: UUID,
+    user_id: UUID,
+    *,
+    require_write: bool = False,
+) -> bool:
+    if await permission_service.check_access(
+        "file",
+        file_id,
+        user_id,
+        workspace_id=workspace_id,
+        require_write=require_write,
+    ):
+        return True
+    return False
 
 
 async def _file_to_response(row: dict) -> FileResponse:
@@ -101,6 +119,15 @@ async def upload_ws_file(
         )
         if not owns:
             raise HTTPException(status_code=400, detail="folder_id does not belong to workspace")
+        can_write_folder = await permission_service.check_access(
+            "folder",
+            folder_id,
+            current_user["id"],
+            workspace_id=workspace_id,
+            require_write=True,
+        )
+        if not can_write_folder:
+            raise HTTPException(status_code=404, detail="Folder not found")
     row = await pool.fetchrow(
         "INSERT INTO files (workspace_id, name, content_type, size_bytes, storage_key, uploaded_by, folder_id) "
         "VALUES ($1, $2, $3, $4, $5, $6, $7) "
@@ -113,7 +140,6 @@ async def upload_ws_file(
         current_user["id"],
         folder_id,
     )
-    handoff_writer.mark_stale_bg(workspace_id)
     return await _file_to_response(dict(row))
 
 
@@ -129,7 +155,11 @@ async def list_ws_files(
         "FROM files WHERE workspace_id = $1 ORDER BY created_at DESC",
         workspace_id,
     )
-    files = [await _file_to_response(dict(r)) for r in rows]
+    readable_rows = []
+    for row in rows:
+        if await _can_access_file(row["id"], workspace_id, current_user["id"]):
+            readable_rows.append(dict(row))
+    files = [await _file_to_response(r) for r in readable_rows]
     return FileListResponse(files=files)
 
 
@@ -149,6 +179,8 @@ async def get_ws_file(
     )
     if not row:
         raise HTTPException(status_code=404, detail="File not found")
+    if not await _can_access_file(file_id, workspace_id, current_user["id"]):
+        raise HTTPException(status_code=404, detail="File not found")
     return await _file_to_response(dict(row))
 
 
@@ -160,9 +192,8 @@ async def download_ws_file(
 ):
     """Permanent, shareable URL → 302s to a freshly-signed S3 GET.
 
-    Signed S3 URLs expire after an hour, so we can't embed them in page
-    markdown. This endpoint's URL is stable, and wiki pages can link to
-    it; each click re-signs and redirects.
+    Signed S3 URLs expire after an hour, so page markdown embeds this stable
+    endpoint; each click re-signs and redirects.
     """
     await _check_member(workspace_id, current_user["id"])
     pool = get_pool()
@@ -172,6 +203,8 @@ async def download_ws_file(
         workspace_id,
     )
     if not row:
+        raise HTTPException(status_code=404, detail="File not found")
+    if not await _can_access_file(file_id, workspace_id, current_user["id"]):
         raise HTTPException(status_code=404, detail="File not found")
     url = await storage_service.get_file_url(row["storage_key"])
     return RedirectResponse(url=url, status_code=302)
@@ -193,17 +226,13 @@ async def get_ws_file_text(
     )
     if not row:
         raise HTTPException(status_code=404, detail="File not found")
+    if not await _can_access_file(file_id, workspace_id, current_user["id"]):
+        raise HTTPException(status_code=404, detail="File not found")
     return {
         "text": row["extracted_text"],
         "status": row["extraction_status"],
         "error": row["extraction_error"],
     }
-
-
-# PATCH /files/{id} removed: the only field it edited was `public_in_share`,
-# which is gone in the unified sharing model. To make a file shareable now,
-# mint a share-link via POST /api/v1/workspaces/{ws}/shares with
-# target_type='file'.
 
 
 @ws_router.delete("/{file_id}", status_code=204)
@@ -221,6 +250,8 @@ async def delete_ws_file(
     )
     if not row:
         raise HTTPException(status_code=404, detail="File not found")
+    if not await _can_access_file(file_id, workspace_id, current_user["id"], require_write=True):
+        raise HTTPException(status_code=404, detail="File not found")
     try:
         await storage_service.delete_file(row["storage_key"])
     except Exception:
@@ -228,7 +259,6 @@ async def delete_ws_file(
     await pool.execute(
         "DELETE FROM files WHERE id = $1 AND workspace_id = $2", file_id, workspace_id
     )
-    handoff_writer.mark_stale_bg(workspace_id)
 
 
 # ===== CSV → Table ingest =====
@@ -303,6 +333,8 @@ async def ingest_csv_file(
         workspace_id,
     )
     if not row:
+        raise HTTPException(status_code=404, detail="File not found")
+    if not await _can_access_file(file_id, workspace_id, current_user["id"], require_write=True):
         raise HTTPException(status_code=404, detail="File not found")
     if "csv" not in (row["content_type"] or ""):
         raise HTTPException(status_code=400, detail="File is not a CSV")

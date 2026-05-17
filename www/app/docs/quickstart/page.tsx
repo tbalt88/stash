@@ -29,7 +29,7 @@ export default function QuickstartPage() {
       </P>
 
       <Callout>
-        <strong>Agent names</strong> are just strings on history events that identify which agent produced them.
+        <strong>Agent names</strong> are just strings on session events that identify which agent produced them.
         Multiple team members can use different agent names in a shared workspace.
       </Callout>
 
@@ -48,18 +48,12 @@ stash login`}</CodeBlock>
         ))}
       </div>
 
-      <H3>4. Curate your knowledge base</H3>
+      <H3>4. Build your knowledge base</H3>
       <P>
-        Curation runs automatically after agent sessions (with a 24-hour cooldown), organizing
-        ingested data into a categorized wiki with <code className="text-brand font-mono text-[13px]">[[backlinks]]</code>,
-        folders, and summaries. You can also trigger it manually with
-        the <code className="text-brand font-mono text-[13px]">/curate</code> slash command in supported agents.
+        Sessions stream into searchable sessions. Promote useful outputs into pages, organize
+        them with folders, and connect related pages with{" "}
+        <code className="text-brand font-mono text-[13px]">Stashes</code>.
       </P>
-      <Callout type="tip">
-        The more data you push, the richer the wiki gets. The curation tool merges
-        duplicates, creates category pages, and links related content automatically.
-        Toggle auto-curation in <code className="text-brand font-mono text-[13px]">stash settings</code>.
-      </Callout>
     </>
   );
 }

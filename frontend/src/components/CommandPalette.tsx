@@ -1,30 +1,39 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { semanticSearchPages, type StashSidebar } from "../lib/api";
+import { semanticSearchPages, type WorkspaceSidebar } from "../lib/api";
 import {
-  getCachedStashSidebar,
-  readCachedStashSidebar,
+  getCachedWorkspaceSidebar,
+  readCachedWorkspaceSidebar,
 } from "../lib/stashNavigationCache";
+import type { SearchScope } from "./AppShell";
 
 interface CommandPaletteProps {
   open: boolean;
   onClose: () => void;
-  stashId: string | null;
+  workspaceId: string | null;
+  searchScope: SearchScope | null;
 }
 
 interface Result {
-  kind: "page" | "session" | "folder" | "file" | "history";
+  kind: "search" | "page" | "session" | "folder" | "file";
   label: string;
   href: string;
   detail?: string;
 }
 
-export default function CommandPalette({ open, onClose, stashId }: CommandPaletteProps) {
+export default function CommandPalette({
+  open,
+  onClose,
+  workspaceId,
+  searchScope,
+}: CommandPaletteProps) {
+  const router = useRouter();
   const [query, setQuery] = useState("");
-  const [spine, setSpine] = useState<StashSidebar | null>(() =>
-    stashId ? readCachedStashSidebar(stashId) : null
+  const [spine, setSpine] = useState<WorkspaceSidebar | null>(() =>
+    workspaceId ? readCachedWorkspaceSidebar(workspaceId) : null
   );
   const [results, setResults] = useState<Result[]>([]);
   const [selected, setSelected] = useState(0);
@@ -36,35 +45,37 @@ export default function CommandPalette({ open, onClose, stashId }: CommandPalett
     setResults([]);
     setSelected(0);
     inputRef.current?.focus();
-    const cached = stashId ? readCachedStashSidebar(stashId) : null;
+    const cached = workspaceId ? readCachedWorkspaceSidebar(workspaceId) : null;
     if (cached) {
       setSpine(cached);
       return;
     }
     setSpine(null);
-    if (stashId) {
-      getCachedStashSidebar(stashId)
+    if (workspaceId) {
+      getCachedWorkspaceSidebar(workspaceId)
         .then(setSpine)
         .catch(() => {});
     }
-  }, [open, stashId]);
+  }, [open, workspaceId]);
 
   useEffect(() => {
     if (!open || !query.trim()) {
-      setResults([]);
+      setResults(searchScope ? [scopedSearchResult(searchScope, query)] : []);
+      setSelected(0);
       return;
     }
     const q = query.toLowerCase();
 
     // Local spine fuzzy match (instant)
-    const local: Result[] = [];
-    if (spine && stashId) {
-      spine.wiki.pages.forEach((p) => {
+    const local: Result[] = searchScope ? [scopedSearchResult(searchScope, query)] : [];
+    if (spine && workspaceId) {
+      const filesTree = spine.files;
+      filesTree.pages.forEach((p) => {
         if (p.name.toLowerCase().includes(q))
           local.push({
             kind: "page",
             label: p.name.replace(/\.md$/, ""),
-            href: `/stashes/${stashId}/p/${p.id}`,
+            href: `/workspaces/${workspaceId}/p/${p.id}`,
             detail: "Page",
           });
       });
@@ -73,27 +84,27 @@ export default function CommandPalette({ open, onClose, stashId }: CommandPalett
           local.push({
             kind: "session",
             label: `#${s.session_id}`,
-            href: `/stashes/${stashId}/sessions/${encodeURIComponent(s.session_id)}`,
+            href: `/workspaces/${workspaceId}/sessions/${encodeURIComponent(s.session_id)}`,
             detail: s.agent_name,
           });
       });
-      spine.wiki.folders.forEach((f) => {
+      filesTree.folders.forEach((f) => {
         if (f.name.toLowerCase().includes(q))
           local.push({
             kind: "folder",
             label: f.name,
-            href: `/stashes/${stashId}/folders/${f.id}`,
+            href: `/workspaces/${workspaceId}/folders/${f.id}`,
             detail: `${f.page_count} pages · ${f.file_count} files`,
           });
       });
-      spine.wiki.files.forEach((f) => {
+      filesTree.files.forEach((f) => {
         if (f.name.toLowerCase().includes(q))
           local.push({
             kind: "file",
             label: f.name,
             href: f.linked_table_id
-              ? `/tables/${f.linked_table_id}?workspaceId=${stashId}`
-              : `/stashes/${stashId}/f/${f.id}`,
+              ? `/tables/${f.linked_table_id}?workspaceId=${workspaceId}`
+              : `/workspaces/${workspaceId}/f/${f.id}`,
             detail: f.content_type,
           });
       });
@@ -102,15 +113,15 @@ export default function CommandPalette({ open, onClose, stashId }: CommandPalett
     setSelected(0);
 
     // Remote debounce (250ms): semantic page search
-    if (!stashId) return;
+    if (!workspaceId) return;
     const timer = setTimeout(async () => {
       try {
-        const pages = await semanticSearchPages(stashId, query, 6);
+        const pages = await semanticSearchPages(workspaceId, query, 6);
         const remote: Result[] = pages.map((p) => ({
           kind: "page" as const,
           label: p.name.replace(/\.md$/, ""),
-          href: `/stashes/${stashId}/p/${p.id}`,
-          detail: "Wiki page",
+          href: `/workspaces/${workspaceId}/p/${p.id}`,
+          detail: "Page",
         }));
         setResults((prev) => {
           const ids = new Set(prev.map((r) => r.href));
@@ -121,7 +132,7 @@ export default function CommandPalette({ open, onClose, stashId }: CommandPalett
       }
     }, 250);
     return () => clearTimeout(timer);
-  }, [query, open, spine, stashId]);
+  }, [query, open, spine, workspaceId, searchScope]);
 
   useEffect(() => {
     if (!open) return;
@@ -135,21 +146,22 @@ export default function CommandPalette({ open, onClose, stashId }: CommandPalett
         e.preventDefault();
         setSelected((s) => Math.max(s - 1, 0));
       } else if (e.key === "Enter" && results[selected]) {
+        router.push(results[selected].href);
         onClose();
       }
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [open, results, selected, onClose]);
+  }, [open, results, selected, onClose, router]);
 
   if (!open) return null;
 
   const kindIcon: Record<string, string> = {
+    search: "⌕",
     page: "📄",
     session: "#",
     skill: "⚙︎",
     file: "📁",
-    history: "⏱",
   };
 
   return (
@@ -211,4 +223,17 @@ export default function CommandPalette({ open, onClose, stashId }: CommandPalett
       </div>
     </div>
   );
+}
+
+function scopedSearchResult(scope: SearchScope, query: string): Result {
+  const params = new URLSearchParams(scope.params);
+  const q = query.trim();
+  if (q) params.set("q", q);
+
+  return {
+    kind: "search",
+    label: q ? `Search ${scope.label} for "${q}"` : `Search ${scope.label}`,
+    href: `/search?${params.toString()}`,
+    detail: scope.detail,
+  };
 }

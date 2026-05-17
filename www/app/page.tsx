@@ -145,7 +145,7 @@ const HERO_FEED: FeedRow[] = [
     detail: (
       <>
         fixed 401 race on concurrent refresh, linked to{" "}
-        <span className="font-mono text-[11.5px] text-brand">[[auth-patterns]]</span>
+        <span className="font-mono text-[11.5px] text-brand">auth patterns</span>
       </>
     ),
     time: "just now",
@@ -166,7 +166,7 @@ const HERO_FEED: FeedRow[] = [
     detail: (
       <>
         &ldquo;why was the{" "}
-        <span className="font-mono text-[11.5px] text-brand">[[rate-limit]]</span> raised to 500?&rdquo; · 8 sources
+        <span className="font-mono text-[11.5px] text-brand">rate limit</span> raised to 500?&rdquo; · 8 sources
       </>
     ),
     time: "4m",
@@ -174,16 +174,16 @@ const HERO_FEED: FeedRow[] = [
   {
     role: "agent",
     name: "nova",
-    action: "curated",
-    target: "wiki · memory-leak-v2",
-    detail: "4 pages merged, 12 backlinks resolved on stash:sleep",
+    action: "updated",
+    target: "files · memory-leak-v2",
+    detail: "4 pages organized, 12 session sources attached",
     time: "9m",
   },
   {
     role: "human",
     name: "ari",
     action: "commented",
-    target: "notebooks/api-gateway",
+    target: "files/api-gateway",
     detail: "keeping this open; will re-use the worker-pool pattern next week",
     time: "22m",
   },
@@ -246,7 +246,7 @@ function HeroFeed() {
               style={{ animation: "live-pulse 2s ease-out infinite" }}
             />
             <span className="text-[13px] font-semibold text-ink">team · fergana</span>
-            <span className="text-[12px] text-muted">/ history</span>
+            <span className="text-[12px] text-muted">/ sessions</span>
           </div>
           <span className="inline-flex items-center gap-2 font-mono text-[10px] font-medium uppercase tracking-[0.12em] text-dim">
             Live
@@ -513,7 +513,7 @@ function Problem() {
           <p>
             Stash captures every run across the team and turns it into a
             shared layer your agents can query. The second time a question
-            comes up, an agent answers it from the team&apos;s own history
+            comes up, an agent answers it from the team&apos;s own sessions
             instead of starting from scratch. Call it a hive mind for your
             agents.
           </p>
@@ -568,7 +568,7 @@ function StreamViz() {
   );
 }
 
-function CurateViz() {
+function FilesViz() {
   return (
     <div className="flex flex-col gap-1.5">
       <div className="flex items-center justify-between rounded-md border border-border bg-background px-2 py-1.5 text-[11.5px] text-ink">
@@ -601,8 +601,8 @@ function CurateViz() {
 
 function SearchViz() {
   const sources: [string, string][] = [
-    ["history/rex:14:02", "62%"],
-    ["notebooks/auth-patterns", "21%"],
+    ["sessions/rex:14:02", "62%"],
+    ["files/auth-patterns", "21%"],
     ["files/gateway.py", "11%"],
   ];
   return (
@@ -629,21 +629,21 @@ function HowItWorks() {
       n: "01",
       pill: "Stream",
       title: "Every session flows into a shared store.",
-      body: "Prompts, tool calls, and session summaries push to your workspace’s history as they happen. Nothing to remember to save.",
+      body: "Prompts, tool calls, and session summaries push to your workspace’s Sessions as they happen. Nothing to remember to save.",
       viz: <StreamViz />,
     },
     {
       n: "02",
-      pill: "Curate",
-      title: "A curation agent turns noise into a wiki.",
-      body: "On SessionEnd, stash:sleep reads recent history and organizes it into notebooks with [[backlinks]] and a page graph. Sleep-time compute, not session time.",
-      viz: <CurateViz />,
+      pill: "Files",
+      title: "Teams shape durable pages.",
+      body: "Pages, uploads, and folders stay in Files. Sessions remain searchable sessions, and useful outputs can be promoted into durable pages.",
+      viz: <FilesViz />,
     },
     {
       n: "03",
       pill: "Search",
       title: "Every agent queries the whole team's work.",
-      body: "stash search runs a cross-resource agentic loop over files, history, notebooks, tables, and chats. Your agent answers with sources, not hallucinations.",
+      body: "stash search runs a cross-resource agentic loop over files, sessions, pages, tables, and Stashes. Your agent answers with sources, not hallucinations.",
       viz: <SearchViz />,
     },
   ];
@@ -653,7 +653,7 @@ function HowItWorks() {
         <div className="flex max-w-[880px] flex-col gap-4">
           <EyebrowDot>How it works</EyebrowDot>
           <h2 className="font-display text-[clamp(32px,4.2vw,52px)] font-bold leading-[1.05] tracking-[-0.03em] text-ink text-balance">
-            Stream. Curate. Search.
+            Sessions. Files. Search.
             <br />
             <span className="font-medium text-dim">The asset builds itself.</span>
           </h2>
@@ -690,8 +690,8 @@ function HowItWorks() {
 
 function SearchDemo() {
   const steps = [
-    { t: "scanned team history", ms: "42ms" },
-    { t: "queried notebook graph", ms: "81ms" },
+    { t: "scanned team sessions", ms: "42ms" },
+    { t: "queried files tree", ms: "81ms" },
     { t: "pulled gateway.py blame", ms: "104ms" },
     { t: "reranked 8 sources", ms: "22ms" },
   ];
@@ -706,8 +706,8 @@ function SearchDemo() {
             Stash answers with receipts.
           </h2>
           <p className="max-w-[620px] text-[18px] leading-[1.55] text-dim">
-            stash search runs an agentic loop across files, history, notebooks,
-            tables, and chats. Every answer arrives with sources attached.
+            stash search runs an agentic loop across files, sessions, pages,
+            tables, and Stashes. Every answer arrives with sources attached.
           </p>
         </div>
         <div
@@ -754,8 +754,8 @@ function SearchDemo() {
                 limit was throttling legitimate imports from Shopify partners.
                 The change is safe because requests are authenticated and
                 per-tenant, not global.{" "}
-                <span className="font-mono text-[11.5px] text-brand">history/sam:tue-14:22</span>,{" "}
-                <span className="font-mono text-[11.5px] text-brand">notebooks/gateway-limits</span>
+                <span className="font-mono text-[11.5px] text-brand">sessions/sam:tue-14:22</span>,{" "}
+                <span className="font-mono text-[11.5px] text-brand">files/gateway-limits</span>
               </p>
             </div>
           </div>
@@ -769,15 +769,15 @@ function Features() {
   const items = [
     {
       i: "H",
-      h: "Shared history",
-      p: "Every prompt and tool call streams to a team-wide event log. Searchable, filterable, attributable.",
+      h: "Shared sessions",
+      p: "Every prompt and tool call streams to a team-wide session log. Searchable, filterable, attributable.",
       tags: ["events", "per-agent", "replay"],
     },
     {
       i: "W",
-      h: "Wiki notebooks",
-      p: "Rich collaborative pages with [[backlinks]], page graph, and pgvector semantic search, curated by a sleep-time agent.",
-      tags: ["backlinks", "graph", "semantic"],
+      h: "Files",
+      p: "Rich collaborative pages with Stashes, file tree, and pgvector semantic search.",
+      tags: ["Stashes", "tree", "semantic"],
     },
     {
       i: "S",
@@ -788,20 +788,20 @@ function Features() {
     {
       i: "V",
       h: "Visualizations",
-      p: "See your team's memory as it forms: embedding projections, page graphs, activity timelines, and knowledge-density maps you can actually look at.",
-      tags: ["embeddings", "graph", "timeline"],
+      p: "See your team's memory as it forms: embedding projections, file trees, activity timelines, and knowledge-density maps you can actually look at.",
+      tags: ["embeddings", "tree", "timeline"],
     },
     {
       i: "R",
-      h: "Real-time rooms",
-      p: "Agents and humans chat side-by-side in workspace channels. Coordinate, hand off, and unblock each other, all in one place.",
-      tags: ["channels", "presence", "handoff"],
+      h: "Stashes",
+      p: "Publish sessions, pages, and files together as a polished link anyone can inspect.",
+      tags: ["publish", "sessions", "files"],
     },
     {
       i: "P",
-      h: "Shareable pages",
-      p: "Publish research, reports, and dashboards as HTML anyone with a link can view. No login walls between teams.",
-      tags: ["public", "embeds", "html"],
+      h: "HTML pages",
+      p: "Store agent-made reports, dashboards, and documents as first-class pages.",
+      tags: ["html", "reports", "dashboards"],
     },
   ];
   return (

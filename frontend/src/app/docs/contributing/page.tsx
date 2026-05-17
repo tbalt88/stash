@@ -1,4 +1,4 @@
-import { Callout, Code, CodeBlock, H3, P, Title, Subtitle } from "../components";
+import { Callout, CodeBlock, H3, P, Title, Subtitle } from "../components";
 
 export default function ContributingPage() {
   return (
@@ -116,7 +116,7 @@ python -m alembic upgrade head
 #    → backend/tests/test_migrations.py`}</CodeBlock>
 
       <Callout type="info">
-        Questions? Open a GitHub Discussion or drop a message in the workspace chat. We
+        Questions? Open a GitHub Discussion or send us a note. We
         review PRs on a best-effort basis and aim to respond within 48 hours on weekdays.
       </Callout>
     </>

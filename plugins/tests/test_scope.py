@@ -10,12 +10,8 @@ reaches the transport.
 
 from __future__ import annotations
 
-from pathlib import Path
-
 from stashai.plugin import scope as scope_mod
 from stashai.plugin.event import HookEvent
-
-
 
 
 def test_manifest_in_cwd_is_in_scope(tmp_path):
@@ -120,7 +116,8 @@ class _RecordingClient:
 
 
 def test_out_of_scope_blocks_live_events(monkeypatch):
-    from stashai.plugin import hooks, scope as s
+    from stashai.plugin import hooks
+    from stashai.plugin import scope as s
     from stashai.plugin.hooks import stream_user_message
     monkeypatch.setattr(s, "cwd_in_scope", lambda cwd: False)
     monkeypatch.setattr(hooks, "cwd_in_scope", lambda cwd: False)

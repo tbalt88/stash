@@ -54,10 +54,6 @@ Everything is a plain `stash` CLI subcommand — no opencode-specific slash comm
 | `stash settings` | Interactive settings page (streaming, scope, endpoint, …) |
 | `stash disconnect` | Pause event streaming across every installed plugin |
 
-When the opencode bus emits `session.deleted` the plugin spawns `opencode run …`
-headless with a shared curation prompt. Toggle with `auto_curate` in
-`~/.stash/config.json`.
-
 ## Known gaps
 
 - No final-assistant-message capture — `session.idle` fires too often to treat as "stop."
@@ -70,5 +66,5 @@ opencode agents have shell access. Point the agent at the `stash` CLI for reads 
 stash history query --ws <id> --limit 20 --json
 stash history search "<query>" --ws <id> --json
 stash whoami --json
-stash workspace list --mine --json
+stash workspaces list --json
 ```

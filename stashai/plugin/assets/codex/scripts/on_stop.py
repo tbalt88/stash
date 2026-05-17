@@ -1,24 +1,20 @@
 #!/usr/bin/env python3
-"""Stop: stream the assistant's final message, upload transcript, then try curation.
+"""Stop: stream the assistant's final message and upload transcript.
 
 Codex's Stop hook fires per-turn. We push assistant_message (not session_end)
 and deliberately do NOT clear session_id — subsequent turns in the same
-session need it for correlation. Curation is attempted on every Stop but
-`spawn_curation` enforces the central 24h cooldown, so it only actually
-fires once per day. Codex has no SessionEnd hook today, so this is the
-only curation trigger.
+session need it for correlation.
 
 Transcript upload is spawned as a detached background process (so it doesn't
 block the hook timeout) with a 60s cooldown between uploads per session.
 """
 
+from adapt import adapt_stop
 from config import DATA_DIR, get_client, get_config, get_stdin_data, is_configured
+
 from stashai.plugin.hooks import remember_transcript_path, stream_assistant_message
 from stashai.plugin.state import load_state
 from stashai.plugin.transcript_upload import spawn_transcript_upload
-
-from adapt import adapt_stop
-from stashai.plugin.curate_spawn import spawn_curation
 
 
 def main():
@@ -44,8 +40,6 @@ def main():
         base_url=cfg["api_endpoint"],
         api_key=cfg["api_key"],
     )
-
-    spawn_curation("codex", ["exec"])
 
 
 if __name__ == "__main__":

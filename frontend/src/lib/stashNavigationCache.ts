@@ -1,9 +1,9 @@
 import {
   getFolderContents,
-  getStashSidebar,
+  getWorkspaceSidebar,
   listMyWorkspaces,
   type FolderContents,
-  type StashSidebar,
+  type WorkspaceSidebar,
 } from "./api";
 import type { Workspace } from "./types";
 
@@ -16,8 +16,8 @@ interface CachedWorkspaces {
 
 let workspaceCache: CachedWorkspaces | null = null;
 let workspacePromise: Promise<CachedWorkspaces> | null = null;
-const sidebarCache: Record<string, StashSidebar> = {};
-const sidebarPromises: Partial<Record<string, Promise<StashSidebar>>> = {};
+const sidebarCache: Record<string, WorkspaceSidebar> = {};
+const sidebarPromises: Partial<Record<string, Promise<WorkspaceSidebar>>> = {};
 const folderContentsCache: Record<string, FolderContents> = {};
 const folderContentsPromises: Partial<Record<string, Promise<FolderContents>>> = {};
 
@@ -49,31 +49,37 @@ export async function getCachedWorkspaces(userId: string): Promise<CachedWorkspa
   return workspacePromise;
 }
 
-export function readCachedSidebars(): Record<string, StashSidebar> {
+export function readCachedSidebars(): Record<string, WorkspaceSidebar> {
   return { ...sidebarCache };
 }
 
-export function readCachedStashSidebar(stashId: string): StashSidebar | null {
-  return sidebarCache[stashId] ?? null;
+export function readCachedWorkspaceSidebar(workspaceId: string): WorkspaceSidebar | null {
+  return sidebarCache[workspaceId] ?? null;
 }
 
-export async function getCachedStashSidebar(stashId: string): Promise<StashSidebar> {
-  const cached = readCachedStashSidebar(stashId);
+export async function getCachedWorkspaceSidebar(workspaceId: string): Promise<WorkspaceSidebar> {
+  const cached = readCachedWorkspaceSidebar(workspaceId);
   if (cached) return cached;
-  const pending = sidebarPromises[stashId];
+  const pending = sidebarPromises[workspaceId];
   if (pending) return pending;
 
-  const promise = getStashSidebar(stashId)
+  const promise = getWorkspaceSidebar(workspaceId)
     .then((sidebar) => {
-      sidebarCache[stashId] = sidebar;
+      sidebarCache[workspaceId] = sidebar;
       return sidebar;
     })
     .finally(() => {
-      delete sidebarPromises[stashId];
+      delete sidebarPromises[workspaceId];
     });
-  sidebarPromises[stashId] = promise;
+  sidebarPromises[workspaceId] = promise;
 
   return promise;
+}
+
+export async function refreshWorkspaceSidebar(workspaceId: string): Promise<WorkspaceSidebar> {
+  const sidebar = await getWorkspaceSidebar(workspaceId);
+  sidebarCache[workspaceId] = sidebar;
+  return sidebar;
 }
 
 export function readCachedFolderContents(folderId: string): FolderContents | null {
@@ -81,7 +87,7 @@ export function readCachedFolderContents(folderId: string): FolderContents | nul
 }
 
 export async function getCachedFolderContents(
-  stashId: string,
+  workspaceId: string,
   folderId: string
 ): Promise<FolderContents> {
   const cached = readCachedFolderContents(folderId);
@@ -89,7 +95,7 @@ export async function getCachedFolderContents(
   const pending = folderContentsPromises[folderId];
   if (pending) return pending;
 
-  const promise = getFolderContents(stashId, folderId)
+  const promise = getFolderContents(workspaceId, folderId)
     .then((contents) => {
       folderContentsCache[folderId] = contents;
       return contents;

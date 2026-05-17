@@ -29,12 +29,12 @@ def _json(obj: object) -> str:
     return json.dumps(obj, default=str)
 
 
-# ── History / search ──────────────────────────────────────────────
+# ── Sessions / search ──────────────────────────────────────────────
 
 
 @mcp.tool()
 def stash_search(query: str, limit: int = 20, workspace_id: str = "") -> str:
-    """Full-text + semantic search across workspace history events."""
+    """Full-text + semantic search across workspace session events."""
     client, default_ws = _client()
     ws = _require_ws(workspace_id or default_ws)
     return _json(client.search_events(ws, query, limit=limit))
@@ -47,7 +47,7 @@ def stash_query_events(
     event_type: str = "",
     workspace_id: str = "",
 ) -> str:
-    """Query recent history events, optionally filtered by agent or event type."""
+    """Query recent session events, optionally filtered by agent or event type."""
     client, default_ws = _client()
     ws = _require_ws(workspace_id or default_ws)
     return _json(
@@ -74,10 +74,11 @@ def stash_push_event(
     event_type: str,
     content: str,
     session_id: str = "",
+    default_stash_id: str = "",
     tool_name: str = "",
     workspace_id: str = "",
 ) -> str:
-    """Push a new event into workspace history."""
+    """Push a new event into workspace sessions."""
     client, default_ws = _client()
     ws = _require_ws(workspace_id or default_ws)
     return _json(
@@ -87,12 +88,13 @@ def stash_push_event(
             event_type=event_type,
             content=content,
             session_id=session_id or None,
+            default_stash_id=default_stash_id or None,
             tool_name=tool_name or None,
         )
     )
 
 
-# ── Folders + pages (wiki) ────────────────────────────────────────
+# ── Files: folders + pages ────────────────────────────────────────
 
 
 @mcp.tool()
@@ -313,7 +315,7 @@ def stash_delete_column(table_id: str, column_id: str, workspace_id: str = "") -
 def stash_list_workspaces() -> str:
     """List workspaces you are a member of."""
     client, _ = _client()
-    return _json(client.list_workspaces(mine=True))
+    return _json(client.list_workspaces())
 
 
 @mcp.tool()
@@ -325,10 +327,10 @@ def stash_workspace_info(workspace_id: str = "") -> str:
 
 
 @mcp.tool()
-def stash_create_workspace(name: str, description: str = "", is_public: bool = False) -> str:
+def stash_create_workspace(name: str, description: str = "") -> str:
     """Create a new workspace."""
     client, _ = _client()
-    return _json(client.create_workspace(name, description=description, is_public=is_public))
+    return _json(client.create_workspace(name, description=description))
 
 
 @mcp.tool()
@@ -339,93 +341,23 @@ def stash_workspace_members(workspace_id: str = "") -> str:
     return _json(client.workspace_members(ws))
 
 
-@mcp.tool()
-def stash_join_workspace(invite_code: str) -> str:
-    """Join a workspace using an invite code."""
-    client, _ = _client()
-    return _json(client.join_workspace(invite_code))
+# ── Skills ─────────────────────────────────────────────────────────
 
 
 @mcp.tool()
-def stash_leave_workspace(workspace_id: str) -> str:
-    """Leave a workspace."""
-    client, _ = _client()
-    client.leave_workspace(workspace_id)
-    return _json({"left": workspace_id})
-
-
-@mcp.tool()
-def stash_fork_workspace(workspace_id: str, name: str = "") -> str:
-    """Fork a public workspace into your account."""
-    client, _ = _client()
-    return _json(client.fork_workspace(workspace_id, name=name))
-
-
-# ── Stash-named aliases (canonical going forward) ─────────────────
-
-
-@mcp.tool()
-def stash_list_stashes() -> str:
-    """List stashes you are a member of."""
-    return stash_list_workspaces()
-
-
-@mcp.tool()
-def stash_stash_info(stash_id: str = "") -> str:
-    """Get detailed info about a stash."""
-    return stash_workspace_info(stash_id)
-
-
-@mcp.tool()
-def stash_create_stash(name: str, description: str = "", is_public: bool = False) -> str:
-    """Create a new stash."""
-    return stash_create_workspace(name, description=description, is_public=is_public)
-
-
-@mcp.tool()
-def stash_stash_members(stash_id: str = "") -> str:
-    """List members of a stash."""
-    return stash_workspace_members(stash_id)
-
-
-@mcp.tool()
-def stash_join_stash(invite_code: str) -> str:
-    """Join a stash using an invite code."""
-    return stash_join_workspace(invite_code)
-
-
-@mcp.tool()
-def stash_leave_stash(stash_id: str) -> str:
-    """Leave a stash."""
-    return stash_leave_workspace(stash_id)
-
-
-@mcp.tool()
-def stash_fork_stash(stash_id: str, name: str = "") -> str:
-    """Fork a public stash into your account."""
-    return stash_fork_workspace(stash_id, name=name)
-
-
-@mcp.tool()
-def stash_stash_tree(stash_id: str = "") -> str:
-    """Nested folder/page tree for the stash."""
-    return stash_workspace_tree(stash_id)
-
-
-# ── Wiki folders ───────────────────────────────────────────────────
-
-
-@mcp.tool()
-def stash_read_folder(folder_name: str, stash_id: str = "") -> str:
-    """Read a wiki folder by name. Returns the folder's SKILL.md (if any)
-    + sibling pages, concatenated for agent context."""
+def stash_list_skills(workspace_id: str = "") -> str:
+    """List skills defined as Files folders with a SKILL.md page."""
     client, default_ws = _client()
-    ws = _require_ws(stash_id or default_ws)
-    try:
-        data = client._get(f"/api/v1/stashes/{ws}/skills/{folder_name}")
-    except Exception as e:
-        data = {"error": str(e)}
-    return _json(data)
+    ws = _require_ws(workspace_id or default_ws)
+    return _json(client._get(f"/api/v1/workspaces/{ws}/skills"))
+
+
+@mcp.tool()
+def stash_read_skill(name: str, workspace_id: str = "") -> str:
+    """Read a skill's SKILL.md and sibling pages from Files."""
+    client, default_ws = _client()
+    ws = _require_ws(workspace_id or default_ws)
+    return _json(client._get(f"/api/v1/workspaces/{ws}/skills/{name}"))
 
 
 # ── Files ─────────────────────────────────────────────────────────
@@ -464,65 +396,112 @@ def stash_delete_file(file_id: str, workspace_id: str = "") -> str:
     return _json({"deleted": file_id})
 
 
-# ── Views ─────────────────────────────────────────────────────────
+# ── Stashes ───────────────────────────────────────────────
 
 
 @mcp.tool()
-def stash_list_views(workspace_id: str = "") -> str:
-    """List views in the workspace."""
+def stash_list_stashes(workspace_id: str = "") -> str:
+    """List Stashes in the workspace."""
     client, default_ws = _client()
     ws = _require_ws(workspace_id or default_ws)
-    return _json(client.list_views(ws))
+    return _json(client.list_stashes(ws))
 
 
 @mcp.tool()
-def stash_create_view(
+def stash_create_stash(
     title: str,
     description: str = "",
-    is_public: bool = False,
+    access: str = "workspace",
+    discoverable: bool = False,
     items: str = "[]",
     workspace_id: str = "",
 ) -> str:
-    """Create a curated view. items is a JSON array of object references."""
+    """Create a Stash. items is a JSON array of object references."""
     client, default_ws = _client()
     ws = _require_ws(workspace_id or default_ws)
     item_list = json.loads(items) if isinstance(items, str) else items
+    if access == "public":
+        return _json(
+            client.publish_stash(
+                ws,
+                title,
+                description=description,
+                discoverable=discoverable,
+                items=item_list,
+            )
+        )
     return _json(
-        client.create_view(ws, title, description=description, is_public=is_public, items=item_list)
+        client.create_stash(
+            ws,
+            title,
+            description=description,
+            access=access,
+            discoverable=discoverable,
+            items=item_list,
+        )
     )
 
 
 @mcp.tool()
-def stash_delete_view(view_id: str) -> str:
-    """Delete a view."""
+def stash_update_stash(
+    stash_id: str,
+    title: str = "",
+    description: str = "",
+    access: str = "",
+    discoverable: str = "",
+    items: str = "",
+) -> str:
+    """Update a Stash's metadata, access, Discover flag, or item list."""
     client, _ = _client()
-    client.delete_view(view_id)
-    return _json({"deleted": view_id})
+    fields: dict = {}
+    if title:
+        fields["title"] = title
+    if description:
+        fields["description"] = description
+    if access:
+        fields["access"] = access
+    if discoverable:
+        fields["discoverable"] = discoverable.lower() in {"1", "true", "yes", "on"}
+    if items:
+        fields["items"] = json.loads(items)
+    if not fields:
+        raise ValueError("Pass at least one field to update")
+    return _json(client.update_stash(stash_id, **fields))
 
 
 @mcp.tool()
-def stash_get_view(slug: str) -> str:
-    """Get a public view by its slug."""
+def stash_delete_stash(stash_id: str) -> str:
+    """Delete a Stash."""
     client, _ = _client()
-    return _json(client.get_public_view(slug))
+    client.delete_stash(stash_id)
+    return _json({"deleted": stash_id})
 
 
 @mcp.tool()
-def stash_fork_view(slug: str, name: str = "") -> str:
-    """Fork a view into your workspace."""
+def stash_get_stash(slug: str) -> str:
+    """Get a public Stash by its slug."""
     client, _ = _client()
-    return _json(client.fork_view(slug, name=name))
+    return _json(client.get_public_stash(slug))
+
+
+@mcp.tool()
+def stash_add_external_stash(slug: str, workspace_id: str = "") -> str:
+    """Fork an external Stash into a workspace."""
+    client, default_ws = _client()
+    ws = _require_ws(workspace_id or default_ws)
+    return _json(client.add_external_stash(slug, ws))
+
+
+@mcp.tool()
+def stash_remove_external_stash(stash_id: str, workspace_id: str = "") -> str:
+    """Remove a forked external Stash from a workspace."""
+    client, default_ws = _client()
+    ws = _require_ws(workspace_id or default_ws)
+    client.remove_external_stash(ws, stash_id)
+    return _json({"removed": stash_id})
 
 
 # ── Invites ───────────────────────────────────────────────────────
-
-
-@mcp.tool()
-def stash_create_invite(max_uses: int = 1, ttl_days: int = 7, workspace_id: str = "") -> str:
-    """Create an invite token for the workspace."""
-    client, default_ws = _client()
-    ws = _require_ws(workspace_id or default_ws)
-    return _json(client.create_invite_token(ws, max_uses=max_uses, ttl_days=ttl_days))
 
 
 @mcp.tool()
@@ -531,70 +510,6 @@ def stash_list_invites(workspace_id: str = "") -> str:
     client, default_ws = _client()
     ws = _require_ws(workspace_id or default_ws)
     return _json(client.list_invite_tokens(ws))
-
-
-@mcp.tool()
-def stash_revoke_invite(token_id: str, workspace_id: str = "") -> str:
-    """Revoke an invite token."""
-    client, default_ws = _client()
-    ws = _require_ws(workspace_id or default_ws)
-    client.revoke_invite_token(ws, token_id)
-    return _json({"revoked": token_id})
-
-
-# ── Decks ─────────────────────────────────────────────────────────
-
-
-@mcp.tool()
-def stash_list_decks(workspace_id: str = "") -> str:
-    """List decks in the workspace."""
-    client, default_ws = _client()
-    ws = _require_ws(workspace_id or default_ws)
-    return _json(client.list_decks(ws))
-
-
-@mcp.tool()
-def stash_create_deck(
-    name: str,
-    description: str = "",
-    html_content: str = "",
-    deck_type: str = "freeform",
-    workspace_id: str = "",
-) -> str:
-    """Create a new deck in the workspace."""
-    client, default_ws = _client()
-    ws = _require_ws(workspace_id or default_ws)
-    return _json(
-        client.create_deck(
-            ws, name, description=description, html_content=html_content, deck_type=deck_type
-        )
-    )
-
-
-@mcp.tool()
-def stash_get_deck(deck_id: str, workspace_id: str = "") -> str:
-    """Get a deck by ID."""
-    client, default_ws = _client()
-    ws = _require_ws(workspace_id or default_ws)
-    return _json(client.get_deck(ws, deck_id))
-
-
-@mcp.tool()
-def stash_update_deck(deck_id: str, updates: str = "{}", workspace_id: str = "") -> str:
-    """Update a deck. updates is a JSON object of fields to change."""
-    client, default_ws = _client()
-    ws = _require_ws(workspace_id or default_ws)
-    fields = json.loads(updates) if isinstance(updates, str) else updates
-    return _json(client.update_deck(ws, deck_id, **fields))
-
-
-@mcp.tool()
-def stash_delete_deck(deck_id: str, workspace_id: str = "") -> str:
-    """Delete a deck from the workspace."""
-    client, default_ws = _client()
-    ws = _require_ws(workspace_id or default_ws)
-    client.delete_deck(ws, deck_id)
-    return _json({"deleted": deck_id})
 
 
 # ── User ──────────────────────────────────────────────────────────
@@ -607,50 +522,7 @@ def stash_whoami() -> str:
     return _json(client.whoami())
 
 
-# ── Sharing (unified ACL + share-link + publish) ──────────────────
-
-
-@mcp.tool()
-def stash_get_permissions(object_type: str, object_id: str) -> str:
-    """Get visibility + shares for any object (workspace|folder|page|table|file|history|view)."""
-    client, _ = _client()
-    return _json(client.get_object_permissions(object_type, object_id))
-
-
-@mcp.tool()
-def stash_set_visibility(object_type: str, object_id: str, visibility: str) -> str:
-    """Set visibility on an object. Allowed: inherit | private | link | public."""
-    client, _ = _client()
-    return _json(client.set_object_visibility(object_type, object_id, visibility))
-
-
-@mcp.tool()
-def stash_add_share(
-    object_type: str, object_id: str, user_id: str, permission: str = "read"
-) -> str:
-    """Grant a specific user access to an object. permission: read | write | admin."""
-    client, _ = _client()
-    return _json(client.add_object_share(object_type, object_id, user_id, permission))
-
-
-@mcp.tool()
-def stash_remove_share(object_type: str, object_id: str, user_id: str) -> str:
-    """Revoke a specific user's access to an object."""
-    client, _ = _client()
-    client.remove_object_share(object_type, object_id, user_id)
-    return _json({"removed": user_id})
-
-
-@mcp.tool()
-def stash_share(object_type: str, object_id: str, ensure: str = "link") -> str:
-    """Mint or fetch a share URL for any object. ensure: '' | 'link' | 'public'.
-
-    With ensure='link' (default), the underlying object's visibility is raised
-    to at least 'link' if it isn't already, so the returned URL is guaranteed
-    to be readable to anyone with it. Pass ensure='' to skip the visibility
-    bump (use when you want the URL but plan to set permissions separately)."""
-    client, _ = _client()
-    return _json(client.share_link(object_type, object_id, ensure or None))
+# ── Sharing (Stash URLs + publish) ──────────────────
 
 
 @mcp.tool()
@@ -658,14 +530,13 @@ def stash_publish_html(
     title: str,
     html: str,
     workspace_id: str = "",
-    audience: str = "link",
+    audience: str = "public",
     folder_id: str = "",
 ) -> str:
-    """Single-call publish: create an HTML page and return a share URL.
+    """Single-call publish: create an HTML page, wrap it in a Stash, and return the Stash URL.
 
     If folder_id is omitted, the page lands in the workspace's auto-created
-    'AI Drafts' folder. audience: 'link' (anyone with URL) or 'public'
-    (also listed in /discover)."""
+    'AI Drafts' folder. audience: 'workspace', 'private', or 'public'."""
     client, default_ws = _client()
     ws = _require_ws(workspace_id or default_ws)
     return _json(
@@ -685,10 +556,10 @@ def stash_publish_markdown(
     title: str,
     markdown: str,
     workspace_id: str = "",
-    audience: str = "link",
+    audience: str = "public",
     folder_id: str = "",
 ) -> str:
-    """Single-call publish: create a markdown page and return a share URL.
+    """Single-call publish: create a markdown page, wrap it in a Stash, and return the Stash URL.
     Same flow as stash_publish_html but for markdown content."""
     client, default_ws = _client()
     ws = _require_ws(workspace_id or default_ws)

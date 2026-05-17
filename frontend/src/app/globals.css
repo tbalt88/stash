@@ -198,8 +198,8 @@ details[open] > summary .chev {
   pointer-events: none;
 }
 
-/* Wiki body — Notion-like spacious typography */
-.wiki-body {
+/* Page body — spacious typography for editable files. */
+.file-page-body {
   font-size: 16px;
   line-height: 1.7;
   color: var(--text-dim);
@@ -520,8 +520,8 @@ details[open] > summary .chev {
   accent-color: #F97316;
 }
 
-/* Tables in notebook pages (GitHub-flavored pipe tables). */
-.ProseMirror table.wiki-table,
+/* Tables in pages (GitHub-flavored pipe tables). */
+.ProseMirror table.file-page-table,
 .ProseMirror table {
   border-collapse: collapse;
   margin: 1em 0;
@@ -544,17 +544,15 @@ details[open] > summary .chev {
 }
 
 /* =============================================================
- * Links — one visual language for wiki refs and markdown links.
+ * Links — one visual language for markdown links.
  *
  * Classification is purely by href pattern. CSS doesn't need to
  * know about edit vs view mode; both render the same.
  *
- *   internal  = stash route (absolute or relative) + resolved
- *               wiki nodes (.wiki-link-internal)
+ *   internal  = stash route (absolute or relative)
  *   external  = any other scheme, off-origin URL (↗ trailing)
  *   dead      = relative ref that doesn't match a stash route
- *               (import artifacts like "README.md"); also
- *               unresolved wiki nodes (.wiki-link-dead)
+ *               (import artifacts like "README.md")
  * ============================================================= */
 
 /* Base link style — regular markdown links, orange (brand) */
@@ -567,21 +565,6 @@ details[open] > summary .chev {
 }
 .ProseMirror a:hover {
   color: var(--link-hover, #EA580C);
-}
-
-/* Wiki internal links — agent-curated memory refs, violet dashed.
-   Orange is reserved for CTAs/nav/external links; violet signals a
-   pointer into the agent/notebook memory graph. */
-.ProseMirror span.wiki-link-internal {
-  color: #8B5CF6;
-  text-decoration: underline dashed rgba(139, 92, 246, 0.45);
-  text-underline-offset: 3px;
-  cursor: pointer;
-  transition: color 150ms ease, text-decoration-color 150ms ease;
-}
-.ProseMirror span.wiki-link-internal:hover {
-  color: #8B5CF6;
-  text-decoration-color: #8B5CF6;
 }
 
 /* External URLs — anything with a scheme that isn't stash itself.
@@ -597,14 +580,12 @@ details[open] > summary .chev {
 /* Dead refs — hrefs that are neither a scheme nor an absolute path.
    This catches the import-artifact relative paths like "README.md" or
    "../../raw/arxiv_papers/X.pdf" that can't possibly navigate. */
-.ProseMirror a:not([href^="/"]):not([href*="://"]):not([href^="mailto:"]):not([href^="tel:"]),
-.ProseMirror span.wiki-link-dead {
+.ProseMirror a:not([href^="/"]):not([href*="://"]):not([href^="mailto:"]):not([href^="tel:"]) {
   color: var(--text-muted, #8a8a87);
   text-decoration: underline dotted var(--danger, #ef4444);
   text-decoration-skip-ink: none;
   cursor: default;
 }
-.ProseMirror a:not([href^="/"]):not([href*="://"]):not([href^="mailto:"]):not([href^="tel:"]):hover,
-.ProseMirror span.wiki-link-dead:hover {
+.ProseMirror a:not([href^="/"]):not([href*="://"]):not([href^="mailto:"]):not([href^="tel:"]):hover {
   color: var(--text-muted, #8a8a87);
 }

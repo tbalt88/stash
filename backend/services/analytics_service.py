@@ -9,6 +9,7 @@ from uuid import UUID
 import numpy as np
 
 from ..database import get_pool
+from . import memory_service, permission_service
 
 logger = logging.getLogger(__name__)
 
@@ -26,58 +27,69 @@ _DENSITY_SIGNATURE_TOLERANCE = 0.1
 # When ws_idx is passed, the CTE narrows to a single workspace (the caller
 # must have already authorized access to it). Otherwise it returns every
 # event the user can see across all their workspaces.
-def _accessible_events_cte(ws_idx: int | None = None) -> str:
+def _accessible_events_cte(ws_idx: int | None = None, user_idx: int = 1) -> str:
+    readable_events = memory_service.readable_session_event_condition("he", user_idx)
     if ws_idx is not None:
         return f"""
         WITH accessible_events AS (
             SELECT he.id AS event_id
             FROM history_events he
             WHERE he.workspace_id = ${ws_idx}
+              AND {readable_events}
         )
         """
-    return """
+    return f"""
     WITH accessible_events AS (
         SELECT he.id AS event_id
         FROM history_events he
-        WHERE he.workspace_id IN (SELECT workspace_id FROM workspace_members WHERE user_id = $1)
-           OR (he.workspace_id IS NULL AND he.created_by = $1)
+        WHERE (he.workspace_id IN (SELECT workspace_id FROM workspace_members WHERE user_id = $1)
+           OR (he.workspace_id IS NULL AND he.created_by = $1))
+          AND (he.workspace_id IS NULL OR {readable_events})
     )
     """
 
 
-def _accessible_pages_cte(ws_idx: int | None = None) -> str:
+def _accessible_pages_cte(ws_idx: int | None = None, user_idx: int = 1) -> str:
+    readable_pages = permission_service.readable_content_condition("page", "p", user_idx)
     if ws_idx is not None:
         return f"""
         WITH accessible_pages AS (
             SELECT p.id AS page_id
             FROM pages p
             WHERE p.workspace_id = ${ws_idx}
+              AND COALESCE(p.metadata->>'shared_in_stash_id', '') = ''
+              AND {readable_pages}
         )
         """
-    return """
+    return f"""
     WITH accessible_pages AS (
         SELECT p.id AS page_id
         FROM pages p
         WHERE p.workspace_id IN (SELECT workspace_id FROM workspace_members WHERE user_id = $1)
+          AND COALESCE(p.metadata->>'shared_in_stash_id', '') = ''
+          AND {readable_pages}
     )
     """
 
 
-def _accessible_tables_cte(ws_idx: int | None = None) -> str:
+def _accessible_tables_cte(ws_idx: int | None = None, user_idx: int = 1) -> str:
+    readable_tables = permission_service.readable_content_condition("table", "t", user_idx)
     if ws_idx is not None:
         return f"""
         WITH accessible_tables AS (
             SELECT t.id AS table_id
             FROM tables t
             WHERE t.workspace_id = ${ws_idx}
+              AND {readable_tables}
         )
         """
-    return """
+    return f"""
     WITH accessible_tables AS (
         SELECT t.id AS table_id
         FROM tables t
-        WHERE t.workspace_id IN (SELECT workspace_id FROM workspace_members WHERE user_id = $1)
-           OR (t.workspace_id IS NULL AND t.created_by = $1)
+        WHERE (t.workspace_id IN (SELECT workspace_id FROM workspace_members WHERE user_id = $1)
+           OR (t.workspace_id IS NULL AND t.created_by = $1))
+          AND (t.workspace_id IS NULL OR {readable_tables})
     )
     """
 
@@ -96,11 +108,11 @@ async def get_activity_timeline(
 
     cutoff = datetime.now(UTC) - timedelta(days=days)
 
-    # $1 = scope (workspace_id if scoped, else user_id), $2 = bucket, $3 = cutoff.
-    # Placeholders must be contiguous, so the scope arg always takes $1 and the
-    # CTE picks the right filter clause based on whether workspace_id is set.
-    scope_arg = workspace_id if workspace_id is not None else user_id
-    ws_idx = 1 if workspace_id is not None else None
+    args: list = [user_id, bucket, cutoff]
+    ws_idx = None
+    if workspace_id is not None:
+        args.append(workspace_id)
+        ws_idx = 4
 
     rows = await pool.fetch(
         _accessible_events_cte(ws_idx=ws_idx) + """
@@ -115,9 +127,7 @@ async def get_activity_timeline(
         GROUP BY bucket_date, me.agent_name, me.event_type
         ORDER BY bucket_date
         """,
-        scope_arg,
-        bucket,
-        cutoff,
+        *args,
     )
 
     # Build response shape
@@ -273,13 +283,21 @@ async def _get_source_counts(user_id: UUID, workspace_id: UUID | None = None) ->
             """
             SELECT
                 (SELECT COUNT(*) FROM pages p
-                 WHERE p.workspace_id = $1
-                   AND p.content_markdown IS NOT NULL AND p.content_markdown != '') AS pages,
+                 WHERE p.workspace_id = $2
+                   AND COALESCE(p.metadata->>'shared_in_stash_id', '') = ''
+                   AND p.content_markdown IS NOT NULL AND p.content_markdown != ''
+                   AND """ + permission_service.readable_content_condition("page", "p", 1) + """) AS pages,
                 (SELECT COUNT(*) FROM table_rows tr
-                 WHERE tr.table_id IN (SELECT t.id FROM tables t WHERE t.workspace_id = $1)
+                 WHERE tr.table_id IN (
+                   SELECT t.id FROM tables t
+                   WHERE t.workspace_id = $2
+                     AND """ + permission_service.readable_content_condition("table", "t", 1) + """)
                    AND tr.data IS NOT NULL) AS rows,
-                (SELECT COUNT(*) FROM history_events he WHERE he.workspace_id = $1) AS events
+                (SELECT COUNT(*) FROM history_events he
+                 WHERE he.workspace_id = $2
+                   AND """ + memory_service.readable_session_event_condition("he", 1) + """) AS events
             """,
+            user_id,
             workspace_id,
         )
     else:
@@ -288,16 +306,20 @@ async def _get_source_counts(user_id: UUID, workspace_id: UUID | None = None) ->
             SELECT
                 (SELECT COUNT(*) FROM pages p
                  WHERE p.workspace_id IN (SELECT workspace_id FROM workspace_members WHERE user_id = $1)
-                   AND p.content_markdown IS NOT NULL AND p.content_markdown != '') AS pages,
+                   AND COALESCE(p.metadata->>'shared_in_stash_id', '') = ''
+                   AND p.content_markdown IS NOT NULL AND p.content_markdown != ''
+                   AND """ + permission_service.readable_content_condition("page", "p", 1) + """) AS pages,
                 (SELECT COUNT(*) FROM table_rows tr
                  WHERE tr.table_id IN (
                      SELECT t.id FROM tables t
-                     WHERE t.workspace_id IN (SELECT workspace_id FROM workspace_members WHERE user_id = $1)
+                     WHERE (t.workspace_id IN (SELECT workspace_id FROM workspace_members WHERE user_id = $1)
                         OR (t.workspace_id IS NULL AND t.created_by = $1))
+                       AND (t.workspace_id IS NULL OR """ + permission_service.readable_content_condition("table", "t", 1) + """))
                    AND tr.data IS NOT NULL) AS rows,
                 (SELECT COUNT(*) FROM history_events he
-                 WHERE he.workspace_id IN (SELECT workspace_id FROM workspace_members WHERE user_id = $1)
-                    OR (he.workspace_id IS NULL AND he.created_by = $1)) AS events
+                 WHERE (he.workspace_id IN (SELECT workspace_id FROM workspace_members WHERE user_id = $1)
+                    OR (he.workspace_id IS NULL AND he.created_by = $1))
+                   AND (he.workspace_id IS NULL OR """ + memory_service.readable_session_event_condition("he", 1) + """)) AS events
             """,
             user_id,
         )
@@ -333,7 +355,7 @@ async def compute_knowledge_density(
 ) -> tuple[list[dict], int]:
     """Compute the full top-50 cluster list for a user and return (clusters, signature).
 
-    Single-pass stem aggregation across notebook pages, table rows, and history
+    Single-pass stem aggregation across pages, table rows, and session events
     events. Label prettification is done in Python from one bulk word-frequency
     query — no per-stem LATERAL subqueries."""
     pool = get_pool()
@@ -344,14 +366,20 @@ async def compute_knowledge_density(
     if total_docs == 0:
         return [], signature
 
-    # $1 = user_id (or workspace_id if scoped); ws_idx lets the CTEs filter
-    # on a single workspace when scoped.
-    scope_arg = workspace_id if workspace_id is not None else user_id
-    ws_idx = 1 if workspace_id is not None else None
+    content_args = [user_id]
+    content_ws_idx = None
+    if workspace_id is not None:
+        content_args.append(workspace_id)
+        content_ws_idx = 2
+    event_args = [user_id]
+    event_ws_idx = None
+    if workspace_id is not None:
+        event_args.append(workspace_id)
+        event_ws_idx = 2
 
     # One scan per source: stem → doc_count + newest_at.
     page_rows = await pool.fetch(
-        _accessible_pages_cte(ws_idx=ws_idx) + """
+        _accessible_pages_cte(ws_idx=content_ws_idx) + """
         SELECT stem, COUNT(DISTINCT doc_id) AS ndoc, MAX(ts) AS newest_at
         FROM (
             SELECT word AS stem, np.id AS doc_id, np.updated_at AS ts
@@ -366,10 +394,10 @@ async def compute_knowledge_density(
         ORDER BY ndoc DESC
         LIMIT 250
         """,
-        scope_arg,
+        *content_args,
     )
     table_rows_res = await pool.fetch(
-        _accessible_tables_cte(ws_idx=ws_idx) + """
+        _accessible_tables_cte(ws_idx=content_ws_idx) + """
         SELECT stem, COUNT(DISTINCT doc_id) AS ndoc, MAX(ts) AS newest_at
         FROM (
             SELECT word AS stem, tr.id AS doc_id, tr.updated_at AS ts
@@ -384,10 +412,10 @@ async def compute_knowledge_density(
         ORDER BY ndoc DESC
         LIMIT 250
         """,
-        scope_arg,
+        *content_args,
     )
     event_rows = await pool.fetch(
-        _accessible_events_cte(ws_idx=ws_idx) + """
+        _accessible_events_cte(ws_idx=event_ws_idx) + """
         SELECT stem, COUNT(DISTINCT doc_id) AS ndoc, MAX(ts) AS newest_at
         FROM (
             SELECT word AS stem, he.id AS doc_id, he.created_at AS ts
@@ -402,7 +430,7 @@ async def compute_knowledge_density(
         ORDER BY ndoc DESC
         LIMIT 250
         """,
-        scope_arg,
+        *event_args,
     )
 
     term_counts: dict[str, dict] = {}
@@ -427,11 +455,11 @@ async def compute_knowledge_density(
     top_stems = sorted(term_counts.items(), key=lambda x: x[1]["tfidf"], reverse=True)[:50]
     top_stem_set = {stem for stem, _ in top_stems}
 
-    # Pretty labels: one bulk query over notebook pages (the most user-readable
+    # Pretty labels: one bulk query over pages (the most user-readable
     # source) maps top stems → their most frequent original word. ts_lexize
     # returns the same stems Postgres tsvector produced, so the join is exact.
     word_rows = await pool.fetch(
-        _accessible_pages_cte(ws_idx=ws_idx) + """
+        _accessible_pages_cte(ws_idx=content_ws_idx) + """
         SELECT w AS word, ts_lexize('english_stem', w) AS stems, COUNT(*) AS freq
         FROM pages np,
              LATERAL regexp_split_to_table(lower(COALESCE(np.content_markdown, '')), '[^a-z]+') AS w
@@ -441,7 +469,7 @@ async def compute_knowledge_density(
         ORDER BY freq DESC
         LIMIT 5000
         """,
-        scope_arg,
+        *content_args,
     )
     stem_to_label: dict[str, str] = {}
     stem_to_label_freq: dict[str, int] = {}
@@ -529,9 +557,16 @@ async def get_embedding_projection(
 
     source_key = source or "_all"
 
-    # $1 = user_id (or workspace_id if scoped)
-    scope_arg = workspace_id if workspace_id is not None else user_id
-    ws_idx = 1 if workspace_id is not None else None
+    content_count_args = [user_id]
+    content_count_ws_idx = None
+    if workspace_id is not None:
+        content_count_args.append(workspace_id)
+        content_count_ws_idx = 2
+    event_count_args = [user_id]
+    event_ws_idx = None
+    if workspace_id is not None:
+        event_count_args.append(workspace_id)
+        event_ws_idx = 2
 
     # Cache row keyed by (user_id, source_type, workspace_id) — NULL workspace
     # is the user-wide row (migration 0018, NULLS NOT DISTINCT).
@@ -548,34 +583,34 @@ async def get_embedding_projection(
     total_count = 0
     if source is None or source == "pages":
         row = await pool.fetchval(
-            _accessible_pages_cte(ws_idx=ws_idx) + """
+            _accessible_pages_cte(ws_idx=content_count_ws_idx) + """
             SELECT COUNT(*) FROM pages np
             WHERE np.id IN (SELECT page_id FROM accessible_pages)
               AND np.embedding IS NOT NULL
             """,
-            scope_arg,
+            *content_count_args,
         )
         total_count += row or 0
 
     if source is None or source == "table_rows":
         row = await pool.fetchval(
-            _accessible_tables_cte(ws_idx=ws_idx) + """
+            _accessible_tables_cte(ws_idx=content_count_ws_idx) + """
             SELECT COUNT(*) FROM table_rows tr
             WHERE tr.table_id IN (SELECT table_id FROM accessible_tables)
               AND tr.embedding IS NOT NULL
             """,
-            scope_arg,
+            *content_count_args,
         )
         total_count += row or 0
 
     if source is None or source == "history_events":
         row = await pool.fetchval(
-            _accessible_events_cte(ws_idx=ws_idx) + """
+            _accessible_events_cte(ws_idx=event_ws_idx) + """
             SELECT COUNT(*) FROM history_events me
             JOIN accessible_events a ON a.event_id = me.id
             WHERE me.embedding IS NOT NULL
             """,
-            scope_arg,
+            *event_count_args,
         )
         total_count += row or 0
 
@@ -596,10 +631,20 @@ async def get_embedding_projection(
     # Fetch embeddings from each source
     all_items: list[dict] = []
     per_source_limit = max_points if source else max_points // 3
+    content_fetch_args = [user_id, per_source_limit]
+    content_fetch_ws_idx = None
+    if workspace_id is not None:
+        content_fetch_args.append(workspace_id)
+        content_fetch_ws_idx = 3
+    event_fetch_args = [user_id, per_source_limit]
+    event_fetch_ws_idx = None
+    if workspace_id is not None:
+        event_fetch_args.append(workspace_id)
+        event_fetch_ws_idx = 3
 
     if source is None or source == "pages":
         rows = await pool.fetch(
-            _accessible_pages_cte(ws_idx=ws_idx) + """
+            _accessible_pages_cte(ws_idx=content_fetch_ws_idx) + """
             SELECT np.id, np.name AS label, np.embedding, np.created_at
             FROM pages np
             WHERE np.id IN (SELECT page_id FROM accessible_pages)
@@ -607,8 +652,7 @@ async def get_embedding_projection(
             ORDER BY np.updated_at DESC
             LIMIT $2
             """,
-            scope_arg,
-            per_source_limit,
+            *content_fetch_args,
         )
         for r in rows:
             all_items.append(
@@ -623,7 +667,7 @@ async def get_embedding_projection(
 
     if source is None or source == "table_rows":
         rows = await pool.fetch(
-            _accessible_tables_cte(ws_idx=ws_idx) + """
+            _accessible_tables_cte(ws_idx=content_fetch_ws_idx) + """
             SELECT tr.id, t.name AS table_name, tr.embedding, tr.created_at
             FROM table_rows tr
             JOIN tables t ON t.id = tr.table_id
@@ -632,8 +676,7 @@ async def get_embedding_projection(
             ORDER BY tr.created_at DESC
             LIMIT $2
             """,
-            scope_arg,
-            per_source_limit,
+            *content_fetch_args,
         )
         for r in rows:
             all_items.append(
@@ -648,7 +691,7 @@ async def get_embedding_projection(
 
     if source is None or source == "history_events":
         rows = await pool.fetch(
-            _accessible_events_cte(ws_idx=ws_idx) + """
+            _accessible_events_cte(ws_idx=event_fetch_ws_idx) + """
             SELECT me.id, me.agent_name, me.event_type, me.embedding, me.created_at
             FROM history_events me
             JOIN accessible_events a ON a.event_id = me.id
@@ -656,8 +699,7 @@ async def get_embedding_projection(
             ORDER BY me.created_at DESC
             LIMIT $2
             """,
-            scope_arg,
-            per_source_limit,
+            *event_fetch_args,
         )
         for r in rows:
             all_items.append(

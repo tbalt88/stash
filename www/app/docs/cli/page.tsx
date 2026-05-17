@@ -5,7 +5,7 @@ export default function CLIPage() {
     <>
       <Title>CLI Reference</Title>
       <Subtitle>
-        A command-line interface for managing Stash from your terminal — push history events
+        A command-line interface for managing Stash from your terminal — push session events
         and manage all resources.
       </Subtitle>
 
@@ -26,7 +26,7 @@ export default function CLIPage() {
       <CodeBlock>{`stash connect`}</CodeBlock>
       <P>
         The wizard saves everything to <Code>~/.stash/config.json</Code>. Once complete,
-        commands like <Code>stash history push</Code> work without extra flags.
+        commands like <Code>stash sessions push</Code> work without extra flags.
       </P>
 
       <H2>Authentication</H2>
@@ -104,21 +104,18 @@ export default function CLIPage() {
 
       <CommandRef
         command="stash workspaces list"
-        args="[--mine]"
+        args=""
         description="List workspaces you belong to."
-        params={[
-          { name: "--mine", type: "flag", desc: "Show only workspaces you own." },
-        ]}
+        params={[]}
       />
 
       <CommandRef
         command="stash workspaces create"
-        args="<name> [--description TEXT] [--public]"
+        args="<name> [--description TEXT]"
         description="Create a new workspace."
         params={[
           { name: "<name>", type: "string", desc: "Name for the workspace.", required: true },
           { name: "--description", type: "string", desc: "Workspace description." },
-          { name: "--public", type: "flag", desc: "Make the workspace publicly visible." },
         ]}
       />
 
@@ -159,77 +156,76 @@ export default function CLIPage() {
         ]}
       />
 
-      <H2>Notebooks</H2>
+      <H2>Files</H2>
 
       <CommandRef
-        command="stash notebooks list"
+        command="stash files pages"
         args="[--ws ID] [--all]"
-        description="List notebooks in the current workspace."
+        description="List pages in the current workspace."
         params={[
           { name: "--ws", type: "string", desc: "Workspace ID override." },
-          { name: "--all", type: "flag", desc: "Include notebooks from all workspaces." },
+          { name: "--all", type: "flag", desc: "Include pages from all workspaces." },
         ]}
       />
 
       <CommandRef
-        command="stash notebooks create"
-        args="<name> [--ws ID] [--personal]"
-        description="Create a new notebook collection."
+        command="stash files tree"
+        args="[--ws ID]"
+        description="Show the folder and page tree for a workspace."
         params={[
-          { name: "<name>", type: "string", desc: "Name for the notebook.", required: true },
-          { name: "--ws", type: "string", desc: "Workspace ID override." },
-          { name: "--personal", type: "flag", desc: "Create as a personal notebook." },
-        ]}
-      />
-
-      <CommandRef
-        command="stash notebooks pages"
-        args="<notebook_id> [--ws ID]"
-        description="List all pages in a notebook."
-        params={[
-          { name: "<notebook_id>", type: "string", desc: "ID of the notebook.", required: true },
           { name: "--ws", type: "string", desc: "Workspace ID override." },
         ]}
       />
 
       <CommandRef
-        command="stash notebooks add-page"
-        args="<notebook_id> <name> [--content '...']"
-        description="Add a new page to a notebook."
+        command="stash files create-folder"
+        args="<name> [--ws ID] [--parent FOLDER_ID]"
+        description="Create a folder in the files."
         params={[
-          { name: "<notebook_id>", type: "string", desc: "ID of the notebook.", required: true },
+          { name: "<name>", type: "string", desc: "Folder name.", required: true },
+          { name: "--ws", type: "string", desc: "Workspace ID override." },
+          { name: "--parent", type: "string", desc: "Parent folder ID." },
+        ]}
+      />
+
+      <CommandRef
+        command="stash files add-page"
+        args="<name> [--ws ID] [--folder FOLDER_ID] [--content '...']"
+        description="Add a new page to the files."
+        params={[
           { name: "<name>", type: "string", desc: "Page title.", required: true },
+          { name: "--folder", type: "string", desc: "Folder ID." },
           { name: "--content", type: "string", desc: "Initial page content." },
         ]}
       />
 
       <CommandRef
-        command="stash notebooks read-page"
-        args="<notebook_id> <page_id>"
-        description="Read the content of a notebook page."
+        command="stash files read-page"
+        args="<page_id> [--ws ID]"
+        description="Read a page."
         params={[
-          { name: "<notebook_id>", type: "string", desc: "ID of the notebook.", required: true },
           { name: "<page_id>", type: "string", desc: "ID of the page.", required: true },
+          { name: "--ws", type: "string", desc: "Workspace ID override." },
         ]}
       />
 
       <CommandRef
-        command="stash notebooks edit-page"
-        args="<notebook_id> <page_id> --content '...'"
-        description="Update the content of a notebook page. Reads from stdin if --content is not given."
+        command="stash files edit-page"
+        args="<page_id> [--ws ID] --content '...'"
+        description="Update a page. Reads from stdin if --content is not given."
         params={[
-          { name: "<notebook_id>", type: "string", desc: "ID of the notebook.", required: true },
           { name: "<page_id>", type: "string", desc: "ID of the page.", required: true },
+          { name: "--ws", type: "string", desc: "Workspace ID override." },
           { name: "--content", type: "string", desc: "New page content. Reads from stdin if omitted." },
         ]}
       />
 
-      <H2>History</H2>
+      <H2>Sessions</H2>
 
       <CommandRef
-        command="stash history push"
+        command="stash sessions push"
         args="<content> [--agent cli] [--type message] [--session ID] [--attach FILE]"
-        description="Push a new event to the workspace history stream."
+        description="Push a new event to the workspace session stream."
         params={[
           { name: "<content>", type: "string", desc: "Event content to push.", required: true },
           { name: "--ws", type: "string", desc: "Workspace ID override." },
@@ -243,9 +239,9 @@ export default function CLIPage() {
       />
 
       <CommandRef
-        command="stash history query"
+        command="stash sessions query"
         args="[--agent X] [--type Y] [-n 50] [--all]"
-        description="Query recent history events with optional filters."
+        description="Query recent session events with optional filters."
         params={[
           { name: "--ws", type: "string", desc: "Workspace ID override." },
           { name: "--agent", type: "string", desc: "Filter by agent identifier." },
@@ -256,9 +252,9 @@ export default function CLIPage() {
       />
 
       <CommandRef
-        command="stash history search"
+        command="stash sessions search"
         args="<query> [--ws ID] [-n 50]"
-        description="Full-text search across workspace history."
+        description="Full-text search across workspace sessions."
         params={[
           { name: "<query>", type: "string", desc: "Search query.", required: true },
           { name: "--ws", type: "string", desc: "Workspace ID override." },
@@ -267,7 +263,7 @@ export default function CLIPage() {
       />
 
       <CommandRef
-        command="stash history agents"
+        command="stash sessions agents"
         args="[--ws ID]"
         description="List distinct agent names that have logged events in this workspace."
         params={[
@@ -276,7 +272,7 @@ export default function CLIPage() {
       />
 
       <CommandRef
-        command="stash history transcript"
+        command="stash sessions transcript"
         args="<session_id> [--ws ID] [--save PATH]"
         description="Fetch a full session transcript and print or save it. Transcripts are stored gzipped on the server and decompressed automatically."
         params={[
@@ -444,7 +440,7 @@ export default function CLIPage() {
         ]}
       />
 
-      <H2>Files</H2>
+      <H2>Uploaded Files</H2>
 
       <CommandRef
         command="stash files upload"

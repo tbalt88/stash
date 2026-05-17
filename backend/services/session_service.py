@@ -71,17 +71,13 @@ async def get_session_by_id(session_row_id: UUID) -> dict | None:
 
 async def set_summary(session_row_id: UUID, summary: str) -> None:
     pool = get_pool()
-    row = await pool.fetchrow(
+    await pool.execute(
         "UPDATE sessions SET summary = $1, summary_status = 'done', "
         "finished_at = COALESCE(finished_at, now()) "
-        "WHERE id = $2 RETURNING workspace_id",
+        "WHERE id = $2",
         summary,
         session_row_id,
     )
-    if row:
-        from . import handoff_writer
-
-        handoff_writer.mark_stale_bg(row["workspace_id"])
 
 
 async def set_files_touched(session_row_id: UUID, files: list[str]) -> None:

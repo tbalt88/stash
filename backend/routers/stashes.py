@@ -1,830 +1,320 @@
-"""Stash router — two concepts live here:
+"""Stashes: publishable subsets of a workspace."""
 
-1. Workspace-alias endpoints: re-exports workspace CRUD under /api/v1/stashes/*
-   with spine, skills, and ask-the-stash.
-2. Session-stash endpoints: create/upload/read session snapshots with artifacts
-   and transcripts, scoped under workspaces or public by slug.
-"""
-
-import asyncio
-import json
-from datetime import datetime
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request, UploadFile
-from fastapi.responses import PlainTextResponse, Response
-from pydantic import BaseModel
-from starlette.responses import StreamingResponse
+from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import PlainTextResponse
 
 from ..auth import get_current_user, get_current_user_optional
 from ..config import settings
 from ..database import get_pool
 from ..models import (
-    InviteTokenCreateRequest,
-    InviteTokenCreateResponse,
-    InviteTokenListResponse,
-    JoinRequestListResponse,
-    JoinRequestResponse,
-    RedeemInviteAuthedRequest,
-    StashArtifactResponse,
+    AddExternalStashRequest,
+    PageCreateRequest,
+    PageResponse,
     StashCreateRequest,
-    StashCreateResponse,
+    StashMemberRequest,
+    StashMemberResponse,
+    StashMembersResponse,
+    StashPublicResponse,
     StashResponse,
     StashUpdateRequest,
-    WorkspaceCreateRequest,
-    WorkspaceForkRequest,
-    WorkspaceListResponse,
-    WorkspaceMember,
-    WorkspacePublicInfo,
-    WorkspaceResponse,
-    WorkspaceUpdateRequest,
 )
-from ..services import (
-    ask_service,
-    handoff_writer,
-    memory_service,
-    skill_service,
-    stash_service,
-    storage_service,
-    workspace_service,
-)
-from ..workers import handoff_writer as handoff_writer_worker
-from . import workspaces as ws_router_module
+from ..services import permission_service, stash_service, workspace_service
 
-# ---------------------------------------------------------------------------
-# 1) Workspace-alias router (/api/v1/stashes/*)
-# ---------------------------------------------------------------------------
-
-router = APIRouter(prefix="/api/v1/stashes", tags=["stashes"])
-
-WsStashResponse = WorkspaceResponse
-WsStashListResponse = WorkspaceListResponse
-WsStashCreateRequest = WorkspaceCreateRequest
-WsStashUpdateRequest = WorkspaceUpdateRequest
-WsStashForkRequest = WorkspaceForkRequest
-WsStashMember = WorkspaceMember
-WsStashPublicInfo = WorkspacePublicInfo
-
-
-@router.post("", response_model=WsStashResponse, status_code=201)
-async def create_stash(req: WsStashCreateRequest, current_user: dict = Depends(get_current_user)):
-    return await ws_router_module.create_workspace(req, current_user)
-
-
-@router.get("", response_model=WsStashListResponse)
-async def list_stashes(current_user: dict | None = Depends(get_current_user_optional)):
-    return await ws_router_module.list_workspaces(current_user)
-
-
-@router.get("/mine", response_model=WsStashListResponse)
-async def list_my_stashes(current_user: dict = Depends(get_current_user)):
-    return await ws_router_module.list_my_workspaces(current_user)
-
-
-@router.post("/redeem-invite", response_model=WsStashResponse)
-async def redeem_invite(
-    req: RedeemInviteAuthedRequest, current_user: dict = Depends(get_current_user)
-):
-    return await ws_router_module.redeem_invite_authed(req, current_user)
-
-
-@router.get("/{stash_id}", response_model=WsStashResponse)
-async def get_stash(stash_id: UUID, current_user: dict | None = Depends(get_current_user_optional)):
-    return await ws_router_module.get_workspace(stash_id, current_user)
-
-
-@router.patch("/{stash_id}", response_model=WsStashResponse)
-async def update_stash(
-    stash_id: UUID, req: WsStashUpdateRequest, current_user: dict = Depends(get_current_user)
-):
-    return await ws_router_module.update_workspace(stash_id, req, current_user)
-
-
-@router.delete("/{stash_id}", status_code=204)
-async def delete_stash(stash_id: UUID, current_user: dict = Depends(get_current_user)):
-    await ws_router_module.delete_workspace(stash_id, current_user)
-
-
-@router.post("/{stash_id}/fork", response_model=WsStashResponse, status_code=201)
-async def fork_stash(
-    stash_id: UUID, req: WsStashForkRequest, current_user: dict = Depends(get_current_user)
-):
-    return await ws_router_module.fork_workspace(stash_id, req, current_user)
-
-
-@router.post("/join/{invite_code}", response_model=WsStashResponse)
-async def join_stash(invite_code: str, current_user: dict = Depends(get_current_user)):
-    return await ws_router_module.join_workspace(invite_code, current_user)
-
-
-@router.post("/{stash_id}/invite-code/rotate", response_model=WsStashResponse)
-async def rotate_stash_invite_code(stash_id: UUID, current_user: dict = Depends(get_current_user)):
-    return await ws_router_module.rotate_invite_code(stash_id, current_user)
-
-
-@router.post("/{stash_id}/leave", status_code=204)
-async def leave_stash(stash_id: UUID, current_user: dict = Depends(get_current_user)):
-    await ws_router_module.leave_workspace(stash_id, current_user)
-
-
-@router.get("/{stash_id}/members", response_model=list[WsStashMember])
-async def get_stash_members(stash_id: UUID, current_user: dict = Depends(get_current_user)):
-    return await ws_router_module.get_members(stash_id, current_user)
-
-
-@router.post("/{stash_id}/members")
-async def add_stash_member(
-    stash_id: UUID, req: dict, current_user: dict = Depends(get_current_user)
-):
-    return await ws_router_module.add_member(stash_id, req, current_user)
-
-
-@router.post("/{stash_id}/kick/{user_id}", status_code=204)
-async def kick_stash_member(
-    stash_id: UUID, user_id: UUID, current_user: dict = Depends(get_current_user)
-):
-    await ws_router_module.kick_member(stash_id, user_id, current_user)
-
-
-@router.get("/{stash_id}/public-info", response_model=WsStashPublicInfo)
-async def get_stash_public_info(stash_id: UUID):
-    return await ws_router_module.get_workspace_public_info(stash_id)
-
-
-@router.post("/{stash_id}/join-requests", response_model=JoinRequestResponse, status_code=201)
-async def create_stash_join_request(stash_id: UUID, current_user: dict = Depends(get_current_user)):
-    return await ws_router_module.create_join_request(stash_id, current_user)
-
-
-@router.get("/{stash_id}/join-requests", response_model=JoinRequestListResponse)
-async def list_stash_join_requests(stash_id: UUID, current_user: dict = Depends(get_current_user)):
-    return await ws_router_module.list_join_requests(stash_id, current_user)
-
-
-@router.post("/{stash_id}/join-requests/{request_id}/approve", response_model=JoinRequestResponse)
-async def approve_stash_join_request(
-    stash_id: UUID, request_id: UUID, current_user: dict = Depends(get_current_user)
-):
-    return await ws_router_module.approve_join_request(stash_id, request_id, current_user)
-
-
-@router.post("/{stash_id}/join-requests/{request_id}/deny", response_model=JoinRequestResponse)
-async def deny_stash_join_request(
-    stash_id: UUID, request_id: UUID, current_user: dict = Depends(get_current_user)
-):
-    return await ws_router_module.deny_join_request(stash_id, request_id, current_user)
-
-
-@router.get("/{stash_id}/join-requests/mine", response_model=JoinRequestResponse)
-async def get_my_stash_join_request(stash_id: UUID, current_user: dict = Depends(get_current_user)):
-    return await ws_router_module.get_my_join_request(stash_id, current_user)
-
-
-@router.post("/{stash_id}/invite-tokens", response_model=InviteTokenCreateResponse, status_code=201)
-async def create_stash_invite_token(
-    stash_id: UUID,
-    req: InviteTokenCreateRequest,
-    current_user: dict = Depends(get_current_user),
-):
-    return await ws_router_module.create_invite_token(stash_id, req, current_user)
-
-
-@router.get("/{stash_id}/invite-tokens", response_model=InviteTokenListResponse)
-async def list_stash_invite_tokens(stash_id: UUID, current_user: dict = Depends(get_current_user)):
-    return await ws_router_module.list_invite_tokens(stash_id, current_user)
-
-
-@router.delete("/{stash_id}/invite-tokens/{token_id}", status_code=204)
-async def revoke_stash_invite_token(
-    stash_id: UUID, token_id: UUID, current_user: dict = Depends(get_current_user)
-):
-    await ws_router_module.revoke_invite_token(stash_id, token_id, current_user)
-
-
-# ---------------------------------------------------------------------------
-# Overview + Sidebar — the per-stash view shapes
-#
-# `/overview` is what the stash home page loads: handoff metadata + sessions
-#   + wiki. `/sidebar` is a smaller payload for the nav tree, served with an
-#   ETag so it can be cached cheaply across navigation.
-# ---------------------------------------------------------------------------
-
-
-async def _list_sessions(stash_id: UUID) -> list[dict]:
-    """Sessions in this workspace, sourced from history_events rows."""
-    sessions = await memory_service.list_workspace_sessions(stash_id)
-    return [
-        {
-            "session_id": s["session_id"],
-            "title": s["session_id"],
-            "agent_name": s["agent_name"] or "",
-            "size_bytes": int(s["size_bytes"] or 0),
-            "last_at": s["last_at"],
-            "updated_at": s["last_at"],
-        }
-        for s in sessions
-    ]
-
-
-async def _wiki_tree(stash_id: UUID) -> dict:
-    """One unified Wiki tree — folders, pages, and files for the workspace.
-
-    No Drive/Skill split. A folder is a folder regardless of whether it
-    contains a SKILL.md. The frontend builds the tree from parent_folder_id
-    and folder_id; the spine is just the flat row set.
-    """
-    pool = get_pool()
-    folder_rows, page_rows, file_rows = await asyncio.gather(
-        pool.fetch(
-            "SELECT f.id, f.name, f.parent_folder_id, "
-            "       (SELECT COUNT(*) FROM pages p WHERE p.folder_id = f.id) AS page_count, "
-            "       (SELECT COUNT(*) FROM files fi WHERE fi.folder_id = f.id) AS file_count, "
-            "       EXISTS(SELECT 1 FROM pages p WHERE p.folder_id = f.id AND p.name = 'SKILL.md') AS has_skill "
-            "FROM folders f WHERE f.workspace_id = $1 ORDER BY f.name",
-            stash_id,
-        ),
-        pool.fetch(
-            "SELECT id, name, folder_id FROM pages WHERE workspace_id = $1 ORDER BY name",
-            stash_id,
-        ),
-        pool.fetch(
-            "SELECT id, name, folder_id, size_bytes, content_type, "
-            "       created_at, linked_table_id "
-            "FROM files WHERE workspace_id = $1 ORDER BY created_at DESC",
-            stash_id,
-        ),
-    )
-
-    file_payload = [
-        {
-            "id": str(f["id"]),
-            "name": f["name"],
-            "folder_id": str(f["folder_id"]) if f["folder_id"] else None,
-            "size_bytes": f["size_bytes"],
-            "content_type": f["content_type"],
-            "url": None,
-            "created_at": f["created_at"],
-            "linked_table_id": str(f["linked_table_id"]) if f["linked_table_id"] else None,
-        }
-        for f in file_rows
-    ]
-
-    return {
-        "folders": [
-            {
-                "id": str(r["id"]),
-                "name": r["name"],
-                "parent_folder_id": str(r["parent_folder_id"]) if r["parent_folder_id"] else None,
-                "page_count": int(r["page_count"] or 0),
-                "file_count": int(r["file_count"] or 0),
-                "has_skill": bool(r["has_skill"]),
-            }
-            for r in folder_rows
-        ],
-        "pages": [
-            {
-                "id": str(r["id"]),
-                "name": r["name"],
-                "folder_id": str(r["folder_id"]) if r["folder_id"] else None,
-            }
-            for r in page_rows
-        ],
-        "files": file_payload,
-    }
-
-
-# ---------------------------------------------------------------------------
-# Skills (Phase 2) — markdown folders with a SKILL.md frontmatter file
-# ---------------------------------------------------------------------------
-
-
-@router.get("/{stash_id}/skills")
-async def list_stash_skills(stash_id: UUID, current_user: dict = Depends(get_current_user)):
-    if not await workspace_service.is_member(stash_id, current_user["id"]):
-        raise HTTPException(status_code=403, detail="Not a stash member")
-    return await skill_service.list_skills(stash_id)
-
-
-@router.get("/{stash_id}/skills/{name}")
-async def get_stash_skill(
-    stash_id: UUID, name: str, current_user: dict = Depends(get_current_user)
-):
-    if not await workspace_service.is_member(stash_id, current_user["id"]):
-        raise HTTPException(status_code=403, detail="Not a stash member")
-    skill = await skill_service.read_skill(stash_id, name)
-    if not skill:
-        raise HTTPException(status_code=404, detail="Skill not found")
-    return skill
-
-
-# ---------------------------------------------------------------------------
-# Ask-the-stash agent (Phase 3)
-# ---------------------------------------------------------------------------
-
-
-class AskMessage(BaseModel):
-    role: str
-    content: str
-
-
-class AskRequest(BaseModel):
-    messages: list[AskMessage]
-    scope: str = "stash"
-
-
-@router.post("/{stash_id}/ask")
-async def ask_stash(
-    stash_id: UUID,
-    req: AskRequest,
-    current_user: dict = Depends(get_current_user),
-):
-    if not await workspace_service.is_member(stash_id, current_user["id"]):
-        raise HTTPException(status_code=403, detail="Not a stash member")
-    stash = await workspace_service.get_workspace(stash_id)
-    if not stash:
-        raise HTTPException(status_code=404, detail="Stash not found")
-
-    convo = [{"role": m.role, "content": m.content} for m in req.messages]
-
-    return StreamingResponse(
-        ask_service.stream_ask(stash_id, stash["name"], convo),
-        media_type="text/event-stream",
-        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
-    )
-
-
-@router.get("/{stash_id}/overview")
-async def get_stash_overview(stash_id: UUID, current_user: dict = Depends(get_current_user)):
-    """{handoff_metadata, sessions, wiki} for the stash home page.
-
-    `handoff_metadata` is a small envelope (present/generated_at/stale/pinned_at);
-    the body lives behind /{stash_id}/handoff. `wiki` is the flat folder + page
-    + file row set; the frontend builds the tree from parent_folder_id."""
-    await _check_overview_access(stash_id, current_user["id"])
-
-    sessions, wiki, handoff = await asyncio.gather(
-        _list_sessions(stash_id),
-        _wiki_tree(stash_id),
-        handoff_writer.get_handoff_metadata(stash_id),
-    )
-    return {
-        "handoff_metadata": _handoff_metadata(handoff),
-        "sessions": sessions,
-        "wiki": wiki,
-    }
-
-
-@router.get("/{stash_id}/sidebar")
-async def get_stash_sidebar(
-    stash_id: UUID,
-    request: Request,
-    current_user: dict = Depends(get_current_user),
-):
-    """Lighter payload for the nav sidebar: just sessions + wiki. Carries an
-    ETag derived from the workspace's mutation timestamps so navigation
-    between stashes hits 304 instead of re-fetching."""
-    await _check_overview_access(stash_id, current_user["id"])
-
-    etag = await _sidebar_etag(stash_id)
-    if request.headers.get("if-none-match") == etag:
-        return Response(status_code=304, headers={"ETag": etag})
-
-    sessions, wiki = await asyncio.gather(
-        _list_sessions(stash_id),
-        _wiki_tree(stash_id),
-    )
-    return Response(
-        content=json.dumps({"sessions": sessions, "wiki": wiki}, default=_json_default),
-        media_type="application/json",
-        headers={"ETag": etag, "Cache-Control": "private, max-age=15"},
-    )
-
-
-async def _check_overview_access(stash_id: UUID, user_id: UUID) -> None:
-    if not await workspace_service.is_member(stash_id, user_id):
-        ws = await workspace_service.get_workspace(stash_id)
-        if not ws or not ws.get("is_public"):
-            raise HTTPException(status_code=404, detail="Stash not found")
-
-
-def _handoff_metadata(row: dict | None) -> dict:
-    if not row:
-        return {"present": False, "generated_at": None, "stale": True, "pinned_at": None}
-    return {
-        "present": bool(row["body_markdown"]),
-        "generated_at": row["generated_at"].isoformat() if row["generated_at"] else None,
-        "stale": bool(row["stale"]),
-        "pinned_at": row["pinned_at"].isoformat() if row["pinned_at"] else None,
-    }
-
-
-async def _sidebar_etag(stash_id: UUID) -> str:
-    """One short string that changes any time the sidebar's content
-    changes. Concatenates last-modified timestamps across the workspace's
-    mutating tables."""
-    pool = get_pool()
-    row = await pool.fetchrow(
-        """
-        SELECT
-          (SELECT MAX(updated_at) FROM pages WHERE workspace_id = $1)            AS p,
-          (SELECT MAX(created_at) FROM files WHERE workspace_id = $1)            AS f,
-          (SELECT MAX(updated_at) FROM folders WHERE workspace_id = $1)          AS d,
-          (SELECT MAX(GREATEST(finished_at, started_at)) FROM sessions
-            WHERE workspace_id = $1)                                              AS s,
-          (SELECT updated_at FROM workspaces WHERE id = $1)                       AS w
-        """,
-        stash_id,
-    )
-    raw = "|".join(str(row[k] or "") for k in ("p", "f", "d", "s", "w"))
-    return f'W/"{_short_hash(raw)}"'
-
-
-def _short_hash(s: str) -> str:
-    import hashlib
-
-    return hashlib.sha256(s.encode()).hexdigest()[:16]
-
-
-def _json_default(o):
-    if isinstance(o, datetime):
-        return o.isoformat()
-    if isinstance(o, UUID):
-        return str(o)
-    raise TypeError(f"not serializable: {type(o)}")
-
-
-# --- Handoff endpoints ----------------------------------------------------
-
-
-class HandoffEditRequest(BaseModel):
-    body_markdown: str
-
-
-def _handoff_full_response(row: dict | None, *, fallback_reason: str | None = None) -> dict:
-    """Shape for GET /handoff and the regenerate response.
-
-    `present=true` when the body is fresh-or-pinned; `present=false` when
-    stale/missing — we never hand back a body the user shouldn't trust.
-    """
-    if row is None:
-        return {
-            "present": False,
-            "reason": fallback_reason or "never_generated",
-            "pinned_at": None,
-            "last_error": None,
-        }
-
-    pinned = bool(row["pinned_at"])
-    stale = bool(row["stale"])
-    body = row["body_markdown"] or ""
-
-    if pinned or (body and not stale):
-        return {
-            "present": True,
-            "reason": "pinned" if pinned else "fresh",
-            "body_markdown": body,
-            "generated_at": row["generated_at"].isoformat() if row["generated_at"] else None,
-            "model": row["model"],
-            "input_tokens": row["input_tokens"],
-            "output_tokens": row["output_tokens"],
-            "turns_used": row["turns_used"],
-            "tool_calls_used": row["tool_calls_used"],
-            "pinned_at": row["pinned_at"].isoformat() if pinned else None,
-            "pinned_by": str(row["pinned_by"]) if row["pinned_by"] else None,
-            "last_error": row["last_error"],
-        }
-
-    return {
-        "present": False,
-        "reason": "stale" if body else "never_generated",
-        "pinned_at": None,
-        "last_error": row["last_error"],
-    }
-
-
-@router.get("/{stash_id}/handoff")
-async def get_handoff(
-    stash_id: UUID,
-    current_user: dict = Depends(get_current_user),
-):
-    """Read the current handoff. Returns the body only when fresh or pinned;
-    a stale row reports {present:false, reason:'stale'} so the caller knows
-    to regenerate rather than receive out-of-date orientation."""
-    await _check_overview_access(stash_id, current_user["id"])
-    row = await handoff_writer.get_handoff(stash_id)
-    return _handoff_full_response(row)
-
-
-@router.post("/{stash_id}/handoff/regenerate")
-async def regenerate_handoff(
-    stash_id: UUID,
-    current_user: dict = Depends(get_current_user),
-):
-    """Synchronous regenerate: marks the row stale, runs the writer under
-    advisory lock, returns the new body. If another process already holds
-    the lock, waits for it to finish rather than spending tokens twice."""
-    if not await workspace_service.can_write(stash_id, current_user["id"]):
-        raise HTTPException(status_code=403, detail="Not allowed to regenerate handoff")
-
-    existing = await handoff_writer.get_handoff(stash_id)
-    if existing and existing["pinned_at"]:
-        raise HTTPException(
-            status_code=409,
-            detail="Handoff is pinned. Unpin before regenerating.",
-        )
-
-    await handoff_writer.mark_stale(stash_id)
-    try:
-        ran = await handoff_writer_worker.regenerate_under_lock(stash_id)
-    except TimeoutError:
-        raise HTTPException(status_code=504, detail="Regenerate timed out")
-    if not ran:
-        # Another worker is regenerating; wait it out.
-        if not await handoff_writer_worker.wait_for_completion(
-            stash_id, timeout=handoff_writer.PER_REGEN_TIMEOUT
-        ):
-            raise HTTPException(
-                status_code=504, detail="Concurrent regenerate did not complete in time"
-            )
-
-    row = await handoff_writer.get_handoff(stash_id)
-    return _handoff_full_response(row)
-
-
-@router.patch("/{stash_id}/handoff")
-async def edit_handoff(
-    stash_id: UUID,
-    req: HandoffEditRequest,
-    current_user: dict = Depends(get_current_user),
-):
-    if not await workspace_service.can_write(stash_id, current_user["id"]):
-        raise HTTPException(status_code=403, detail="Not allowed to edit handoff")
-    await handoff_writer.edit_and_pin(stash_id, req.body_markdown, current_user["id"])
-    row = await handoff_writer.get_handoff(stash_id)
-    return _handoff_full_response(row)
-
-
-@router.post("/{stash_id}/handoff/unpin", status_code=200)
-async def unpin_handoff(
-    stash_id: UUID,
-    current_user: dict = Depends(get_current_user),
-):
-    if not await workspace_service.can_write(stash_id, current_user["id"]):
-        raise HTTPException(status_code=403, detail="Not allowed to unpin handoff")
-    await handoff_writer.unpin(stash_id)
-    row = await handoff_writer.get_handoff(stash_id)
-    return _handoff_full_response(row)
-
-
-# ---------------------------------------------------------------------------
-# 2) Session-stash endpoints (create/upload/read session snapshots)
-# ---------------------------------------------------------------------------
-
-ws_router = APIRouter(
-    prefix="/api/v1/workspaces/{workspace_id}/stashes",
-    tags=["stashes"],
-)
+ws_router = APIRouter(prefix="/api/v1/workspaces", tags=["stashes"])
 public_router = APIRouter(prefix="/api/v1/stashes", tags=["stashes"])
 
 
-async def _check_member(workspace_id: UUID, user_id: UUID) -> None:
-    if not await workspace_service.is_member(workspace_id, user_id):
-        raise HTTPException(status_code=403, detail="Not a workspace member")
+async def _require_can_share_item(workspace_id: UUID, item, user_id: UUID) -> None:
+    item_workspace_id = await permission_service.resolve_workspace_id(
+        item.object_type, item.object_id
+    )
+    if item_workspace_id != workspace_id:
+        raise HTTPException(status_code=400, detail="Stash items must be in the workspace")
+
+    can_read = await permission_service.check_access(
+        item.object_type,
+        item.object_id,
+        user_id,
+        workspace_id=workspace_id,
+        require_write=False,
+    )
+    if not can_read:
+        raise HTTPException(status_code=403, detail="Not allowed to share one or more items")
 
 
-@ws_router.post("", response_model=StashCreateResponse, status_code=201)
-async def create_session_stash(
+@ws_router.post("/{workspace_id}/stashes", response_model=StashResponse, status_code=201)
+async def create_stash(
     workspace_id: UUID,
     req: StashCreateRequest,
     current_user: dict = Depends(get_current_user),
 ):
-    await _check_member(workspace_id, current_user["id"])
-    stash = await stash_service.create_stash(
-        workspace_id=workspace_id,
-        session_id=req.session_id,
-        created_by=current_user["id"],
-        agent_name=req.agent_name,
-        cwd=req.cwd,
-        files_touched=req.files_touched,
-    )
-    base = settings.PUBLIC_URL.rstrip("/")
-    return StashCreateResponse(
-        id=stash["id"],
-        slug=stash["slug"],
-        url=f"{base}/b/{stash['slug']}",
-    )
+    if not await workspace_service.is_member(workspace_id, current_user["id"]):
+        raise HTTPException(status_code=403, detail="Not a workspace member")
+    if req.discoverable and req.access != "public":
+        raise HTTPException(status_code=400, detail="Discover Stashes must be public")
+    for item in req.items:
+        await _require_can_share_item(workspace_id, item, current_user["id"])
+    try:
+        stash = await stash_service.create_stash(
+            workspace_id=workspace_id,
+            owner_id=current_user["id"],
+            title=req.title,
+            description=req.description,
+            access=req.access,
+            discoverable=req.discoverable,
+            cover_image_url=req.cover_image_url,
+            items=req.items,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return StashResponse(**stash)
 
 
-@public_router.post("/{stash_id}/artifacts", status_code=201)
-async def upload_artifact(
-    stash_id: UUID,
-    file: UploadFile,
-    file_path: str = Form(...),
+@ws_router.post("/{workspace_id}/stashes/publish", status_code=201)
+async def publish_stash(
+    workspace_id: UUID,
+    req: StashCreateRequest,
     current_user: dict = Depends(get_current_user),
 ):
-    stash = await stash_service.get_stash_by_id(stash_id)
-    if not stash:
-        raise HTTPException(status_code=404, detail="Stash not found")
-    if not await workspace_service.is_member(stash["workspace_id"], current_user["id"]):
+    """Create a public Stash and return its shareable URL."""
+    if not await workspace_service.is_member(workspace_id, current_user["id"]):
         raise HTTPException(status_code=403, detail="Not a workspace member")
-    if not storage_service.is_configured():
-        raise HTTPException(status_code=503, detail="File storage is not configured")
+    if not req.items:
+        raise HTTPException(status_code=400, detail="A shared bundle needs at least one item")
 
-    content = await file.read()
-    MAX_ARTIFACT_SIZE = 1 * 1024 * 1024  # 1MB per file
-    if len(content) > MAX_ARTIFACT_SIZE:
-        raise HTTPException(status_code=413, detail="Artifact too large (max 1 MB)")
+    for item in req.items:
+        await _require_can_share_item(workspace_id, item, current_user["id"])
 
-    storage_key = await storage_service.upload_file(
-        str(stash["workspace_id"]),
-        file.filename or file_path.split("/")[-1],
-        content,
-        file.content_type or "application/octet-stream",
+    try:
+        stash = await stash_service.create_stash(
+            workspace_id=workspace_id,
+            owner_id=current_user["id"],
+            title=req.title,
+            description=req.description,
+            access="public",
+            discoverable=req.discoverable,
+            cover_image_url=req.cover_image_url,
+            items=req.items,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    base = settings.PUBLIC_URL.rstrip("/")
+    return {
+        "stash": StashResponse(**stash),
+        "url": f"{base}/stashes/{stash['slug']}",
+        "stash_id": stash["id"],
+        "stash_slug": stash["slug"],
+    }
+
+
+@ws_router.get("/{workspace_id}/stashes")
+async def list_stashes(
+    workspace_id: UUID,
+    current_user: dict = Depends(get_current_user),
+):
+    if not await workspace_service.is_member(workspace_id, current_user["id"]):
+        raise HTTPException(status_code=403, detail="Not a workspace member")
+    stashes = await stash_service.list_workspace_stashes(workspace_id, current_user["id"])
+    return {"stashes": [StashResponse(**stash) for stash in stashes]}
+
+
+@ws_router.delete("/{workspace_id}/external-stashes/{stash_id}", status_code=204)
+async def remove_external_stash(
+    workspace_id: UUID,
+    stash_id: UUID,
+    current_user: dict = Depends(get_current_user),
+):
+    if not await workspace_service.is_member(workspace_id, current_user["id"]):
+        raise HTTPException(status_code=403, detail="Not a workspace member")
+    deleted = await stash_service.remove_external_stash(
+        workspace_id,
+        stash_id,
+        current_user["id"],
     )
-    # stash_id in this URL is the sessions.id UUID (the target of the
-    # session-share link). The artifact attaches to that session.
-    artifact = await stash_service.add_artifact(
-        session_id=stash_id,
-        file_path=file_path,
-        storage_key=storage_key,
-        size_bytes=len(content),
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Forked Stash not found")
+
+
+@ws_router.get("/{workspace_id}/stashes/objects/{object_type}/{object_id}")
+async def list_object_stashes(
+    workspace_id: UUID,
+    object_type: str,
+    object_id: UUID,
+    current_user: dict = Depends(get_current_user),
+):
+    if object_type not in {"folder", "page", "table", "file", "session"}:
+        raise HTTPException(status_code=400, detail="Unsupported Stash item type")
+    if not await workspace_service.is_member(workspace_id, current_user["id"]):
+        raise HTTPException(status_code=403, detail="Not a workspace member")
+    item_workspace_id = await permission_service.resolve_workspace_id(object_type, object_id)
+    if item_workspace_id != workspace_id:
+        raise HTTPException(status_code=404, detail="Object not found")
+    stashes = await stash_service.list_object_stashes(
+        workspace_id,
+        object_type,
+        object_id,
+        current_user["id"],
     )
-    return StashArtifactResponse(**artifact)
+    return {"stashes": [StashResponse(**stash) for stash in stashes]}
 
 
 @public_router.patch("/{stash_id}", response_model=StashResponse)
-async def update_session_stash(
+async def update_stash(
     stash_id: UUID,
     req: StashUpdateRequest,
     current_user: dict = Depends(get_current_user),
 ):
-    stash = await stash_service.get_stash_by_id(stash_id)
+    if not await stash_service.user_can_manage(stash_id, current_user["id"]):
+        raise HTTPException(status_code=403, detail="Not allowed to manage this stash")
+    try:
+        stash = await stash_service.update_stash(
+            stash_id,
+            current_user["id"],
+            title=req.title,
+            description=req.description,
+            access=req.access,
+            discoverable=req.discoverable,
+            cover_image_url=req.cover_image_url,
+            items=req.items,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     if not stash:
         raise HTTPException(status_code=404, detail="Stash not found")
-    if not await workspace_service.is_member(stash["workspace_id"], current_user["id"]):
-        raise HTTPException(status_code=403, detail="Not a workspace member")
-
-    updated = await stash_service.update_stash(
-        stash_id,
-        summary=req.summary,
-    )
-    return StashResponse(**updated)
+    return StashResponse(**stash)
 
 
-# --- Public read endpoints (no auth required) ---
+@public_router.delete("/{stash_id}", status_code=204)
+async def delete_stash(
+    stash_id: UUID,
+    current_user: dict = Depends(get_current_user),
+):
+    if not await stash_service.user_can_manage(stash_id, current_user["id"]):
+        raise HTTPException(status_code=403, detail="Not allowed to manage this stash")
+    deleted = await stash_service.delete_stash(stash_id, current_user["id"])
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Stash not found")
+
+
+async def _require_can_manage_stash(stash_id: UUID, user_id: UUID) -> None:
+    stash = await stash_service.get_stash(stash_id)
+    if not stash:
+        raise HTTPException(status_code=404, detail="Stash not found")
+    if not await stash_service.user_can_admin(stash_id, user_id):
+        raise HTTPException(status_code=403, detail="Not allowed to manage this stash")
+
+
+@public_router.get("/{stash_id}/members", response_model=StashMembersResponse)
+async def list_stash_members(
+    stash_id: UUID,
+    current_user: dict = Depends(get_current_user),
+):
+    await _require_can_manage_stash(stash_id, current_user["id"])
+    members = await stash_service.list_members(stash_id)
+    return StashMembersResponse(members=[StashMemberResponse(**member) for member in members])
+
+
+@public_router.post("/{stash_id}/members", response_model=StashMemberResponse, status_code=201)
+async def add_stash_member(
+    stash_id: UUID,
+    req: StashMemberRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    await _require_can_manage_stash(stash_id, current_user["id"])
+
+    pool = get_pool()
+    user = await pool.fetchrow("SELECT id FROM users WHERE id = $1", req.user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    try:
+        member = await stash_service.add_member(
+            stash_id,
+            req.user_id,
+            req.permission,
+            current_user["id"],
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    if not member:
+        raise HTTPException(status_code=404, detail="Stash not found")
+    return StashMemberResponse(**member)
+
+
+@public_router.delete("/{stash_id}/members/{user_id}", status_code=204)
+async def remove_stash_member(
+    stash_id: UUID,
+    user_id: UUID,
+    current_user: dict = Depends(get_current_user),
+):
+    await _require_can_manage_stash(stash_id, current_user["id"])
+    await stash_service.remove_member(stash_id, user_id)
+
+
+@public_router.post("/{stash_id}/shared-pages", response_model=PageResponse, status_code=201)
+async def create_shared_stash_page(
+    stash_id: UUID,
+    req: PageCreateRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    try:
+        page = await stash_service.create_shared_page(
+            stash_id,
+            current_user["id"],
+            name=req.name,
+            content=req.content,
+            content_type=req.content_type,
+            content_html=req.content_html,
+            html_layout=req.html_layout,
+        )
+    except PermissionError as e:
+        raise HTTPException(status_code=403, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    if not page:
+        raise HTTPException(status_code=404, detail="Stash not found")
+    return PageResponse(**page)
 
 
 @public_router.get("/{slug}")
-async def get_session_stash(
+async def get_public_stash(
     slug: str,
-    format: str | None = Query(None),
+    format: str = Query(None, alias="format"),
     current_user: dict | None = Depends(get_current_user_optional),
 ):
-    stash = await stash_service.get_stash_by_slug(slug)
+    viewer_id = current_user["id"] if current_user else None
+    stash = await stash_service.get_public_stash(slug, viewer_id=viewer_id)
     if not stash:
         raise HTTPException(status_code=404, detail="Stash not found")
-
-    artifacts = await stash_service.list_artifacts(stash["id"])
+    items = await stash_service.inline_items(stash, viewer_id=viewer_id)
 
     if format == "text":
         return PlainTextResponse(
-            _stash_to_text(stash, artifacts),
+            stash_service.items_to_text(stash["title"], items),
             media_type="text/markdown",
         )
 
-    return {
-        **StashResponse(**stash).model_dump(),
-        "artifacts": [
-            StashArtifactResponse(
-                id=a["id"],
-                file_path=a["file_path"],
-                size_bytes=a["size_bytes"],
-                created_at=a["created_at"],
-            ).model_dump()
-            for a in artifacts
-        ],
-    }
-
-
-@public_router.get("/{slug}/files/{artifact_id}")
-async def get_stash_artifact(slug: str, artifact_id: UUID):
-    artifact = await stash_service.get_artifact(artifact_id)
-    if not artifact or artifact["stash_slug"] != slug:
-        raise HTTPException(status_code=404, detail="Artifact not found")
-
-    content = await storage_service.download_file(artifact["storage_key"])
-    return PlainTextResponse(
-        content.decode("utf-8", errors="replace"),
-        media_type="text/plain",
+    workspace_name = stash.pop("_workspace_name", "")
+    can_write = bool(current_user and await stash_service.user_can_write(stash["id"], current_user["id"]))
+    return StashPublicResponse(
+        stash=StashResponse(**stash),
+        workspace_name=workspace_name,
+        items=items,
+        can_write=can_write,
     )
 
 
-def _event_role(event_type: str | None) -> str | None:
-    if event_type == "user_message":
-        return "user"
-    if event_type in ("assistant_message", "tool_use"):
-        return "assistant"
-    return None
-
-
-@public_router.get("/{slug}/transcript")
-async def get_stash_transcript(slug: str):
-    """JSONL projection of the session — one line per history_events row."""
-    import json as json_mod
-
-    stash = await stash_service.get_stash_by_slug(slug)
+@public_router.post("/{slug}/add-to-workspace", response_model=StashResponse, status_code=201)
+async def add_stash_to_workspace(
+    slug: str,
+    req: AddExternalStashRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    if not await workspace_service.is_member(req.workspace_id, current_user["id"]):
+        raise HTTPException(status_code=403, detail="Not a workspace member")
+    stash = await stash_service.add_external_stash(req.workspace_id, slug, current_user["id"])
     if not stash:
         raise HTTPException(status_code=404, detail="Stash not found")
-
-    events = await memory_service.read_session_events(
-        stash["workspace_id"],
-        stash["session_id"],
-    )
-    if not events:
-        raise HTTPException(status_code=404, detail="Transcript not available")
-
-    lines: list[str] = []
-    for ev in events:
-        role = _event_role(ev.get("event_type"))
-        if role is None:
-            continue
-        line = {
-            "type": role,
-            "message": {"content": ev.get("content") or ""},
-            "timestamp": ev["created_at"].isoformat() if ev.get("created_at") else None,
-        }
-        if ev.get("tool_name"):
-            line["tool_name"] = ev["tool_name"]
-        lines.append(json_mod.dumps(line, ensure_ascii=False))
-    return PlainTextResponse(
-        ("\n".join(lines) + ("\n" if lines else "")),
-        media_type="application/jsonl",
-    )
-
-
-@public_router.get("/{slug}/transcript/messages")
-async def get_stash_transcript_messages(slug: str):
-    """Structured chat-thread view. Used by the public /b/{slug} viewer."""
-    stash = await stash_service.get_stash_by_slug(slug)
-    if not stash:
-        raise HTTPException(status_code=404, detail="Stash not found")
-
-    events = await memory_service.read_session_events(
-        stash["workspace_id"],
-        stash["session_id"],
-    )
-    if not events:
-        raise HTTPException(status_code=404, detail="Transcript not available")
-
-    messages = []
-    for ev in events:
-        role = _event_role(ev.get("event_type"))
-        if role is None:
-            continue
-        text = (ev.get("content") or "").strip()
-        if not text:
-            continue
-        messages.append({"role": role, "text": text})
-    return {"messages": messages}
-
-
-def _stash_to_text(stash: dict, artifacts: list[dict]) -> str:
-    base = settings.PUBLIC_URL.rstrip("/")
-    lines = [f"# Stash: {stash['slug']}", ""]
-
-    if stash.get("agent_name"):
-        lines.append(f"**Agent:** {stash['agent_name']}")
-    if stash.get("cwd"):
-        lines.append(f"**Directory:** {stash['cwd']}")
-    lines.append(f"**Created:** {stash['created_at']}")
-    lines.append("")
-
-    if stash.get("summary"):
-        lines.append("## Summary")
-        lines.append("")
-        lines.append(stash["summary"])
-        lines.append("")
-    elif stash.get("summary_status") in ("need_summary", "in_progress"):
-        lines.append("## Summary")
-        lines.append("")
-        lines.append("_Summary is being generated..._")
-        lines.append("")
-
-    if artifacts:
-        lines.append("## Artifacts")
-        lines.append("")
-        for a in artifacts:
-            url = f"{base}/api/v1/stashes/{stash['slug']}/files/{a['id']}"
-            lines.append(f"- [{a['file_path']}]({url}) ({a['size_bytes']} bytes)")
-        lines.append("")
-
-    transcript_url = f"{base}/api/v1/stashes/{stash['slug']}/transcript"
-    lines.append("## Transcript")
-    lines.append("")
-    if stash.get("has_transcript"):
-        lines.append(f"Full session transcript: [download]({transcript_url})")
-    else:
-        lines.append("_Transcript not yet available._")
-    lines.append("")
-
-    return "\n".join(lines)
+    return StashResponse(**stash)

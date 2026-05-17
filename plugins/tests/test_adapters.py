@@ -205,7 +205,9 @@ def test_client_facet_flows_through_stream_paths():
     metadata.client on the wire."""
     from stashai.plugin.event import HookEvent
     from stashai.plugin.hooks import (
-        stream_assistant_message, stream_session_end, stream_tool_use,
+        stream_assistant_message,
+        stream_session_end,
+        stream_tool_use,
         stream_user_message,
     )
     from stashai.plugin.stash_client import StashClient

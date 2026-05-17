@@ -1,25 +1,13 @@
-"""Tests for the session summarizer worker.
-
-Verifies (a) the plugin can't drive the session summary_status anymore —
-StashUpdateRequest rejects extra fields — and (b) the worker claims a
-session before running the LLM call so two workers can't double-spend.
-"""
+"""Tests for the session summarizer worker."""
 
 from __future__ import annotations
 
 from uuid import uuid4
 
 import pytest
-from pydantic import ValidationError
 
-from backend.models import StashUpdateRequest
 from backend.services import agent_runtime
 from backend.workers import session_summarizer
-
-
-def test_session_share_update_rejects_unknown_fields():
-    with pytest.raises(ValidationError):
-        StashUpdateRequest(summary="done", summary_status="in_progress")
 
 
 @pytest.mark.asyncio
@@ -55,7 +43,6 @@ async def test_summarize_one_claims_session_before_llm(pool, monkeypatch):
     )
 
     statuses_seen_by_llm = []
-    stale_workspaces = []
 
     async def fake_run_agent(**kwargs):
         status = await pool.fetchval(
@@ -72,11 +59,7 @@ async def test_summarize_one_claims_session_before_llm(pool, monkeypatch):
             terminated_by="end_turn",
         )
 
-    async def fake_mark_stale(stale_workspace_id):
-        stale_workspaces.append(stale_workspace_id)
-
     monkeypatch.setattr(session_summarizer.agent_runtime, "run_agent", fake_run_agent)
-    monkeypatch.setattr(session_summarizer.handoff_writer, "mark_stale", fake_mark_stale)
 
     ok = await session_summarizer.summarize_one(session_id, workspace_id, "session-1")
 
@@ -94,4 +77,3 @@ async def test_summarize_one_claims_session_before_llm(pool, monkeypatch):
     assert row["summary_model"] == "claude-test-fast"
     assert row["summary_input_tokens"] == 11
     assert row["summary_output_tokens"] == 5
-    assert stale_workspaces == [workspace_id]

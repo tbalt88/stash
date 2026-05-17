@@ -29,7 +29,7 @@ async def _workspace(client: AsyncClient, api_key: str, name: str) -> dict:
 
 async def _event(client: AsyncClient, api_key: str, workspace_id: str, session_id: str) -> None:
     resp = await client.post(
-        f"/api/v1/workspaces/{workspace_id}/memory/events",
+        f"/api/v1/workspaces/{workspace_id}/sessions/events",
         json={
             "agent_name": "tester",
             "event_type": "assistant_message",
@@ -72,7 +72,34 @@ async def test_user_activity_is_scoped_to_accessible_workspaces(client: AsyncCli
     ]
 
     assert len(visible) == 1
-    assert visible[0]["stash_id"] == owner_workspace["id"]
-    assert visible[0]["stash_name"] == "Team Activity"
+    assert visible[0]["workspace_id"] == owner_workspace["id"]
+    assert visible[0]["workspace_name"] == "Team Activity"
+    assert "stash_id" not in visible[0]
+    assert "stash_name" not in visible[0]
     assert visible[0]["target_label"] == "tester: visible-session"
     assert hidden == []
+
+
+@pytest.mark.asyncio
+async def test_user_activity_can_filter_to_one_workspace(client: AsyncClient):
+    api_key = await _register(client, "activity_filter")
+    first_workspace = await _workspace(client, api_key, "First Activity")
+    second_workspace = await _workspace(client, api_key, "Second Activity")
+
+    await _event(client, api_key, first_workspace["id"], "first-session")
+    await _event(client, api_key, second_workspace["id"], "second-session")
+
+    resp = await client.get(
+        "/api/v1/me/activity",
+        params={"limit": 200, "workspace_id": first_workspace["id"]},
+        headers=_auth(api_key),
+    )
+    assert resp.status_code == 200
+
+    events = [
+        event
+        for event in resp.json()
+        if event["kind"] == "session.uploaded"
+    ]
+    assert {event["target_id"] for event in events} == {"first-session"}
+    assert {event["workspace_id"] for event in events} == {first_workspace["id"]}

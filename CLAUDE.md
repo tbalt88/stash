@@ -17,7 +17,7 @@ If you are about to ask the user to do something for you, think about whether yo
 - **Never ask the user to check logs.** Check them yourself — via running the server with captured output, MCPs for hosted servers, or ngrok inspector (`localhost:4040`).
 - **Never ask permission to kill/restart local processes.** If you need to restart uvicorn, ngrok, or any dev server to make progress, just do it.
 - **Never speculate about env vars, API keys, or config.** If you need to know whether something is set, check it yourself (e.g. `env | grep`, read `.env`, etc.). Just do it. Do not guess or assume. Do not ask the user. Check it yourself.
-- **Never ask the user to test UI**. Use the playwright MCP to verify any UI changes that you make for the user. Do not ask the user to check to see if your UI changes worked or not. Use the Playwright MCP, and do it yourself.
+- **Never ask the user to test UI**. Use `agent-browser` as the default tool for manual E2E/QA browser checks: click through the changed workflow, inspect the page state, capture screenshots when useful, and check logs yourself. Use existing Playwright tests for scripted regression coverage when the repo already has them or when adding a durable test is part of the task.
 
 ### . Past Conversation Context
 
@@ -35,16 +35,14 @@ Never commit screenshots, recordings, or other assets that exist only to support
 <!-- stash-context -->
 ## Stash
 
-This repo uses [Stash](https://joinstash.ai) for shared agent history.
+This repo uses [Stash](https://joinstash.ai) for shared agent Sessions and Files.
 Your coding agent has the `stash` CLI on its PATH. Run `stash --help` to see commands.
 
 Common reads (all support `--json`):
-- `stash history search "<query>"` — full-text search across transcripts
-- `stash history query --limit 20` — latest events
-- `stash history agents` — who's been active
-- `stash notebooks list --all` — shared notebooks
-- `stash handoff show [STASH]` — read the handoff (agent-written orientation doc; read this first when picking up unfamiliar work)
-- `stash handoff refresh [STASH]` — regenerate the handoff and print the new body
+- `stash sessions search "<query>"` — full-text search across transcripts
+- `stash sessions query --limit 20` — latest session events
+- `stash sessions agents` — who's been active
+- `stash files tree` — browse workspace Files
 
 ### LLM configuration (server-side)
 
@@ -54,15 +52,14 @@ only uploads transcripts; new sessions land in `summary_status='need_summary'`
 and the summarizer worker claims them atomically.
 
 Two model tiers, configured in `backend/.env`:
-- `ANTHROPIC_API_KEY` — required for ask, the handoff writer, and the
-  session summarizer to actually run.
+- `ANTHROPIC_API_KEY` — required for ask and the session summarizer to run.
 - `ANTHROPIC_MODEL` — quality tier (default `claude-sonnet-4-6`). Used by
-  ask-the-stash and the handoff writer agent.
+  ask-the-stash.
 - `ANTHROPIC_FAST_MODEL` — fast tier (default `claude-haiku-4-5`). Used by
   the server-side session summarizer.
 
-Spend monitoring lives on per-row token counters
-(`stash_handoffs.input_tokens`, `sessions.summary_input_tokens`).
+Spend monitoring lives on per-row token counters such as
+`sessions.summary_input_tokens`.
 
 # CLAUDE.md — 12-rule template
 
