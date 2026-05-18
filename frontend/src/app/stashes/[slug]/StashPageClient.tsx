@@ -305,21 +305,24 @@ function StashPageBody({
         {/* Compact item lists by kind. Items deep-link to the editor /
             viewer in the owning workspace — no inline rendering. */}
         <div className="mt-6 flex flex-col gap-6">
+          {/* Two high-level taxonomies: Files (folders + pages + files +
+              tables — anything you could drop into Drive) and Sessions
+              (agent transcripts). Tables are a structured kind of file,
+              so they live under Files rather than as a separate section. */}
           <StashItemSection
             title="Files"
-            items={[...(groups.folder ?? []), ...(groups.page ?? []), ...(groups.file ?? [])]}
+            items={[
+              ...(groups.folder ?? []),
+              ...(groups.page ?? []),
+              ...(groups.file ?? []),
+              ...(groups.table ?? []),
+            ]}
             stashSlug={stash.slug}
             workspaceId={stash.workspace_id}
           />
           <StashItemSection
             title="Sessions"
             items={groups.session ?? []}
-            stashSlug={stash.slug}
-            workspaceId={stash.workspace_id}
-          />
-          <StashItemSection
-            title="Tables"
-            items={groups.table ?? []}
             stashSlug={stash.slug}
             workspaceId={stash.workspace_id}
           />
