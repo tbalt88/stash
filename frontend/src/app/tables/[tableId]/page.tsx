@@ -582,9 +582,7 @@ function TableEditorPageInner() {
           backLink={
             readOnly && stashSlug
               ? { label: stashTitle ?? "Stash", href: `/stashes/${stashSlug}` }
-              : wsId
-                ? { label: "Files", href: `/workspaces/${wsId}` }
-                : undefined
+              : undefined
           }
           tags={[{ label: "table", tone: "muted" }]}
           meta={[
