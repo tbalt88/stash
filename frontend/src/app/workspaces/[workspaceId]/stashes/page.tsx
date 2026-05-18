@@ -85,7 +85,7 @@ export default function WorkspaceStashesPage() {
           </h1>
           <button
             type="button"
-            onClick={() => shareModal.open({ workspaceId, tab: "new" })}
+            onClick={() => shareModal.open({ workspaceId })}
             className="inline-flex items-center gap-1.5 rounded-md bg-[var(--color-brand-600)] px-2.5 py-1.5 text-[12.5px] font-medium text-white hover:bg-[var(--color-brand-700)]"
           >
             <PlusGlyph /> New Stash

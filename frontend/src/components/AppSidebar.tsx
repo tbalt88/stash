@@ -1961,7 +1961,7 @@ export default function AppSidebar({
   }
 
   function handleAddStash(workspaceId: string) {
-    shareModal.open({ workspaceId, tab: "new" });
+    shareModal.open({ workspaceId });
   }
 
   async function handleDropFiles(workspaceId: string, section: DropSection, files: FileList) {
