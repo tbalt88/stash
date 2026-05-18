@@ -253,20 +253,20 @@ describe("AppSidebar tree expansion", () => {
     expect(detailsFor("Stashes")).toHaveAttribute("open");
   });
 
-  it("renders shared memberships in their own group", async () => {
+  it("lists shared memberships in the workspace switcher dropdown", async () => {
     vi.mocked(listMyWorkspaces).mockResolvedValue({
       workspaces: [workspace, sharedWorkspace],
     });
 
     renderSidebar();
 
-    await screen.findByText("Shared Stash");
+    // The switcher button shows the active workspace label and a chevron;
+    // opening it surfaces shared memberships under their own group label.
+    const switcher = await screen.findByRole("button", { expanded: false });
+    switcher.click();
 
-    const sidebarText = document.body.textContent ?? "";
-    expect(sidebarText.indexOf("SHARED WORKSPACES")).toBeLessThan(
-      sidebarText.indexOf("Shared Stash")
-    );
-    expect(screen.getAllByText("Shared Stash")).toHaveLength(1);
+    await screen.findByText(/Shared with you/i);
+    await screen.findByText("Shared Stash");
   });
 
   it("restores explicit section state from localStorage", async () => {
