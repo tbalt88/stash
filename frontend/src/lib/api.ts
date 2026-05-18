@@ -752,6 +752,8 @@ export interface CreatedStash {
   owner_id: string;
   access: "workspace" | "private" | "public";
   discoverable: boolean;
+  cover_image_url: string | null;
+  icon_url: string | null;
   view_count: number;
   items: StashItemSpec[];
   is_external: boolean;
@@ -826,6 +828,7 @@ export interface WorkspaceStash {
   access: "workspace" | "private" | "public";
   discoverable: boolean;
   cover_image_url: string | null;
+  icon_url: string | null;
   view_count: number;
   items: StashItemSpec[];
   is_external: boolean;
@@ -891,6 +894,7 @@ export async function updateStash(
     access?: "workspace" | "private" | "public";
     discoverable?: boolean;
     cover_image_url?: string | null;
+    icon_url?: string | null;
     items?: StashItemSpec[];
   }
 ): Promise<WorkspaceStash> {

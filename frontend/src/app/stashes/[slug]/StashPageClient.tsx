@@ -1,20 +1,34 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+  type ChangeEvent,
+} from "react";
 
 import AppShell from "../../../components/AppShell";
 import { useBreadcrumbs } from "../../../components/BreadcrumbContext";
 import AddToStashModal from "../../../components/stash/AddToStashModal";
+import StashQuickAdd from "../../../components/StashQuickAdd";
+import AgentActivityTimeline from "../../../components/viz/AgentActivityTimeline";
+import EmbeddingSpaceExplorer from "../../../components/viz/EmbeddingSpaceExplorer";
 import { useAuth } from "../../../hooks/useAuth";
 import { useEscapeKey } from "../../../hooks/useEscapeKey";
 import {
   ApiError,
+  getActivityTimeline,
+  getEmbeddingProjection,
   getPublicStash,
   updateStash,
+  uploadFile,
   type PublicStashDetail,
   type PublicStashItem,
 } from "../../../lib/api";
+import type { ActivityTimeline, EmbeddingProjection } from "../../../lib/types";
 import AddToWorkspaceButton from "./AddToWorkspaceButton";
 
 type StashItemGroup = Partial<Record<PublicStashItem["object_type"], PublicStashItem[]>>;
@@ -131,6 +145,26 @@ function StashPageBody({
   const { stash, workspace_name, items, can_write } = data;
   const groups = groupStashItems(items);
   const [addOpen, setAddOpen] = useState(false);
+  const [timeline, setTimeline] = useState<ActivityTimeline | null>(null);
+  const [projection, setProjection] = useState<EmbeddingProjection | null>(null);
+
+  useEffect(() => {
+    // Visualizations are workspace-scoped — they show the owning workspace's
+    // activity so the stash detail page has the same "knowledge map" feel
+    // as the workspace home.
+    let cancelled = false;
+    Promise.allSettled([
+      getActivityTimeline(365, "day", stash.workspace_id),
+      getEmbeddingProjection(500, undefined, stash.workspace_id),
+    ]).then(([t, p]) => {
+      if (cancelled) return;
+      if (t.status === "fulfilled") setTimeline(t.value);
+      if (p.status === "fulfilled") setProjection(p.value);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [stash.workspace_id]);
 
   const visibility: "public" | "private" | "workspace" = stash.access;
   const visClass = visibility === "public" ? "public" : visibility === "private" ? "private" : "";
@@ -138,19 +172,37 @@ function StashPageBody({
     ? { backgroundImage: `url(${stash.cover_image_url})` }
     : { backgroundImage: COVER_GRADIENTS[coverIndexFor(stash.id)] };
 
+  const existingSpecs = items.map((it, i) => ({
+    object_type: it.object_type,
+    object_id: it.object_id,
+    position: i,
+    label_override: it.label,
+  }));
+
   return (
     <div className="scroll-thin min-h-screen bg-background">
-      {/* Cover banner mirrors the workspace home identity strip. */}
-      <div className="h-[72px] w-full bg-cover bg-center" style={cover} />
+      {/* Cover banner — click to upload (when can_write). Mirrors the
+          workspace home identity strip but with edit affordance. */}
+      <BannerImage
+        cover={cover}
+        canWrite={can_write}
+        workspaceId={stash.workspace_id}
+        stashId={stash.id}
+        hasCustomCover={!!stash.cover_image_url}
+        onChanged={onRefresh}
+      />
 
       <div className="mx-auto max-w-[920px] px-12 pb-20">
-        {/* Identity strip: icon overlaps banner, title + meta + actions.
-            Layout/spacing identical to workspace home's identity strip. */}
+        {/* Identity strip: icon overlaps banner, title + meta + actions. */}
         <div className="flex items-start justify-between gap-3 pt-4">
           <div className="flex min-w-0 items-center gap-3">
-            <span className="-mt-9 flex h-12 w-12 flex-shrink-0 items-center justify-center overflow-hidden rounded-[10px] border-2 border-base bg-base text-[var(--color-brand-700)] shadow-sm">
-              <StashHeaderGlyph />
-            </span>
+            <StashIconUpload
+              iconUrl={stash.icon_url}
+              canWrite={can_write}
+              workspaceId={stash.workspace_id}
+              stashId={stash.id}
+              onChanged={onRefresh}
+            />
             <div className="min-w-0">
               <h1 className="m-0 flex min-w-0 items-center gap-2 truncate font-display text-[20px] font-bold leading-tight tracking-[-0.015em] text-foreground">
                 <span className="truncate">{stash.title}</span>
@@ -195,6 +247,22 @@ function StashPageBody({
             )}
           </div>
         </div>
+
+        {/* Quick-add: paste URL, drop a file. Items land in the workspace
+            and are auto-appended to this stash's items. */}
+        {can_write && (
+          <section className="mt-6">
+            <div className="sys-label mb-1.5">Quick add — paste a URL, drop a file</div>
+            <StashQuickAdd
+              workspaceId={stash.workspace_id}
+              stashId={stash.id}
+              existingItems={existingSpecs}
+              onAdded={() => {
+                void onRefresh();
+              }}
+            />
+          </section>
+        )}
 
         {/* About this Stash — read-only mirror of workspace home's editor. */}
         {stash.description && (
@@ -241,6 +309,34 @@ function StashPageBody({
             </div>
           )}
         </div>
+
+        {/* Visualizations: agent activity + 3D embedding view of the
+            owning workspace — same shape as workspace home. */}
+        <section className="mt-8">
+          <div className="sys-label mb-1.5">Agent activity — past year</div>
+          <div className="card-soft overflow-x-auto p-3">
+            {timeline && timeline.agents.length > 0 ? (
+              <AgentActivityTimeline data={timeline} />
+            ) : (
+              <div className="px-2 py-6 text-center text-[12.5px] text-muted">
+                No agent sessions yet. Push a transcript via Quick add or the CLI to populate this view.
+              </div>
+            )}
+          </div>
+        </section>
+
+        <section className="mt-6">
+          <div className="sys-label mb-1.5">Embedding space — workspace knowledge map</div>
+          <div className="card-soft p-3">
+            {projection && projection.points.length > 0 ? (
+              <EmbeddingSpaceExplorer data={projection} />
+            ) : (
+              <div className="px-2 py-6 text-center text-[12.5px] text-muted">
+                No embeddings indexed yet. Pages, table rows, and session events get embedded as they&apos;re added.
+              </div>
+            )}
+          </div>
+        </section>
       </div>
 
       {can_write && (
@@ -249,18 +345,146 @@ function StashPageBody({
           onClose={() => setAddOpen(false)}
           stashId={stash.id}
           workspaceId={stash.workspace_id}
-          existingItems={items.map((it, i) => ({
-            object_type: it.object_type,
-            object_id: it.object_id,
-            position: i,
-            label_override: it.label,
-          }))}
+          existingItems={existingSpecs}
           onAdded={() => {
             void onRefresh();
           }}
         />
       )}
     </div>
+  );
+}
+
+// Clickable banner. Writers see a faint "Change banner" hint on hover and
+// can upload a new image via the hidden file input. Uploads go through
+// the workspace's file upload path; the resulting URL is saved on the
+// stash record.
+function BannerImage({
+  cover,
+  canWrite,
+  workspaceId,
+  stashId,
+  hasCustomCover,
+  onChanged,
+}: {
+  cover: { backgroundImage: string };
+  canWrite: boolean;
+  workspaceId: string;
+  stashId: string;
+  hasCustomCover: boolean;
+  onChanged: () => Promise<void>;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
+
+  async function handleChange(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (inputRef.current) inputRef.current.value = "";
+    if (!file) return;
+    setUploading(true);
+    try {
+      const uploaded = await uploadFile(workspaceId, file);
+      await updateStash(stashId, { cover_image_url: uploaded.url });
+      await onChanged();
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  if (!canWrite) {
+    return <div className="h-[72px] w-full bg-cover bg-center" style={cover} />;
+  }
+
+  return (
+    <div
+      className="group relative h-[72px] w-full cursor-pointer bg-cover bg-center"
+      style={cover}
+      onClick={() => inputRef.current?.click()}
+      title="Change banner"
+    >
+      <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/0 opacity-0 transition group-hover:bg-black/25 group-hover:opacity-100">
+        <span className="rounded-md bg-black/60 px-2 py-1 text-[11.5px] font-medium text-white">
+          {uploading ? "Uploading…" : hasCustomCover ? "Change banner" : "Add banner"}
+        </span>
+      </div>
+      <input
+        ref={inputRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={handleChange}
+      />
+    </div>
+  );
+}
+
+// Icon (logo) shown overlapping the banner. Writers can click to upload.
+function StashIconUpload({
+  iconUrl,
+  canWrite,
+  workspaceId,
+  stashId,
+  onChanged,
+}: {
+  iconUrl: string | null;
+  canWrite: boolean;
+  workspaceId: string;
+  stashId: string;
+  onChanged: () => Promise<void>;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
+
+  async function handleChange(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (inputRef.current) inputRef.current.value = "";
+    if (!file) return;
+    setUploading(true);
+    try {
+      const uploaded = await uploadFile(workspaceId, file);
+      await updateStash(stashId, { icon_url: uploaded.url });
+      await onChanged();
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  const base =
+    "-mt-9 flex h-12 w-12 flex-shrink-0 items-center justify-center overflow-hidden rounded-[10px] border-2 border-base bg-base text-[var(--color-brand-700)] shadow-sm";
+
+  const inner = iconUrl ? (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img src={iconUrl} alt="" className="h-full w-full object-cover" />
+  ) : (
+    <StashHeaderGlyph />
+  );
+
+  if (!canWrite) {
+    return <span className={base}>{inner}</span>;
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={() => inputRef.current?.click()}
+      title="Change logo"
+      className={
+        base +
+        " group relative cursor-pointer p-0 hover:ring-2 hover:ring-[var(--color-brand-300)]"
+      }
+    >
+      {inner}
+      <span className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/0 text-[10px] font-medium text-white opacity-0 transition group-hover:bg-black/40 group-hover:opacity-100">
+        {uploading ? "…" : "Change"}
+      </span>
+      <input
+        ref={inputRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={handleChange}
+      />
+    </button>
   );
 }
 
@@ -632,4 +856,3 @@ function KindGlyph({ kind }: { kind: PublicStashItem["object_type"] }) {
     </svg>
   );
 }
-
