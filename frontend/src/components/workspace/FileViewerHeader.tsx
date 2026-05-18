@@ -79,7 +79,14 @@ export default function FileViewerHeader({
   return (
     <>
       <div className="brand-banner" />
-      <div className="mx-auto -mt-[22px] max-w-[1100px] px-12 pt-0">
+      {/* `w-full` is load-bearing: when the parent is a `flex-col`, `mx-auto`
+          alone collapses this container to shrink-to-fit and centers it,
+          so PDF / HTML / image / table headers end up indented while the
+          markdown page (block-level parent) lays out left-aligned. With
+          `w-full` the container always claims its parent's cross-axis
+          width before the max-width cap kicks in, so all viewers align
+          to the same left edge. */}
+      <div className="mx-auto w-full -mt-[22px] max-w-[1100px] px-12 pt-0">
         {backLink && (
           <Link
             href={backLink.href}
