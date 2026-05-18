@@ -1360,9 +1360,16 @@ function FilesBlock({
             : "")
         }
       >
-        <span className="flex-1 truncate text-[11px] font-semibold uppercase tracking-wide text-muted">
+        <Link
+          href={`/workspaces/${workspace.id}/files`}
+          onClick={(event) => {
+            event.stopPropagation();
+            onOpenChange(true);
+          }}
+          className="flex-1 truncate text-[11px] font-semibold uppercase tracking-wide text-muted hover:text-foreground"
+        >
           Files
-        </span>
+        </Link>
         <ChevronToggle open={open} onToggle={() => onOpenChange(!open)} hoverOnly />
       </summary>
       <div className="ml-3 space-y-0.5 border-l border-border pl-2">
