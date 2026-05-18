@@ -38,9 +38,7 @@ def test_update_ws_file_move_to_root_wins_over_folder_id() -> None:
 def test_update_ws_file_rename_and_move_combined() -> None:
     c, calls = _stub_client()
     c.update_ws_file("WS", "F1", name="new.md", folder_id="FOLD")
-    assert calls == [
-        ("/api/v1/workspaces/WS/files/F1", {"name": "new.md", "folder_id": "FOLD"})
-    ]
+    assert calls == [("/api/v1/workspaces/WS/files/F1", {"name": "new.md", "folder_id": "FOLD"})]
 
 
 def test_update_ws_file_empty_request_is_legal() -> None:
@@ -60,9 +58,7 @@ def test_update_folder_rename_only() -> None:
 def test_update_folder_move_to_parent() -> None:
     c, calls = _stub_client()
     c.update_folder("WS", "D1", parent_folder_id="P1")
-    assert calls == [
-        ("/api/v1/workspaces/WS/folders/D1", {"parent_folder_id": "P1"})
-    ]
+    assert calls == [("/api/v1/workspaces/WS/folders/D1", {"parent_folder_id": "P1"})]
 
 
 def test_update_folder_move_to_root_wins_over_parent() -> None:
