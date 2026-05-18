@@ -352,7 +352,7 @@ export default function AppShell({ user, onLogout, children }: AppShellProps) {
         />
 
         <div className="flex items-center justify-end gap-1">
-          <StashInviteCenter activeWorkspaceId={activeWorkspaceId} />
+          <StashInviteCenter />
           {activeWorkspaceId && (
             <div className="mr-1 flex items-center gap-2">
               {shareMessage && (
