@@ -1,15 +1,46 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
+import AppShell from "../../../components/AppShell";
+import { useBreadcrumbs } from "../../../components/BreadcrumbContext";
 import HtmlPageView from "../../../components/workspace/HtmlPageView";
+import { useAuth } from "../../../hooks/useAuth";
 import { ApiError, createSharedStashPage, getPublicStash, type PublicStashDetail, type PublicStashItem } from "../../../lib/api";
 import AddToWorkspaceButton from "./AddToWorkspaceButton";
 
 type StashItemGroup = Partial<Record<PublicStashItem["object_type"], PublicStashItem[]>>;
+
+// Signed-in viewers see the Stash inside AppShell (sidebar + top bar) so
+// navigation context is preserved. Anonymous viewers see the raw page.
+function StashChrome({ data, children }: { data: PublicStashDetail | null; children: ReactNode }) {
+  const { user, loading, logout } = useAuth();
+  useBreadcrumbs(
+    [
+      { label: "Stashes", href: "/stashes" },
+      { label: data?.stash.title ?? "Stash" },
+    ],
+    `stash/${data?.stash.id ?? "loading"}`
+  );
+  if (loading) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-background text-muted">
+        Loading Stash...
+      </main>
+    );
+  }
+  if (user) {
+    return (
+      <AppShell user={user} onLogout={logout}>
+        {children}
+      </AppShell>
+    );
+  }
+  return <main className="min-h-screen bg-background">{children}</main>;
+}
 
 export default function StashPageClient({ slug }: { slug: string }) {
   const [data, setData] = useState<PublicStashDetail | null>(null);
@@ -39,26 +70,32 @@ export default function StashPageClient({ slug }: { slug: string }) {
 
   if (loading) {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-background text-muted">
-        Loading Stash...
-      </main>
+      <StashChrome data={data}>
+        <div className="flex min-h-[50vh] items-center justify-center text-muted">
+          Loading Stash...
+        </div>
+      </StashChrome>
     );
   }
 
   if (!data) {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-background px-6">
-        <div className="max-w-md text-center">
-          <h1 className="font-display text-[28px] font-bold text-ink">Stash not found</h1>
+      <StashChrome data={null}>
+        <div className="mx-auto max-w-md py-24 text-center">
+          <h1 className="font-display text-[28px] font-bold text-foreground">Stash not found</h1>
           <p className="mt-2 text-[14px] leading-relaxed text-dim">
             {error || "This Stash is private, revoked, or unavailable to the current user."}
           </p>
         </div>
-      </main>
+      </StashChrome>
     );
   }
 
-  return <StashPageBody data={data} onRefresh={load} />;
+  return (
+    <StashChrome data={data}>
+      <StashPageBody data={data} onRefresh={load} />
+    </StashChrome>
+  );
 }
 
 function StashPageBody({
@@ -79,7 +116,7 @@ function StashPageBody({
   const visClass = visibility === "public" ? "public" : visibility === "private" ? "private" : "";
 
   return (
-    <main className="min-h-screen bg-background">
+    <div className="min-h-screen bg-background">
       <div className="border-b border-border-subtle bg-surface">
         <div className="mx-auto flex max-w-[1180px] items-center justify-between gap-4 px-7 py-3.5">
           <div className="min-w-0">
@@ -188,7 +225,7 @@ function StashPageBody({
           <StashSection id="tables" title="Tables" items={groups.table ?? []} />
         </div>
       </div>
-    </main>
+    </div>
   );
 }
 

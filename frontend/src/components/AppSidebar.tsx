@@ -77,6 +77,7 @@ const OPEN_SECTIONS_KEY = "stash_sidebar_open_sections";
 const COLLAPSED_STASHES_KEY = "stash_sidebar_collapsed_stashes";
 const PINNED_FS_KEY = "stash_sidebar_pinned_files_folders";
 const PINNED_FS_LABELS_KEY = "stash_sidebar_pinned_files_folders_labels";
+const LAST_WORKSPACE_KEY = "stash_sidebar_last_workspace";
 const PREVIEW_ITEM_LIMIT = 10;
 const EMPTY_PIN_STATE = { folders: [], files: [] };
 
@@ -175,11 +176,21 @@ function ChevronToggle({
   open,
   ariaLabel,
   onToggle,
+  hoverOnly,
 }: {
   open?: boolean;
   ariaLabel?: string;
   onToggle: () => void;
+  // hoverOnly: chevron is invisible until the nearest `group/section`
+  // ancestor is hovered or until the section is closed. Closed-state stays
+  // visible so users have an affordance to reopen a collapsed section.
+  hoverOnly?: boolean;
 }) {
+  const visibility = hoverOnly
+    ? (open
+        ? "opacity-0 group-hover/section:opacity-100 transition-opacity"
+        : "opacity-60 group-hover/section:opacity-100 transition-opacity")
+    : "";
   return (
     <button
       type="button"
@@ -188,7 +199,10 @@ function ChevronToggle({
         e.stopPropagation();
         onToggle();
       }}
-      className="-ml-0.5 flex h-4 w-4 items-center justify-center rounded text-muted hover:bg-base/60 hover:text-foreground"
+      className={
+        "-ml-0.5 flex h-4 w-4 items-center justify-center rounded text-muted hover:bg-base/60 hover:text-foreground " +
+        visibility
+      }
       aria-expanded={open}
       aria-label={ariaLabel ?? "Toggle"}
     >
@@ -379,7 +393,7 @@ function CreatePageModal({
   );
 }
 
-function SectionAddButton({
+function SectionAddRow({
   label,
   onClick,
 }: {
@@ -389,16 +403,15 @@ function SectionAddButton({
   return (
     <button
       type="button"
-      aria-label={label}
-      title={label}
       onClick={(event) => {
         event.preventDefault();
         event.stopPropagation();
         onClick();
       }}
-      className="ml-1 flex h-5 w-5 items-center justify-center rounded-md border border-border-subtle bg-base text-[13px] font-medium text-muted hover:border-[var(--color-brand-300)] hover:bg-[var(--color-brand-50)] hover:text-[var(--color-brand-800)]"
+      className="flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-[12.5px] text-muted hover:bg-raised hover:text-foreground"
     >
-      +
+      <span className="flex h-4 w-4 items-center justify-center text-[14px]">+</span>
+      <span className="flex-1 truncate">{label}</span>
     </button>
   );
 }
@@ -406,7 +419,6 @@ function SectionAddButton({
 function WorkspaceTree({
   workspace,
   spine,
-  showName,
   pathname,
   openSections,
   onSectionOpenChange,
@@ -426,7 +438,6 @@ function WorkspaceTree({
 }: {
   workspace: WorkspaceNode;
   spine: WorkspaceSidebar | null;
-  showName?: boolean;
   pathname: string;
   openSections: Record<SidebarSection, boolean>;
   onSectionOpenChange: (section: SidebarSection, open: boolean) => void;
@@ -467,20 +478,27 @@ function WorkspaceTree({
   });
   const sessionsDrop = dropState.key === dropKey(workspace.id, "sessions") ? dropState : null;
 
+  // pathname kept in props for parity with active-row styling deeper in the tree.
+  void pathname;
+
   return (
       <div className="space-y-0.5">
-      {showName && (
-        <NavRow
-          href={`/workspaces/${workspace.id}`}
-          icon={<StashIcon />}
-          label={workspace.name}
-          active={pathname === `/workspaces/${workspace.id}`}
-        />
-      )}
+      <StashesBlock
+        workspace={workspace}
+        spine={spine}
+        open={openSections.stashes}
+        onOpenChange={(nextOpen) => onSectionOpenChange("stashes", nextOpen)}
+        collapsedStashes={collapsedStashes}
+        onStashCollapsedChange={(stashId, collapsed) =>
+          onStashCollapsedChange(workspace.id, stashId, collapsed)
+        }
+        onAddStash={() => onAddStash(workspace.id)}
+      />
+
       <details
         open={openSections.sessions}
         onToggle={(e) => onSectionOpenChange("sessions", e.currentTarget.open)}
-        className="text-[13px]"
+        className="group/section text-[13px]"
         {...dropProps("sessions")}
         >
           <summary
@@ -489,44 +507,42 @@ function WorkspaceTree({
               onSectionOpenChange("sessions", true);
             }}
             className={
-              "page-row flex items-center gap-1 rounded-md px-2 py-1 hover:bg-raised " +
+              "page-row flex items-center gap-1.5 rounded-md px-2 py-1 hover:bg-raised " +
               (sessionsDrop?.status === "over"
                 ? "bg-[var(--color-brand-50)] text-[var(--color-brand-800)] ring-1 ring-[var(--color-brand-300)]"
                 : "")
             }
           >
-            <ChevronToggle
-              open={openSections.sessions}
-              onToggle={() => onSectionOpenChange("sessions", !openSections.sessions)}
-            />
             <Link
               href={`/workspaces/${workspace.id}/sessions`}
               onClick={(event) => {
                 event.stopPropagation();
                 onSectionOpenChange("sessions", true);
               }}
-              className="flex-1 truncate font-medium text-foreground hover:text-[var(--color-brand-700)]"
+              className="flex-1 truncate text-[11px] font-semibold uppercase tracking-wide text-muted hover:text-foreground"
             >
               Sessions
             </Link>
-            <span className="text-[10.5px] text-muted">{spine?.sessions.length ?? 0}</span>
-            <SectionAddButton
-              label="Add session"
-              onClick={() => onAddSession(workspace.id)}
+            <ChevronToggle
+              open={openSections.sessions}
+              onToggle={() => onSectionOpenChange("sessions", !openSections.sessions)}
+              hoverOnly
             />
           </summary>
         <div className="ml-3 space-y-0.5 border-l border-border pl-2">
             {sessionsDrop?.message ? <DropMessage state={sessionsDrop} /> : null}
-            {groupSidebarSessions(spine?.sessions ?? []).map((group) => (
+            {groupSidebarSessions(spine?.sessions ?? []).map((group, index) => (
               <SessionTreeDetails
                 key={group.dateKey}
                 workspaceId={workspace.id}
                 group={group}
+                initialOpen={index === 0}
               />
             ))}
             {(!spine || spine.sessions.length === 0) && (
               <div className="px-2 py-1 text-[11px] italic text-muted">empty</div>
             )}
+            <SectionAddRow label="New session" onClick={() => onAddSession(workspace.id)} />
           </div>
         </details>
 
@@ -543,17 +559,6 @@ function WorkspaceTree({
           onPinToggle={(kind, id, label) => onPinToggle(kind, workspace.id, id, label)}
           onUnpinAll={() => onUnpinAll(workspace.id)}
           onAddPage={() => onAddPage(workspace.id)}
-        />
-        <StashesBlock
-          workspace={workspace}
-          spine={spine}
-          open={openSections.stashes}
-          onOpenChange={(nextOpen) => onSectionOpenChange("stashes", nextOpen)}
-          collapsedStashes={collapsedStashes}
-          onStashCollapsedChange={(stashId, collapsed) =>
-            onStashCollapsedChange(workspace.id, stashId, collapsed)
-          }
-          onAddStash={() => onAddStash(workspace.id)}
         />
     </div>
   );
@@ -583,50 +588,105 @@ type SessionTreeDayGroup = {
 };
 
 const UNKNOWN_SESSION_DATE = "Unknown date";
+const MAX_DAY_BUCKETS = 14;
+const MAX_WEEK_BUCKETS = 12;
 
-function sessionDateKey(iso: string | null | undefined): string {
-  if (!iso) return UNKNOWN_SESSION_DATE;
+type SessionBucket = "day" | "week" | "month";
+
+function sessionDate(iso: string | null | undefined): Date | null {
+  if (!iso) return null;
   const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return UNKNOWN_SESSION_DATE;
-  return date.toISOString().slice(0, 10);
+  if (Number.isNaN(date.getTime())) return null;
+  return date;
 }
 
-function formatSessionDateKey(key: string): string {
+// Group key per bucket: ISO date for day, ISO-week start for week, YYYY-MM
+// for month. Stable enough to sort lexicographically (descending = newest).
+function bucketKey(date: Date, bucket: SessionBucket): string {
+  if (bucket === "day") return date.toISOString().slice(0, 10);
+  if (bucket === "month") return date.toISOString().slice(0, 7);
+  // Week: anchor to Monday so day-of-week jitter doesn't split a week across buckets.
+  const monday = new Date(date);
+  const day = (monday.getDay() + 6) % 7; // 0 = Monday
+  monday.setDate(monday.getDate() - day);
+  return monday.toISOString().slice(0, 10) + "/W";
+}
+
+function formatBucketLabel(key: string, bucket: SessionBucket): string {
   if (key === UNKNOWN_SESSION_DATE) return key;
-  return new Date(`${key}T12:00:00`).toLocaleDateString(undefined, {
-    weekday: "short",
-    month: "short",
-    day: "numeric",
-  });
+  if (bucket === "day") {
+    return new Date(`${key}T12:00:00`).toLocaleDateString(undefined, {
+      weekday: "short",
+      month: "short",
+      day: "numeric",
+    });
+  }
+  if (bucket === "month") {
+    return new Date(`${key}-15T12:00:00`).toLocaleDateString(undefined, {
+      month: "long",
+      year: "numeric",
+    });
+  }
+  const monday = new Date(`${key.replace("/W", "")}T12:00:00`);
+  const sunday = new Date(monday);
+  sunday.setDate(sunday.getDate() + 6);
+  const sameMonth = monday.getMonth() === sunday.getMonth();
+  const left = monday.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  const right = sunday.toLocaleDateString(undefined, sameMonth ? { day: "numeric" } : { month: "short", day: "numeric" });
+  return `Week of ${left}–${right}`;
+}
+
+// Pick the coarsest bucket that keeps the sidebar list short. If grouping by
+// day would produce more than MAX_DAY_BUCKETS distinct days, roll up to weeks;
+// if weeks still overflow, roll up to months. The user can always click into
+// the Sessions page to see everything ungrouped.
+function chooseSessionBucket(sessions: WorkspaceSidebarSession[]): SessionBucket {
+  const days = new Set<string>();
+  for (const session of sessions) {
+    const date = sessionDate(session.last_at || session.updated_at);
+    if (date) days.add(date.toISOString().slice(0, 10));
+  }
+  if (days.size <= MAX_DAY_BUCKETS) return "day";
+
+  const weeks = new Set<string>();
+  for (const session of sessions) {
+    const date = sessionDate(session.last_at || session.updated_at);
+    if (date) weeks.add(bucketKey(date, "week"));
+  }
+  if (weeks.size <= MAX_WEEK_BUCKETS) return "week";
+
+  return "month";
 }
 
 function groupSidebarSessions(sessions: WorkspaceSidebarSession[]): SessionTreeDayGroup[] {
-  const byDate = new Map<string, Map<string, WorkspaceSidebarSession[]>>();
+  const bucket = chooseSessionBucket(sessions);
+  const byBucket = new Map<string, Map<string, WorkspaceSidebarSession[]>>();
   for (const session of sessions) {
-    const dateKey = sessionDateKey(session.last_at || session.updated_at);
+    const date = sessionDate(session.last_at || session.updated_at);
+    const key = date ? bucketKey(date, bucket) : UNKNOWN_SESSION_DATE;
     const user = displaySidebarSessionUser(session.agent_name);
-    const users = byDate.get(dateKey) ?? new Map<string, WorkspaceSidebarSession[]>();
+    const users = byBucket.get(key) ?? new Map<string, WorkspaceSidebarSession[]>();
     users.set(user, [...(users.get(user) ?? []), session]);
-    byDate.set(dateKey, users);
+    byBucket.set(key, users);
   }
 
-  return Array.from(byDate.entries())
+  return Array.from(byBucket.entries())
     .sort(([a], [b]) => {
       if (a === UNKNOWN_SESSION_DATE) return 1;
       if (b === UNKNOWN_SESSION_DATE) return -1;
       return b.localeCompare(a);
     })
-    .map(([dateKey, usersByName]) => {
+    .map(([key, usersByName]) => {
       const users = Array.from(usersByName.entries())
         .sort(([a], [b]) => a.localeCompare(b))
         .map(([user, sessionRows]) => ({
           user,
           sessions: sessionRows,
         }));
-      const total = users.reduce((sum, bucket) => sum + bucket.sessions.length, 0);
+      const total = users.reduce((sum, b) => sum + b.sessions.length, 0);
       return {
-        dateKey,
-        label: formatSessionDateKey(dateKey),
+        dateKey: key,
+        label: formatBucketLabel(key, bucket),
         total,
         users,
       };
@@ -636,11 +696,13 @@ function groupSidebarSessions(sessions: WorkspaceSidebarSession[]): SessionTreeD
 function SessionTreeDetails({
   workspaceId,
   group,
+  initialOpen,
 }: {
   workspaceId: string;
   group: SessionTreeDayGroup;
+  initialOpen?: boolean;
 }) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(!!initialOpen);
   return (
     <details open={open} className="text-[12.5px]">
       <summary
@@ -682,7 +744,9 @@ function SessionUserFolder({
   workspaceId: string;
   bucket: { user: string; sessions: WorkspaceSidebarSession[] };
 }) {
-  const [open, setOpen] = useState(true);
+  // Default collapsed — opening a date bucket already reveals N user rows,
+  // and auto-expanding each one explodes the whole tree on first paint.
+  const [open, setOpen] = useState(false);
   return (
     <details open={open} className="text-[12px]">
       <summary
@@ -1165,7 +1229,7 @@ function FilesBlock({
     <details
       open={open}
       onToggle={(e) => onOpenChange(e.currentTarget.open)}
-      className="text-[13px]"
+      className="group/section text-[13px]"
       {...dropProps}
     >
       <summary
@@ -1174,16 +1238,16 @@ function FilesBlock({
           onOpenChange(true);
         }}
         className={
-          "page-row flex items-center gap-1 rounded-md px-2 py-1 hover:bg-raised " +
+          "page-row flex items-center gap-1.5 rounded-md px-2 py-1 hover:bg-raised " +
           (filesDrop?.status === "over"
             ? "bg-[var(--color-brand-50)] text-[var(--color-brand-800)] ring-1 ring-[var(--color-brand-300)]"
             : "")
         }
       >
-        <ChevronToggle open={open} onToggle={() => onOpenChange(!open)} />
-        <span className="flex-1 truncate font-medium text-foreground">Files</span>
-        <span className="text-[10.5px] text-muted">{total}</span>
-        <SectionAddButton label="Add page" onClick={onAddPage} />
+        <span className="flex-1 truncate text-[11px] font-semibold uppercase tracking-wide text-muted">
+          Files
+        </span>
+        <ChevronToggle open={open} onToggle={() => onOpenChange(!open)} hoverOnly />
       </summary>
       <div className="ml-3 space-y-0.5 border-l border-border pl-2">
         {filesDrop?.message ? <DropMessage state={filesDrop} /> : null}
@@ -1264,6 +1328,7 @@ function FilesBlock({
         {!spine || total === 0 ? (
           <div className="px-2 py-1 text-[11px] italic text-muted">empty</div>
         ) : null}
+        <SectionAddRow label="New page" onClick={onAddPage} />
         {pinMenu && menuClamp ? (
           <PinMenu
             state={{
@@ -1349,25 +1414,6 @@ function StashesBlock({
               sessionById,
               sessionBySessionId
             );
-            const sessions = children.filter((item) => item.kind === "session");
-            const files = children.filter((item) => item.kind !== "session");
-
-            function renderChildGroup(label: string, group: StashTreeItem[]) {
-              if (group.length === 0) return null;
-
-              return (
-                <div className="space-y-0.5">
-                  <div className="rounded bg-base px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted">
-                    {label}
-                  </div>
-                  <div className="ml-2.5 space-y-0.5 border-l border-border pl-2">
-                    {group.map((item) => (
-                      <StashTreeRow key={`${label}:${item.key}`} row={item} />
-                    ))}
-                  </div>
-                </div>
-              );
-            }
 
             return (
               <div key={`${title}-${stash.id}`} className="space-y-0.5">
@@ -1386,9 +1432,6 @@ function StashesBlock({
                   >
                     {stash.title}
                   </Link>
-                  <span className="text-[10px] text-muted">
-                    {stash.items?.length ?? stash.item_count}
-                  </span>
                 </div>
                 {!collapsed ? (
                   <div className="ml-2.5 space-y-0.5 border-l border-border pl-2">
@@ -1397,10 +1440,9 @@ function StashesBlock({
                         no visible items
                       </div>
                     ) : (
-                      <>
-                        {renderChildGroup("Sessions", sessions)}
-                        {renderChildGroup("Files", files)}
-                      </>
+                      children.map((item) => (
+                        <StashTreeRow key={item.key} row={item} />
+                      ))
                     )}
                   </div>
                 ) : null}
@@ -1416,24 +1458,26 @@ function StashesBlock({
     <details
       open={open}
       onToggle={(e) => onOpenChange(e.currentTarget.open)}
-      className="text-[13px]"
+      className="group/section text-[13px]"
     >
       <summary
         onClick={(e) => {
           e.preventDefault();
           onOpenChange(!open);
         }}
-        className="page-row flex items-center gap-1 rounded-md px-2 py-1 hover:bg-raised"
+        className="page-row flex items-center gap-1.5 rounded-md px-2 py-1 hover:bg-raised"
       >
-        <ChevronToggle onToggle={() => onOpenChange(!open)} />
         <Link
           href={`/workspaces/${workspace.id}/stashes`}
-          className="flex-1 truncate font-medium text-foreground hover:text-[var(--color-brand-700)]"
+          onClick={(event) => {
+            event.stopPropagation();
+            onOpenChange(true);
+          }}
+          className="flex-1 truncate text-[11px] font-semibold uppercase tracking-wide text-muted hover:text-foreground"
         >
           Stashes
         </Link>
-        <span className="text-[10.5px] text-muted">{stashes.length}</span>
-        <SectionAddButton label="Add Stash" onClick={onAddStash} />
+        <ChevronToggle open={open} onToggle={() => onOpenChange(!open)} hoverOnly />
       </summary>
       <div className="ml-3 space-y-0.5 border-l border-border pl-2">
         {nativeStashes.length === 0 && forkedStashes.length === 0 ? (
@@ -1441,8 +1485,180 @@ function StashesBlock({
         ) : null}
         {renderStashGroup(null, nativeStashes, false)}
         {renderStashGroup("Forked stashes", forkedStashes, false)}
+        <SectionAddRow label="New Stash" onClick={onAddStash} />
       </div>
     </details>
+  );
+}
+
+function WorkspaceSwitcher({
+  active,
+  mine,
+  shared,
+}: {
+  active: WorkspaceNode | null;
+  mine: Workspace[];
+  shared: Workspace[];
+}) {
+  const [open, setOpen] = useState(false);
+  const wrapperRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function onDown(event: globalThis.MouseEvent) {
+      if (wrapperRef.current && !wrapperRef.current.contains(event.target as Node)) {
+        setOpen(false);
+      }
+    }
+    function onKey(event: globalThis.KeyboardEvent) {
+      if (event.key === "Escape") setOpen(false);
+    }
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  const label = active?.name ?? "Pick a workspace";
+  const total = mine.length + shared.length;
+
+  return (
+    <div ref={wrapperRef} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((value) => !value)}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left hover:bg-raised"
+      >
+        <span className="flex h-6 w-6 items-center justify-center rounded-[5px] bg-[var(--color-brand-600)] text-[11px] font-bold text-white">
+          {(active?.name ?? "S").slice(0, 1).toUpperCase()}
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block truncate font-display text-[13.5px] font-semibold tracking-tight text-foreground">
+            {label}
+          </span>
+          {active && (
+            <span className="block truncate text-[10.5px] text-muted">
+              {total} workspace{total === 1 ? "" : "s"}
+            </span>
+          )}
+        </span>
+        <svg
+          className={"h-3.5 w-3.5 text-muted transition-transform " + (open ? "rotate-180" : "")}
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <polyline points="6 9 12 15 18 9" />
+        </svg>
+      </button>
+
+      {open && (
+        <div
+          role="menu"
+          className="absolute left-0 right-0 top-full z-40 mt-1 max-h-[60vh] overflow-y-auto rounded-md border border-border bg-base py-1 shadow-lg"
+        >
+          {mine.length > 0 && (
+            <>
+              <div className="px-3 pb-1 pt-1.5 text-[10px] font-semibold uppercase tracking-wide text-muted">
+                Your workspaces
+              </div>
+              {mine.map((w) => (
+                <WorkspaceMenuItem
+                  key={w.id}
+                  workspace={w}
+                  active={active?.id === w.id}
+                  onClose={() => setOpen(false)}
+                />
+              ))}
+            </>
+          )}
+          {shared.length > 0 && (
+            <>
+              <div className="px-3 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-wide text-muted">
+                Shared with you
+              </div>
+              {shared.map((w) => (
+                <WorkspaceMenuItem
+                  key={w.id}
+                  workspace={w}
+                  active={active?.id === w.id}
+                  onClose={() => setOpen(false)}
+                />
+              ))}
+            </>
+          )}
+          {mine.length === 0 && shared.length === 0 && (
+            <div className="px-3 py-1.5 text-[12px] italic text-muted">
+              No workspaces yet.
+            </div>
+          )}
+          <div className="mt-1 border-t border-border pt-1">
+            <Link
+              href="/"
+              onClick={() => setOpen(false)}
+              className="block px-3 py-1.5 text-[12.5px] text-dim hover:bg-raised hover:text-foreground"
+              role="menuitem"
+            >
+              + New or join workspace
+            </Link>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function WorkspaceMenuItem({
+  workspace,
+  active,
+  onClose,
+}: {
+  workspace: Workspace;
+  active: boolean;
+  onClose: () => void;
+}) {
+  return (
+    <Link
+      href={`/workspaces/${workspace.id}`}
+      onClick={onClose}
+      role="menuitem"
+      className={
+        "flex items-center gap-2 px-3 py-1.5 text-[13px] " +
+        (active
+          ? "bg-[var(--color-brand-50)] text-[var(--color-brand-800)]"
+          : "text-foreground hover:bg-raised")
+      }
+    >
+      <span
+        className={
+          "flex h-5 w-5 items-center justify-center rounded-[4px] text-[10px] font-bold text-white " +
+          (active ? "bg-[var(--color-brand-700)]" : "bg-[var(--color-brand-600)]")
+        }
+      >
+        {workspace.name.slice(0, 1).toUpperCase()}
+      </span>
+      <span className="min-w-0 flex-1 truncate font-medium">{workspace.name}</span>
+      {active && (
+        <svg
+          className="h-3.5 w-3.5 text-[var(--color-brand-700)]"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <polyline points="20 6 9 17 4 12" />
+        </svg>
+      )}
+    </Link>
   );
 }
 
@@ -1468,9 +1684,26 @@ export default function AppSidebar({
         ? "files"
         : null;
   const routeWorkspaceId = pathname.match(/^\/workspaces\/([^/]+)/)?.[1] ?? null;
-  const currentWorkspaceId = activeWorkspaceId ?? routeWorkspaceId;
+  // Persisted "last-viewed workspace" so navigation to non-workspace routes
+  // (/stashes/{slug}, /discover, /activity) doesn't lose the workspace
+  // context. Updated below whenever the route reveals an explicit workspace.
+  const [lastWorkspaceId, setLastWorkspaceId] = useState<string | null>(() => {
+    if (typeof window === "undefined") return null;
+    return localStorage.getItem(LAST_WORKSPACE_KEY);
+  });
+  const currentWorkspaceId =
+    activeWorkspaceId ?? routeWorkspaceId ?? lastWorkspaceId;
   const [mine, setMine] = useState<Workspace[]>(cachedWorkspaces?.mine ?? []);
   const [shared, setShared] = useState<Workspace[]>(cachedWorkspaces?.shared ?? []);
+
+  useEffect(() => {
+    if (!routeWorkspaceId) return;
+    if (routeWorkspaceId === lastWorkspaceId) return;
+    setLastWorkspaceId(routeWorkspaceId);
+    if (typeof window !== "undefined") {
+      localStorage.setItem(LAST_WORKSPACE_KEY, routeWorkspaceId);
+    }
+  }, [routeWorkspaceId, lastWorkspaceId]);
   const [openWorkspaces] = useState<Record<string, boolean>>(() =>
     readBooleanMap(OPEN_WORKSPACES_KEY)
   );
@@ -1903,27 +2136,38 @@ export default function AppSidebar({
     });
   }, [pinnedState, spines]);
 
+  // The sidebar always renders a single workspace context. Priority:
+  // (1) the workspace in the current URL, (2) the first owned workspace,
+  // (3) the first shared workspace. Switching via the WorkspaceSwitcher
+  // navigates to /workspaces/{id} which then drives this back through the URL.
+  const activeWorkspace: WorkspaceNode | null =
+    (currentWorkspaceId &&
+      (mine.find((w) => w.id === currentWorkspaceId) ??
+        (shared.find((w) => w.id === currentWorkspaceId)
+          ? { ...shared.find((w) => w.id === currentWorkspaceId)!, shared: true }
+          : null))) ||
+    mine[0] ||
+    (shared[0] ? { ...shared[0], shared: true } : null);
+
   return (
     <>
     <aside className="scroll-thin overflow-y-auto border-r border-border bg-surface">
-      <div className="px-3 pb-1 pt-3">
-        <Link href="/" className="flex items-center gap-2">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/octopus.svg" alt="Stash" className="h-7 w-7" />
-          <span className="font-display text-[14px] font-semibold tracking-tight text-foreground">
-            stash
-          </span>
-        </Link>
+      <div className="px-2 pt-2">
+        <WorkspaceSwitcher
+          active={activeWorkspace}
+          mine={mine}
+          shared={shared}
+        />
       </div>
 
       <nav className="px-2 pt-2 text-[13px]">
         <NavRow
-          href={currentWorkspaceId ? `/workspaces/${currentWorkspaceId}` : "/"}
+          href={activeWorkspace ? `/workspaces/${activeWorkspace.id}` : "/"}
           icon={<StashIcon />}
           label="Home"
           active={
-            currentWorkspaceId
-              ? pathname === `/workspaces/${currentWorkspaceId}`
+            activeWorkspace
+              ? pathname === `/workspaces/${activeWorkspace.id}`
               : pathname === "/"
           }
         />
@@ -1941,71 +2185,32 @@ export default function AppSidebar({
         />
       </nav>
 
-      {shared.length > 0 && (
-        <>
-          <div className="mt-4 flex items-center justify-between px-3 pb-1">
-            <span className="text-[11px] font-semibold tracking-wide text-muted">
-              SHARED WORKSPACES
-            </span>
-          </div>
-          <nav className="px-1 text-[13.5px]">
-            {shared.map((s) => (
-              <WorkspaceTree
-                key={s.id}
-                workspace={{ ...s, shared: true }}
-                spine={spines[s.id] ?? null}
-                showName
-                pathname={pathname}
-                openSections={getOpenSections(s.id)}
-                onSectionOpenChange={(section, open) =>
-                  handleSectionOpenChange(s.id, section, open)
-                }
-                dropState={dropState}
-                onDropFiles={handleDropFiles}
-                onDropHover={handleDropHover}
-                pinnedFolders={pinnedState[s.id]?.folders ?? EMPTY_PIN_STATE.folders}
-                pinnedFiles={pinnedState[s.id]?.files ?? EMPTY_PIN_STATE.files}
-                pinnedLabels={pinnedLabelsState[s.id] ?? { folders: {}, files: {} }}
-                collapsedStashes={collapsedStashes}
-                onPinToggle={(kind, id, label) => handlePinToggle(kind, s.id, id, label)}
-                onUnpinAll={handleUnpinAll}
-                onStashCollapsedChange={handleStashCollapsedChange}
-                onAddSession={handleAddSession}
-                onAddPage={handleAddPage}
-                onAddStash={handleAddStash}
-              />
-            ))}
-          </nav>
-        </>
-      )}
-
       <nav className="mt-4 px-1 text-[13.5px]">
-        {mine.map((s) => (
+        {activeWorkspace ? (
           <WorkspaceTree
-            key={s.id}
-            workspace={s}
-            spine={spines[s.id] ?? null}
+            key={activeWorkspace.id}
+            workspace={activeWorkspace}
+            spine={spines[activeWorkspace.id] ?? null}
             pathname={pathname}
-            openSections={getOpenSections(s.id)}
+            openSections={getOpenSections(activeWorkspace.id)}
             onSectionOpenChange={(section, open) =>
-              handleSectionOpenChange(s.id, section, open)
+              handleSectionOpenChange(activeWorkspace.id, section, open)
             }
             dropState={dropState}
             onDropFiles={handleDropFiles}
             onDropHover={handleDropHover}
-            pinnedFolders={pinnedState[s.id]?.folders ?? EMPTY_PIN_STATE.folders}
-            pinnedFiles={pinnedState[s.id]?.files ?? EMPTY_PIN_STATE.files}
-            pinnedLabels={pinnedLabelsState[s.id] ?? { folders: {}, files: {} }}
+            pinnedFolders={pinnedState[activeWorkspace.id]?.folders ?? EMPTY_PIN_STATE.folders}
+            pinnedFiles={pinnedState[activeWorkspace.id]?.files ?? EMPTY_PIN_STATE.files}
+            pinnedLabels={pinnedLabelsState[activeWorkspace.id] ?? { folders: {}, files: {} }}
             collapsedStashes={collapsedStashes}
-            onPinToggle={(kind, id, label) => handlePinToggle(kind, s.id, id, label)}
+            onPinToggle={(kind, id, label) => handlePinToggle(kind, activeWorkspace.id, id, label)}
             onUnpinAll={handleUnpinAll}
             onStashCollapsedChange={handleStashCollapsedChange}
             onAddSession={handleAddSession}
             onAddPage={handleAddPage}
             onAddStash={handleAddStash}
           />
-        ))}
-        {mine.length === 0 && (
+        ) : (
           <div className="px-3 py-1.5 text-[12px] italic text-muted">
             No workspaces yet.
           </div>
@@ -2014,12 +2219,12 @@ export default function AppSidebar({
 
       <div className="mt-6 border-t border-border px-2 py-2">
         <NavRow href="/docs" icon={<HelpIcon />} label="Docs" active={pathname.startsWith("/docs")} />
-        {currentWorkspaceId ? (
+        {activeWorkspace ? (
           <NavRow
-            href={`/workspaces/${currentWorkspaceId}/settings`}
+            href={`/workspaces/${activeWorkspace.id}/settings`}
             icon={<SettingsIcon />}
             label="Settings"
-            active={pathname === `/workspaces/${currentWorkspaceId}/settings`}
+            active={pathname === `/workspaces/${activeWorkspace.id}/settings`}
           />
         ) : (
           <DisabledNavRow icon={<SettingsIcon />} label="Settings" />

@@ -253,20 +253,20 @@ describe("AppSidebar tree expansion", () => {
     expect(detailsFor("Stashes")).toHaveAttribute("open");
   });
 
-  it("renders shared memberships in their own group", async () => {
+  it("lists shared memberships in the workspace switcher dropdown", async () => {
     vi.mocked(listMyWorkspaces).mockResolvedValue({
       workspaces: [workspace, sharedWorkspace],
     });
 
     renderSidebar();
 
-    await screen.findByText("Shared Stash");
+    // The switcher button shows the active workspace label and a chevron;
+    // opening it surfaces shared memberships under their own group label.
+    const switcher = await screen.findByRole("button", { expanded: false });
+    switcher.click();
 
-    const sidebarText = document.body.textContent ?? "";
-    expect(sidebarText.indexOf("SHARED WORKSPACES")).toBeLessThan(
-      sidebarText.indexOf("Shared Stash")
-    );
-    expect(screen.getAllByText("Shared Stash")).toHaveLength(1);
+    await screen.findByText(/Shared with you/i);
+    await screen.findByText("Shared Stash");
   });
 
   it("restores explicit section state from localStorage", async () => {
@@ -319,15 +319,15 @@ describe("AppSidebar tree expansion", () => {
     expect(openSectionState()["ws-1:files"]).toBe(true);
   });
 
-  it("opens session day folders from the day row without closing on repeat clicks", async () => {
+  it("keeps the first session bucket open and refuses to close on repeat row clicks", async () => {
     vi.mocked(getWorkspaceSidebar).mockResolvedValue(sidebarWithTree);
 
     renderSidebar();
 
+    // The first (most recent) bucket renders open by default so the user sees
+    // recent sessions without having to drill in. Clicking the row should
+    // never collapse it — only the chevron can collapse.
     const day = await screen.findByText(/May 11/);
-    expect(detailsFor(day.textContent ?? "")).not.toHaveAttribute("open");
-
-    fireEvent.click(day);
     expect(detailsFor(day.textContent ?? "")).toHaveAttribute("open");
     expect(screen.getByText("Planning session")).toBeTruthy();
 
@@ -341,7 +341,8 @@ describe("AppSidebar tree expansion", () => {
 
     renderSidebar();
 
-    fireEvent.click(await screen.findByLabelText("Add page"));
+    const addRow = await screen.findByRole("button", { name: /\+\s*New page/ });
+    fireEvent.click(addRow);
 
     expect(promptSpy).not.toHaveBeenCalled();
     expect(screen.getByRole("heading", { name: "New page" })).toBeTruthy();
@@ -362,7 +363,8 @@ describe("AppSidebar tree expansion", () => {
 
     renderSidebar();
 
-    fireEvent.click(await screen.findByLabelText("Add page"));
+    // "+ New page" is the row button at the bottom of the Files section.
+    fireEvent.click(await screen.findByRole("button", { name: /\+\s*New page/ }));
     expect(screen.getByRole("heading", { name: "New page" })).toBeTruthy();
 
     fireEvent.keyDown(document, { key: "Escape" });
