@@ -3,7 +3,6 @@
 from uuid import UUID
 
 from ..database import get_pool
-from . import stash_service, workspace_service
 
 
 async def create_or_update_invite(
@@ -80,30 +79,13 @@ async def list_pending_invites(user_id: UUID) -> list[dict]:
     return [dict(row) for row in rows]
 
 
-async def accept_invite(invite_id: UUID, user_id: UUID, workspace_id: UUID) -> dict | None:
+async def mark_invite_accepted_for_stash(
+    *,
+    stash_id: UUID,
+    user_id: UUID,
+    workspace_id: UUID,
+) -> None:
     pool = get_pool()
-    invite = await pool.fetchrow(
-        """
-        SELECT si.id, si.stash_id, s.slug
-        FROM stash_invites si
-        JOIN stashes s ON s.id = si.stash_id
-        WHERE si.id = $1
-          AND si.recipient_user_id = $2
-          AND si.status = 'pending'
-        """,
-        invite_id,
-        user_id,
-    )
-    if not invite:
-        return None
-
-    if not await workspace_service.is_member(workspace_id, user_id):
-        raise PermissionError("Not a workspace member")
-
-    stash = await stash_service.add_external_stash(workspace_id, invite["slug"], user_id)
-    if not stash:
-        return None
-
     await pool.execute(
         """
         UPDATE stash_invites
@@ -111,14 +93,14 @@ async def accept_invite(invite_id: UUID, user_id: UUID, workspace_id: UUID) -> d
             target_workspace_id = $1,
             responded_at = now(),
             updated_at = now()
-        WHERE id = $2
+        WHERE stash_id = $2
           AND recipient_user_id = $3
+          AND status = 'pending'
         """,
         workspace_id,
-        invite_id,
+        stash_id,
         user_id,
     )
-    return stash
 
 
 async def dismiss_invite(invite_id: UUID, user_id: UUID) -> bool:
