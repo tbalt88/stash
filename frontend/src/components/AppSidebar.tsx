@@ -652,7 +652,7 @@ function groupSidebarSessions(sessions: WorkspaceSidebarSession[]): SessionTreeD
   for (const session of sessions) {
     const date = sessionDate(session.last_at || session.updated_at);
     const key = date ? bucketKey(date, bucket) : UNKNOWN_SESSION_DATE;
-    const user = displaySidebarSessionUser(session.agent_name);
+    const user = displaySidebarSessionUser(session.user_name);
     const users = byBucket.get(key) ?? new Map<string, WorkspaceSidebarSession[]>();
     users.set(user, [...(users.get(user) ?? []), session]);
     byBucket.set(key, users);
