@@ -8,6 +8,17 @@ import {
   getPublicStash,
 } from "../../../lib/api";
 
+const authState = vi.hoisted(() => ({
+  user: null as null | {
+    id: string;
+    name: string;
+    display_name: string;
+    description: string;
+    created_at: string;
+    last_seen: string;
+  },
+}));
+
 vi.mock("next/link", () => ({
   default: ({
     href,
@@ -20,6 +31,21 @@ vi.mock("next/link", () => ({
     <a href={href} {...props}>
       {children}
     </a>
+  ),
+}));
+
+vi.mock("../../../components/AppShell", () => ({
+  default: ({
+    children,
+    shareAction,
+  }: {
+    children: ReactNode;
+    shareAction?: ReactNode;
+  }) => (
+    <>
+      <header>{shareAction}</header>
+      <main>{children}</main>
+    </>
   ),
 }));
 
@@ -46,7 +72,7 @@ vi.mock("../../../components/viz/EmbeddingSpaceExplorer", () => ({
 }));
 
 vi.mock("../../../hooks/useAuth", () => ({
-  useAuth: () => ({ user: null, loading: false, logout: vi.fn() }),
+  useAuth: () => ({ user: authState.user, loading: false, logout: vi.fn() }),
 }));
 
 vi.mock("./AddToWorkspaceButton", () => ({
@@ -56,6 +82,14 @@ vi.mock("./AddToWorkspaceButton", () => ({
 describe("StashPageClient sharing", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    authState.user = {
+      id: "user-1",
+      name: "Henry",
+      display_name: "Henry",
+      description: "",
+      created_at: "2026-05-11T00:00:00Z",
+      last_seen: "2026-05-11T00:00:00Z",
+    };
     window.history.pushState({}, "", "/stashes/shared-stash");
     Object.defineProperty(navigator, "clipboard", {
       configurable: true,
@@ -100,10 +134,14 @@ describe("StashPageClient sharing", () => {
     cleanup();
   });
 
-  it("Share button opens a popover with a copy-link affordance", async () => {
+  it("renders the Share button in the app header with a copy-link affordance", async () => {
     render(<StashPageClient slug="shared-stash" />);
 
-    fireEvent.click(await screen.findByRole("button", { name: /Share/ }));
+    const shareButton = await screen.findByRole("button", { name: "Share" });
+    expect(shareButton.closest("header")).not.toBeNull();
+    expect(screen.getAllByRole("button", { name: "Share" })).toHaveLength(1);
+
+    fireEvent.click(shareButton);
     // Popover renders a "Copy" button for the public URL; click it.
     fireEvent.click(await screen.findByRole("button", { name: "Copy" }));
 
