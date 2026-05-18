@@ -12,6 +12,7 @@ import {
   type WorkspacePage,
   type WorkspaceSidebar,
   type WorkspaceSidebarSession,
+  type WorkspaceSidebarStash,
   uploadFile,
   uploadTranscript,
 } from "../lib/api";
@@ -74,7 +75,6 @@ interface SidebarDropState {
 
 const OPEN_WORKSPACES_KEY = "stash_sidebar_open_workspaces";
 const OPEN_SECTIONS_KEY = "stash_sidebar_open_sections";
-const COLLAPSED_STASHES_KEY = "stash_sidebar_collapsed_stashes";
 const PINNED_FS_KEY = "stash_sidebar_pinned_files_folders";
 const PINNED_FS_LABELS_KEY = "stash_sidebar_pinned_files_folders_labels";
 const LAST_WORKSPACE_KEY = "stash_sidebar_last_workspace";
@@ -150,10 +150,6 @@ function writePinnedLabelMap(value: Record<string, PinnedLabels>) {
 
 function sectionKey(workspaceId: string, section: SidebarSection): string {
   return `${workspaceId}:${section}`;
-}
-
-function stashCollapseKey(workspaceId: string, stashId: string): string {
-  return `${workspaceId}:${stashId}`;
 }
 
 function dropKey(workspaceId: string, section: DropSection): string {
@@ -428,10 +424,8 @@ function WorkspaceTree({
   pinnedFolders,
   pinnedFiles,
   pinnedLabels,
-  collapsedStashes,
   onPinToggle,
   onUnpinAll,
-  onStashCollapsedChange,
   onAddSession,
   onAddPage,
   onAddStash,
@@ -447,10 +441,8 @@ function WorkspaceTree({
   pinnedFolders: string[];
   pinnedFiles: string[];
   pinnedLabels: PinnedLabels;
-  collapsedStashes: Record<string, boolean>;
   onPinToggle: (kind: PinKind, workspaceId: string, id: string, label?: string) => void;
   onUnpinAll: (workspaceId: string) => void;
-  onStashCollapsedChange: (workspaceId: string, stashId: string, collapsed: boolean) => void;
   onAddSession: (workspaceId: string) => void;
   onAddPage: (workspaceId: string) => void;
   onAddStash: (workspaceId: string) => void;
@@ -488,10 +480,6 @@ function WorkspaceTree({
         spine={spine}
         open={openSections.stashes}
         onOpenChange={(nextOpen) => onSectionOpenChange("stashes", nextOpen)}
-        collapsedStashes={collapsedStashes}
-        onStashCollapsedChange={(stashId, collapsed) =>
-          onStashCollapsedChange(workspace.id, stashId, collapsed)
-        }
         onAddStash={() => onAddStash(workspace.id)}
       />
 
@@ -907,6 +895,73 @@ function buildStashTreeItems(
         label: item.label_override ?? `${item.object_type} ${item.object_id}`,
       };
     });
+}
+
+// Each stash row in the sidebar manages its own open/closed state. State is
+// intentionally local (and not persisted) so that the Stashes section follows
+// the same default-collapsed pattern as Files folders and Sessions user
+// folders — opening the Stashes section doesn't explode every stash's
+// contents on the user.
+function StashSidebarRow({
+  workspaceId,
+  stash,
+  foldersById,
+  pagesById,
+  filesById,
+  sessionById,
+  sessionBySessionId,
+}: {
+  workspaceId: string;
+  stash: WorkspaceSidebarStash;
+  foldersById: Map<string, WorkspaceFolder>;
+  pagesById: Map<string, WorkspacePage>;
+  filesById: Map<string, WorkspaceFile>;
+  sessionById: Map<string, WorkspaceSidebarSession>;
+  sessionBySessionId: Map<string, WorkspaceSidebarSession>;
+}) {
+  const [open, setOpen] = useState(false);
+  const children = buildStashTreeItems(
+    workspaceId,
+    stash.items ?? [],
+    foldersById,
+    pagesById,
+    filesById,
+    sessionById,
+    sessionBySessionId
+  );
+  return (
+    <div className="space-y-0.5">
+      <div className="page-row flex items-center gap-1 rounded-md px-2 py-0.5 hover:bg-raised">
+        <ChevronToggle
+          open={open}
+          ariaLabel={`${open ? "Collapse" : "Expand"} ${stash.title}`}
+          onToggle={() => setOpen((current) => !current)}
+        />
+        <span className="flex h-4 w-4 items-center justify-center text-[14px] text-muted">
+          <StashIcon />
+        </span>
+        <Link
+          href={`/stashes/${stash.slug}`}
+          className="flex-1 truncate text-foreground hover:text-[var(--color-brand-700)]"
+        >
+          {stash.title}
+        </Link>
+      </div>
+      {open ? (
+        <div className="ml-2.5 space-y-0.5 border-l border-border pl-2">
+          {children.length === 0 ? (
+            <div className="px-2 py-1 text-[11px] italic text-muted">
+              no visible items
+            </div>
+          ) : (
+            children.map((item) => (
+              <StashTreeRow key={item.key} row={item} />
+            ))
+          )}
+        </div>
+      ) : null}
+    </div>
+  );
 }
 
 function StashTreeRow({ row }: { row: StashTreeItem }) {
@@ -1351,16 +1406,12 @@ function StashesBlock({
   spine,
   open,
   onOpenChange,
-  collapsedStashes,
-  onStashCollapsedChange,
   onAddStash,
 }: {
   workspace: WorkspaceNode;
   spine: WorkspaceSidebar | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  collapsedStashes: Record<string, boolean>;
-  onStashCollapsedChange: (stashId: string, collapsed: boolean) => void;
   onAddStash: () => void;
 }) {
   const stashes = spine?.stashes ?? [];
@@ -1393,7 +1444,7 @@ function StashesBlock({
     if (items.length === 0 && !includeEmpty) return null;
 
     return (
-      <div className="space-y-0.5 border-l border-border pl-2">
+      <div className="space-y-0.5">
         {title ? (
           <div className="px-2 py-0.5 text-[10px] uppercase tracking-wide text-muted">
             {title}
@@ -1402,53 +1453,18 @@ function StashesBlock({
         {items.length === 0 ? (
           <div className="px-2 py-1 text-[11px] italic text-muted">empty</div>
         ) : (
-          items.map((stash) => {
-            const collapsed =
-              collapsedStashes[stashCollapseKey(workspace.id, stash.id)] === true;
-            const children = buildStashTreeItems(
-              workspace.id,
-              stash.items ?? [],
-              foldersById,
-              pagesById,
-              filesById,
-              sessionById,
-              sessionBySessionId
-            );
-
-            return (
-              <div key={`${title}-${stash.id}`} className="space-y-0.5">
-                <div className="page-row flex items-center gap-1 rounded-md px-2 py-0.5 hover:bg-raised">
-                  <ChevronToggle
-                    open={!collapsed}
-                    ariaLabel={`${collapsed ? "Expand" : "Collapse"} ${stash.title}`}
-                    onToggle={() => onStashCollapsedChange(stash.id, !collapsed)}
-                  />
-                  <span className="flex h-4 w-4 items-center justify-center text-[14px] text-muted">
-                    <StashIcon />
-                  </span>
-                  <Link
-                    href={`/stashes/${stash.slug}`}
-                    className="flex-1 truncate text-foreground hover:text-[var(--color-brand-700)]"
-                  >
-                    {stash.title}
-                  </Link>
-                </div>
-                {!collapsed ? (
-                  <div className="ml-2.5 space-y-0.5 border-l border-border pl-2">
-                    {children.length === 0 ? (
-                      <div className="px-2 py-1 text-[11px] italic text-muted">
-                        no visible items
-                      </div>
-                    ) : (
-                      children.map((item) => (
-                        <StashTreeRow key={item.key} row={item} />
-                      ))
-                    )}
-                  </div>
-                ) : null}
-              </div>
-            );
-          })
+          items.map((stash) => (
+            <StashSidebarRow
+              key={`${title}-${stash.id}`}
+              workspaceId={workspace.id}
+              stash={stash}
+              foldersById={foldersById}
+              pagesById={pagesById}
+              filesById={filesById}
+              sessionById={sessionById}
+              sessionBySessionId={sessionBySessionId}
+            />
+          ))
         )}
       </div>
     );
@@ -1724,9 +1740,6 @@ export default function AppSidebar({
   const [pinnedLabelsState, setPinnedLabelsState] = useState<Record<string, PinnedLabels>>(
     () => readPinnedLabelMap()
   );
-  const [collapsedStashes, setCollapsedStashes] = useState<Record<string, boolean>>(
-    () => readBooleanMap(COLLAPSED_STASHES_KEY)
-  );
   const [pageCreateWorkspaceId, setPageCreateWorkspaceId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -1795,24 +1808,6 @@ export default function AppSidebar({
       activeTreeWorkspaceId === workspaceId && activeTreeSection === section;
     if (open && routeOpen && explicit === undefined) return;
     setOpenSection(workspaceId, section, open);
-  }
-
-  function handleStashCollapsedChange(
-    workspaceId: string,
-    stashId: string,
-    collapsed: boolean
-  ) {
-    setCollapsedStashes((current) => {
-      const key = stashCollapseKey(workspaceId, stashId);
-      const next = { ...current };
-      if (collapsed) {
-        next[key] = true;
-      } else {
-        delete next[key];
-      }
-      writeBooleanMap(COLLAPSED_STASHES_KEY, next);
-      return next;
-    });
   }
 
   function clearDropLater(workspaceId: string, section: DropSection) {
@@ -2202,10 +2197,8 @@ export default function AppSidebar({
             pinnedFolders={pinnedState[activeWorkspace.id]?.folders ?? EMPTY_PIN_STATE.folders}
             pinnedFiles={pinnedState[activeWorkspace.id]?.files ?? EMPTY_PIN_STATE.files}
             pinnedLabels={pinnedLabelsState[activeWorkspace.id] ?? { folders: {}, files: {} }}
-            collapsedStashes={collapsedStashes}
             onPinToggle={(kind, id, label) => handlePinToggle(kind, activeWorkspace.id, id, label)}
             onUnpinAll={handleUnpinAll}
-            onStashCollapsedChange={handleStashCollapsedChange}
             onAddSession={handleAddSession}
             onAddPage={handleAddPage}
             onAddStash={handleAddStash}
