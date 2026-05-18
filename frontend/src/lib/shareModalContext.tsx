@@ -15,7 +15,6 @@ export interface ShareModalOpenOptions {
   workspaceId: string;
   workspaceName?: string;
   initial?: StashItemSpec[];
-  tab?: "new" | "manage";
 }
 
 interface ShareModalState extends ShareModalOpenOptions {
@@ -47,7 +46,6 @@ export function ShareModalProvider({ children }: { children: ReactNode }) {
       workspaceId: opts.workspaceId,
       workspaceName: opts.workspaceName,
       initial: opts.initial,
-      tab: opts.tab ?? "new",
     });
   }, []);
 
