@@ -11,7 +11,6 @@ import {
 
 const nav = vi.hoisted(() => ({
   pathname: "/",
-  back: vi.fn(),
 }));
 
 const commandPaletteState = vi.hoisted(() => ({
@@ -20,7 +19,6 @@ const commandPaletteState = vi.hoisted(() => ({
 
 vi.mock("next/navigation", () => ({
   usePathname: () => nav.pathname,
-  useRouter: () => ({ back: nav.back }),
 }));
 
 vi.mock("next/link", () => ({
@@ -106,7 +104,6 @@ describe("AppShell sidebar collapse", () => {
   beforeEach(() => {
     localStorage.clear();
     nav.pathname = "/";
-    nav.back.mockClear();
     commandPaletteState.props = null;
     vi.clearAllMocks();
     vi.mocked(readCachedWorkspaces).mockReturnValue({
@@ -177,6 +174,7 @@ describe("AppShell sidebar collapse", () => {
 
     const home = screen.getByRole("link", { name: "Home" });
     await waitFor(() => expect(home).toHaveAttribute("href", "/workspaces/ws-1"));
+    expect(screen.queryByRole("button", { name: "Back" })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Demo Stash" })).not.toBeInTheDocument();
   });
 
