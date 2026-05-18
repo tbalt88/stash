@@ -173,7 +173,7 @@ function TopSearchButton({
     <button
       type="button"
       onClick={onClick}
-      className="flex h-7 w-full items-center gap-2 rounded-md border border-border bg-surface px-2.5 text-left text-[12.5px] text-muted shadow-sm hover:border-[var(--color-brand-300)] hover:bg-raised hover:text-foreground"
+      className="flex h-7 w-full items-center gap-2 rounded-md border border-border bg-surface px-2.5 text-left text-[12.5px] text-muted hover:border-[var(--color-brand-300)] hover:bg-raised hover:text-foreground"
       aria-label="Search"
     >
       <svg
