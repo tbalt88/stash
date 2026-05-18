@@ -774,6 +774,13 @@ async def add_external_stash(workspace_id: UUID, slug: str, added_by: UUID) -> d
         stash["id"],
     )
     if existing:
+        from . import stash_invite_service
+
+        await stash_invite_service.mark_invite_accepted_for_stash(
+            stash_id=stash["id"],
+            user_id=added_by,
+            workspace_id=workspace_id,
+        )
         return _mark_external(await _attach_items(dict(existing)), workspace_id)
 
     async with pool.acquire() as conn:
@@ -812,6 +819,13 @@ async def add_external_stash(workspace_id: UUID, slug: str, added_by: UUID) -> d
                 )
             await _replace_items(conn, fork["id"], forked_items)
 
+    from . import stash_invite_service
+
+    await stash_invite_service.mark_invite_accepted_for_stash(
+        stash_id=stash["id"],
+        user_id=added_by,
+        workspace_id=workspace_id,
+    )
     return _mark_external(await _attach_items(dict(fork)), workspace_id)
 
 
