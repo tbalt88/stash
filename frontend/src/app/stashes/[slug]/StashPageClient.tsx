@@ -46,7 +46,15 @@ const AUTOSAVE_MS = 1500;
 
 // Signed-in viewers see the Stash inside AppShell (sidebar + top bar) so
 // navigation context is preserved. Anonymous viewers see the raw page.
-function StashChrome({ data, children }: { data: PublicStashDetail | null; children: ReactNode }) {
+function StashChrome({
+  data,
+  shareAction,
+  children,
+}: {
+  data: PublicStashDetail | null;
+  shareAction?: ReactNode;
+  children: ReactNode;
+}) {
   const { user, loading, logout } = useAuth();
   useBreadcrumbs(
     [
@@ -64,7 +72,7 @@ function StashChrome({ data, children }: { data: PublicStashDetail | null; child
   }
   if (user) {
     return (
-      <AppShell user={user} onLogout={logout}>
+      <AppShell user={user} onLogout={logout} shareAction={shareAction}>
         {children}
       </AppShell>
     );
@@ -122,7 +130,16 @@ export default function StashPageClient({ slug }: { slug: string }) {
   }
 
   return (
-    <StashChrome data={data}>
+    <StashChrome
+      data={data}
+      shareAction={
+        <ShareStashButton
+          stash={data.stash}
+          canWrite={data.can_write}
+          onChanged={load}
+        />
+      }
+    >
       <StashPageBody data={data} onRefresh={load} />
     </StashChrome>
   );
@@ -242,7 +259,6 @@ function StashPageBody({
             </div>
           </div>
           <div className="flex flex-shrink-0 items-center gap-1.5 pt-1">
-            <ShareStashButton stash={stash} canWrite={can_write} onChanged={onRefresh} />
             {can_write ? (
               <button
                 type="button"
@@ -609,9 +625,8 @@ function relativeTime(iso: string): string {
   return new Date(iso).toLocaleDateString();
 }
 
-// Single place to manage sharing: copy public URL, choose visibility,
-// toggle discoverability. Anonymous viewers and non-writers only see the
-// "Copy link" path.
+// Header-level Stash share popover: copy public URL, choose visibility,
+// toggle discoverability. Non-writers only see the "Copy link" path.
 function ShareStashButton({
   stash,
   canWrite,
@@ -666,9 +681,9 @@ function ShareStashButton({
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className="inline-flex items-center gap-1.5 rounded-md border border-border bg-base px-2.5 py-1.5 text-[12.5px] font-medium text-foreground hover:bg-raised"
+        className="rounded-md bg-[var(--color-brand-600)] px-2.5 py-1 text-[12.5px] font-medium text-white hover:bg-[var(--color-brand-700)]"
       >
-        <ShareGlyph /> Share
+        Share
       </button>
       {open && (
         <div
@@ -790,17 +805,6 @@ function VisOption({
         <span className="block text-[11px] text-muted">{hint}</span>
       </span>
     </button>
-  );
-}
-
-function ShareGlyph() {
-  return (
-    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <circle cx="18" cy="5" r="3" />
-      <circle cx="6" cy="12" r="3" />
-      <circle cx="18" cy="19" r="3" />
-      <path d="M8.59 13.51l6.83 3.98M15.41 6.51l-6.82 3.98" />
-    </svg>
   );
 }
 
