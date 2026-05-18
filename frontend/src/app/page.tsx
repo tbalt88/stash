@@ -113,9 +113,23 @@ function LoggedInHome({
         const result = await listMyWorkspaces();
         if (cancelled) return;
         setWorkspaces(result.workspaces);
-        if (result.workspaces.length > 0) {
-          router.replace(`/workspaces/${result.workspaces[0].id}`);
+        if (result.workspaces.length === 0) return;
+
+        // Prefer the workspace the user was in last time they had the app
+        // open. AppSidebar writes this to localStorage every time you visit a
+        // /workspaces/[id] route. If the cached id is no longer a workspace
+        // the user belongs to (left, deleted, etc.), fall back to mine[0]
+        // which the backend returns ordered by created_at DESC (newest first).
+        let target = result.workspaces[0].id;
+        try {
+          const last = localStorage.getItem("stash_sidebar_last_workspace");
+          if (last && result.workspaces.some((w) => w.id === last)) {
+            target = last;
+          }
+        } catch {
+          /* localStorage unavailable — fall back silently */
         }
+        router.replace(`/workspaces/${target}`);
       } catch {
         if (!cancelled) setError("Failed to load workspaces");
       } finally {

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useBreadcrumbs } from "../../../../components/BreadcrumbContext";
 import SessionUpload from "../../../../components/SessionUpload";
 import { SessionsIcon, SettingsIcon } from "../../../../components/StashIcons";
 import { useAuth } from "../../../../hooks/useAuth";
@@ -17,6 +18,8 @@ export default function StashSessionsPage() {
 
   const [sessions, setSessions] = useState<SessionSummary[] | null>(null);
   const [error, setError] = useState("");
+
+  useBreadcrumbs([{ label: "Sessions" }], `${workspaceId}/sessions`);
 
   const load = useCallback(async () => {
     try {
@@ -47,14 +50,6 @@ export default function StashSessionsPage() {
   return (
     <div className="scroll-thin flex-1 overflow-y-auto">
       <div className="mx-auto max-w-5xl px-12 py-8">
-        <nav className="mb-4 flex flex-wrap items-center gap-1.5 text-[12.5px] text-muted">
-          <Link href={`/workspaces/${workspaceId}`} className="hover:text-foreground">
-            Home
-          </Link>
-          <span className="text-muted/60">/</span>
-          <span className="font-medium text-foreground">Sessions</span>
-        </nav>
-
         <div className="mb-1 flex h-10 w-10 items-center justify-center text-4xl text-muted">
           <SessionsIcon />
         </div>
