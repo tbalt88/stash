@@ -612,6 +612,11 @@ class FileListResponse(BaseModel):
     files: list[FileResponse]
 
 
+class FileUpdateRequest(BaseModel):
+    folder_id: UUID | None = None
+    move_to_root: bool = False
+
+
 class SessionTranscriptResponse(BaseModel):
     id: UUID
     workspace_id: UUID

@@ -18,7 +18,7 @@ from fastapi.responses import RedirectResponse
 
 from ..auth import get_current_user
 from ..database import get_pool
-from ..models import FileListResponse, FileResponse, TableResponse
+from ..models import FileListResponse, FileResponse, FileUpdateRequest, TableResponse
 from ..services import (
     permission_service,
     storage_service,
@@ -233,6 +233,53 @@ async def get_ws_file_text(
         "status": row["extraction_status"],
         "error": row["extraction_error"],
     }
+
+
+@ws_router.patch("/{file_id}", response_model=FileResponse)
+async def update_ws_file(
+    workspace_id: UUID,
+    file_id: UUID,
+    req: FileUpdateRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    """Reparent a file. Pass folder_id=<UUID> to move into a folder, or
+    move_to_root=true to move to the workspace root."""
+    await _check_write(workspace_id, current_user["id"])
+    pool = get_pool()
+    file_row = await pool.fetchrow(
+        "SELECT * FROM files WHERE id = $1 AND workspace_id = $2",
+        file_id,
+        workspace_id,
+    )
+    if not file_row:
+        raise HTTPException(status_code=404, detail="File not found")
+    if not await _can_access_file(file_id, workspace_id, current_user["id"], require_write=True):
+        raise HTTPException(status_code=404, detail="File not found")
+
+    if req.move_to_root:
+        next_folder_id = None
+    elif req.folder_id is not None:
+        # Target folder must belong to the same workspace; otherwise files
+        # could escape their workspace by getting reparented across the
+        # boundary.
+        owner = await pool.fetchrow(
+            "SELECT workspace_id FROM folders WHERE id = $1",
+            req.folder_id,
+        )
+        if not owner or owner["workspace_id"] != workspace_id:
+            raise HTTPException(status_code=404, detail="Folder not found")
+        next_folder_id = req.folder_id
+    else:
+        # No-op request — return the file unchanged rather than 400.
+        return await _file_to_response(dict(file_row))
+
+    updated = await pool.fetchrow(
+        "UPDATE files SET folder_id = $1 WHERE id = $2 AND workspace_id = $3 RETURNING *",
+        next_folder_id,
+        file_id,
+        workspace_id,
+    )
+    return await _file_to_response(dict(updated))
 
 
 @ws_router.delete("/{file_id}", status_code=204)

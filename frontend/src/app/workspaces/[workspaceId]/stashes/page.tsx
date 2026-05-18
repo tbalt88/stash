@@ -1,8 +1,8 @@
 "use client";
 
-import Link from "next/link";
 import { useParams } from "next/navigation";
 import { type FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import StashCard from "../../../../components/stash/StashCard";
 import { useShareModal } from "../../../../lib/shareModalContext";
 import { addExternalStash, ApiError, listStashes, type WorkspaceStash } from "../../../../lib/api";
 import { stashSlugFromInput } from "../../../../lib/stashLinks";
@@ -18,18 +18,6 @@ const FILTERS: { key: Filter; label: string }[] = [
 ];
 
 const COVERS = ["cover-1", "cover-2", "cover-3", "cover-4", "cover-5", "cover-6"];
-
-function relativeTime(iso: string): string {
-  const ms = Date.now() - new Date(iso).getTime();
-  if (ms < 60_000) return "just now";
-  const m = Math.floor(ms / 60_000);
-  if (m < 60) return `${m}m ago`;
-  const h = Math.floor(m / 60);
-  if (h < 24) return `${h}h ago`;
-  const d = Math.floor(h / 24);
-  if (d < 30) return `${d}d ago`;
-  return new Date(iso).toLocaleDateString();
-}
 
 export default function WorkspaceStashesPage() {
   const params = useParams();
@@ -282,62 +270,6 @@ function ExternalStashLinkForm({
       {error ? <p className="mt-2 text-[12px] text-red-500">{error}</p> : null}
       {message ? <p className="mt-2 text-[12px] text-muted">{message}</p> : null}
     </form>
-  );
-}
-
-function StashCard({ stash, cover }: { stash: WorkspaceStash; cover: string }) {
-  const itemCount = stash.items.length;
-  const sessions = stash.items.filter((i) => i.object_type === "session").length;
-  const pages = stash.items.filter((i) => i.object_type === "page").length;
-  const visibility: "public" | "private" | "workspace" = stash.access;
-
-  return (
-    <Link
-      href={`/stashes/${stash.slug}`}
-      className="card group flex min-h-[260px] flex-col overflow-hidden transition hover:border-[var(--color-brand-300)]"
-    >
-      <div
-        className={`${cover} relative h-[84px]`}
-        style={
-          stash.cover_image_url
-            ? {
-                backgroundImage: `url(${stash.cover_image_url})`,
-                backgroundSize: "cover",
-                backgroundPosition: "center",
-              }
-            : undefined
-        }
-      >
-        {stash.is_external && (
-          <span className="absolute left-3 top-2.5 rounded-full border border-white/50 bg-white/70 px-2 py-0.5 font-mono text-[10.5px] text-foreground backdrop-blur">
-            EXTERNAL
-          </span>
-        )}
-        <span className="absolute right-3 top-2.5 inline-flex items-center gap-1.5 rounded-full bg-white/85 px-2 py-0.5 text-[11px] capitalize text-dim backdrop-blur">
-          <VisDot vis={visibility} />
-          {visibility}
-        </span>
-      </div>
-      <div className="flex flex-1 flex-col p-4">
-        <h3 className="m-0 font-display text-[17px] font-bold leading-tight tracking-[-0.015em] group-hover:text-[var(--color-brand-700)]">
-          {stash.title}
-        </h3>
-        <p className="mt-2 line-clamp-2 text-[12.5px] leading-[1.55] text-dim">
-          {stash.description || "No description."}
-        </p>
-        <div className="sys-label mt-2.5" style={{ fontSize: 10.5 }}>
-          {itemCount} item{itemCount === 1 ? "" : "s"}
-          {sessions > 0 && ` · ${sessions} session${sessions === 1 ? "" : "s"}`}
-          {pages > 0 && ` · ${pages} page${pages === 1 ? "" : "s"}`} ·{" "}
-          {stash.view_count} view{stash.view_count === 1 ? "" : "s"}
-        </div>
-        <div className="flex-1" />
-        <div className="mt-3.5 flex items-center justify-between border-t border-border-subtle pt-2.5 text-[11.5px] text-muted">
-          <span className="truncate">/{stash.slug}</span>
-          <span className="font-mono">{relativeTime(stash.updated_at)}</span>
-        </div>
-      </div>
-    </Link>
   );
 }
 

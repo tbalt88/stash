@@ -652,6 +652,18 @@ export async function deleteFile(workspaceId: string, fileId: string): Promise<v
   await apiFetch(`/api/v1/workspaces/${workspaceId}/files/${fileId}`, { method: "DELETE" });
 }
 
+export async function updateFile(
+  workspaceId: string,
+  fileId: string,
+  data: { folder_id?: string | null; move_to_root?: boolean }
+): Promise<FileInfo> {
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/files/${fileId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+}
+
 // --- Sessions ---
 
 export interface SessionSummary {
