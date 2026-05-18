@@ -462,32 +462,29 @@ describe("AppSidebar tree expansion", () => {
     expect(detailsFor("Sessions")).toHaveAttribute("open");
   });
 
-  it("collapses individual stashes and restores that browser state", async () => {
+  it("starts each stash collapsed and does not persist its open state", async () => {
     vi.mocked(getWorkspaceSidebar).mockResolvedValue(sidebarWithStash);
 
     const first = renderSidebar();
 
     await screen.findByText("Project Alpha");
-    expect(screen.getByText("Launch session")).toBeTruthy();
-
-    fireEvent.click(screen.getByLabelText("Collapse Project Alpha"));
-
+    // Stashes default to closed — opening the Stashes section shouldn't
+    // explode every stash's items at once.
     expect(screen.queryByText("Launch session")).toBeNull();
-    expect(localStorage.getItem("stash_sidebar_collapsed_stashes")).toBe(
-      JSON.stringify({ "ws-1:stash-1": true })
-    );
+
+    fireEvent.click(screen.getByLabelText("Expand Project Alpha"));
+    expect(await screen.findByText("Launch session")).toBeTruthy();
+
+    // State is intentionally local to the row — nothing should land in
+    // localStorage under the legacy persisted-collapse key.
+    expect(localStorage.getItem("stash_sidebar_collapsed_stashes")).toBeNull();
 
     first.unmount();
 
     renderSidebar();
-
     await screen.findByText("Project Alpha");
+    // Re-mount: back to collapsed, exactly as a fresh page load would be.
     expect(screen.queryByText("Launch session")).toBeNull();
-
-    fireEvent.click(screen.getByLabelText("Expand Project Alpha"));
-
-    expect(await screen.findByText("Launch session")).toBeTruthy();
-    expect(localStorage.getItem("stash_sidebar_collapsed_stashes")).toBe("{}");
   });
 
   it("rejects non-jsonl files dropped on the Sessions section", async () => {
