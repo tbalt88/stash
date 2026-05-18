@@ -229,7 +229,7 @@ function StatCard({
 }
 
 function FeedCard({ event, showWorkspace }: { event: ActivityEvent; showWorkspace: boolean }) {
-  const name = event.actor.display_name || event.actor.name;
+  const name = event.actor.display_name;
   const avClass = avatarClassFor(name);
   const initials = name.slice(0, 2).toUpperCase();
   const verb = verbFor(event.kind);

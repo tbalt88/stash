@@ -9,10 +9,10 @@ import { SettingsIcon } from "../../../../components/StashIcons";
 import { useAuth } from "../../../../hooks/useAuth";
 import { listMySessions, type SessionSummary } from "../../../../lib/api";
 import {
-  displaySessionUserName,
   groupSessionsByAgent,
   groupSessionsByDayAndUser,
   groupSessionsByUser,
+  requireSessionUserName,
   type SessionDayGroup,
   type SessionFlatGroup,
 } from "../../../../lib/sessionGrouping";
@@ -372,7 +372,7 @@ function SessionTableRow({
   workspaceId: string;
   session: SessionSummary;
 }) {
-  const user = displaySessionUserName(session.user_name, "Unknown");
+  const user = requireSessionUserName(session.user_name);
   const agent = session.agent_name || "agent";
   const avatar = avatarFor(user);
 

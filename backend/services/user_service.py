@@ -12,6 +12,8 @@ async def register_user(
 ) -> tuple[dict, str]:
     """Register a new user. Returns (user_row, raw_api_key)."""
     pool = get_pool()
+    if display_name is not None and not display_name.strip():
+        raise ValueError("display_name is required")
     pw_hash = hash_password(password) if password else None
     try:
         row = await pool.fetchrow(
@@ -66,6 +68,8 @@ async def update_user(
     and revoke every other API key so a stolen session can't outlive the rotation.
     """
     pool = get_pool()
+    if display_name is not None and not display_name.strip():
+        raise ValueError("display_name is required")
 
     if password is not None:
         if not current_password:

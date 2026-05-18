@@ -148,7 +148,7 @@ async def test_workspace_sidebar_sessions_include_human_author(client: AsyncClie
     headers = {"Authorization": f"Bearer {key}"}
     me = await client.get("/api/v1/users/me", headers=headers)
     assert me.status_code == 200
-    author = me.json()["display_name"] or me.json()["name"]
+    author = me.json()["display_name"]
 
     pushed = await client.post(
         f"/api/v1/workspaces/{ws}/sessions/events/batch",

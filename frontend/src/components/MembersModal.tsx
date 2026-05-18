@@ -139,7 +139,7 @@ export default function MembersModal({
         <div className="px-5 py-4">
           <ul className="flex flex-col gap-2">
             {members.map((m) => {
-              const label = m.display_name || m.name;
+              const label = m.display_name;
               const c = colorFor(label);
               const isMe = m.user_id === meId;
               return (

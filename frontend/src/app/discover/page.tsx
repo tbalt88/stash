@@ -123,7 +123,7 @@ function DiscoverGrid({
   return (
     <div className="mt-6 grid grid-cols-1 gap-3.5 sm:grid-cols-2 lg:grid-cols-3">
       {stashes.map((stash, i) => {
-        const owner = stash.owner_display_name || stash.owner_name;
+        const owner = stash.owner_display_name;
         const trending = sort === "trending" && i < 2;
         return (
           <StashCard

@@ -4,6 +4,7 @@ import {
   groupSessionsByAgent,
   groupSessionsByDayAndUser,
   groupSessionsByUser,
+  requireSessionUserName,
 } from "./sessionGrouping";
 
 function session(fields: Partial<SessionSummary> & { session_id: string }): SessionSummary {
@@ -11,7 +12,7 @@ function session(fields: Partial<SessionSummary> & { session_id: string }): Sess
     session_id: fields.session_id,
     workspace_id: "ws-1",
     workspace_name: "Workspace",
-    user_name: fields.user_name ?? null,
+    user_name: fields.user_name ?? "Test User",
     agent_name: fields.agent_name ?? null,
     event_count: fields.event_count ?? 1,
     started_at: fields.started_at ?? "2026-05-14T09:00:00Z",
@@ -65,11 +66,10 @@ describe("groupSessionsByUser", () => {
     expect(grouped[0].sessions.map((s) => s.session_id)).toEqual(["ada-new", "ada-old"]);
   });
 
-  it("keeps missing users out of agent-name buckets", () => {
-    const grouped = groupSessionsByUser([
-      session({ session_id: "x", user_name: null, agent_name: "claude" }),
-    ]);
-    expect(grouped[0].key).toBe("Unknown user");
+  it("fails when a session is missing the author's display name", () => {
+    expect(() => requireSessionUserName(null)).toThrow(
+      "Session author display_name is missing"
+    );
   });
 });
 

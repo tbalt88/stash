@@ -278,7 +278,7 @@ export default function AppShell({ user, onLogout, children, shareAction }: AppS
 
   const activeWorkspace = workspaces.find((s) => s.id === activeWorkspaceId);
   const searchScope = inferSearchScope(pathname, activeWorkspace, breadcrumbs);
-  const initial = (user.display_name || user.name || "?")[0].toUpperCase();
+  const initial = user.display_name[0].toUpperCase();
   const directShareTarget = inferDirectShareTarget(pathname, breadcrumbs);
 
   async function copyCurrentViewLink() {
@@ -390,7 +390,7 @@ export default function AppShell({ user, onLogout, children, shareAction }: AppS
           {shareAction ?? defaultShareAction}
           <UserMenu
             initial={initial}
-            label={user.display_name || user.name}
+            label={user.display_name}
             onLogout={onLogout}
           />
         </div>

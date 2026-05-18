@@ -257,7 +257,7 @@ export interface PublicStashCard {
   cover_image_url: string | null;
   view_count: number;
   owner_name: string;
-  owner_display_name: string | null;
+  owner_display_name: string;
   workspace_id: string;
   workspace_name: string;
   item_count: number;
@@ -670,7 +670,7 @@ export interface SessionSummary {
   session_id: string;
   workspace_id: string | null;
   workspace_name: string | null;
-  user_name: string | null;
+  user_name: string;
   agent_name: string | null;
   event_count: number;
   started_at: string;
@@ -843,7 +843,7 @@ export type StashMemberPermission = "read" | "write" | "admin";
 export interface StashMember {
   user_id: string;
   name: string;
-  display_name: string | null;
+  display_name: string;
   permission: StashMemberPermission;
   granted_by: string | null;
   created_at: string;
@@ -983,7 +983,7 @@ export interface StashInvite {
   source_workspace_name: string;
   invited_by_user_id: string;
   invited_by_name: string;
-  invited_by_display_name: string | null;
+  invited_by_display_name: string;
   permission: StashMemberPermission;
   created_at: string;
 }
@@ -1094,7 +1094,7 @@ export async function listAgentNames(workspaceId: string): Promise<string[]> {
 export interface ActivityEvent {
   kind: string;
   ts: string;
-  actor: { name: string; display_name: string | null };
+  actor: { name: string; display_name: string };
   target_id: string;
   target_label: string;
   workspace_id?: string;
@@ -1225,7 +1225,7 @@ export interface WorkspaceSidebarSession {
   id: string | null;
   session_id: string;
   title: string;
-  user_name: string | null;
+  user_name: string;
   agent_name: string;
   size_bytes: number;
   last_at: string;

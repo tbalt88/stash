@@ -14,7 +14,8 @@ from .conftest import unique_name
 async def _make_user(pool, name=None):
     name = name or unique_name()
     row = await pool.fetchrow(
-        "INSERT INTO users (name) VALUES ($1) RETURNING id",
+        "INSERT INTO users (name, display_name) VALUES ($1, $2) RETURNING id",
+        name,
         name,
     )
     user_id = row["id"]

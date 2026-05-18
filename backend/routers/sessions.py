@@ -99,11 +99,8 @@ async def list_my_sessions(
           he.session_id,
           he.workspace_id,
           w.name AS workspace_name,
-          COALESCE(
-            MAX(NULLIF(u.display_name, '')),
-            MAX(NULLIF(u.name, '')),
-            'Unknown user'
-          ) AS user_name,
+          (ARRAY_AGG(NULLIF(u.display_name, '') ORDER BY he.created_at)
+           FILTER (WHERE NULLIF(u.display_name, '') IS NOT NULL))[1] AS user_name,
           MAX(he.agent_name) AS agent_name,
           COUNT(*)::INT AS event_count,
           MIN(he.created_at) AS started_at,
@@ -126,7 +123,11 @@ async def list_my_sessions(
         """,
         *args,
     )
-    return {"sessions": [dict(r) for r in rows]}
+    sessions = [dict(r) for r in rows]
+    for session in sessions:
+        if not session["user_name"]:
+            raise RuntimeError(f"Session {session['session_id']} has no author display_name")
+    return {"sessions": sessions}
 
 
 @router.post("/workspaces/{workspace_id}/sessions", status_code=201)

@@ -18,7 +18,7 @@ import {
 } from "../lib/api";
 import { useShareModal } from "../lib/shareModalContext";
 import { useEscapeKey } from "../hooks/useEscapeKey";
-import { displaySessionUserName } from "../lib/sessionGrouping";
+import { requireSessionUserName } from "../lib/sessionGrouping";
 import {
   getCachedFolderContents,
   getCachedWorkspaceSidebar,
@@ -566,7 +566,7 @@ function sessionLabelForSidebar(session: WorkspaceSidebarSession): string {
 }
 
 function displaySidebarSessionUser(raw: string | null | undefined): string {
-  return displaySessionUserName(raw, "Unknown user");
+  return requireSessionUserName(raw);
 }
 
 type SessionTreeDayGroup = {
