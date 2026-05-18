@@ -216,10 +216,6 @@ class StashInviteListResponse(BaseModel):
     invites: list[StashInviteResponse]
 
 
-class AcceptStashInviteRequest(BaseModel):
-    workspace_id: UUID
-
-
 class WorkspaceMember(BaseModel):
     user_id: UUID
     name: str

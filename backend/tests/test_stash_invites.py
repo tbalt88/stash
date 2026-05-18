@@ -21,7 +21,7 @@ def _auth(api_key: str) -> dict:
 
 
 @pytest.mark.asyncio
-async def test_stash_invite_can_be_accepted_into_workspace(client: AsyncClient):
+async def test_stash_invite_grants_view_access_before_adding(client: AsyncClient):
     owner_key, _owner = await _register(client, "stash_invite_owner")
     recipient_key, recipient = await _register(client, "stash_invite_recipient")
 
@@ -73,13 +73,23 @@ async def test_stash_invite_can_be_accepted_into_workspace(client: AsyncClient):
     assert invite["source_workspace_id"] == source_workspace["id"]
     assert invite["permission"] == "read"
 
-    accepted = await client.post(
-        f"/api/v1/stash-invites/{invite['id']}/accept",
+    viewed = await client.get(
+        f"/api/v1/stashes/{stash['slug']}",
+        headers=_auth(recipient_key),
+    )
+    assert viewed.status_code == 200
+    assert viewed.json()["stash"]["id"] == stash["id"]
+
+    still_pending = await client.get("/api/v1/stash-invites", headers=_auth(recipient_key))
+    assert len(still_pending.json()["invites"]) == 1
+
+    added = await client.post(
+        f"/api/v1/stashes/{stash['slug']}/add-to-workspace",
         json={"workspace_id": target_workspace["id"]},
         headers=_auth(recipient_key),
     )
-    assert accepted.status_code == 200
-    fork = accepted.json()
+    assert added.status_code == 201
+    fork = added.json()
     assert fork["is_external"] is True
     assert fork["workspace_id"] == target_workspace["id"]
     assert fork["forked_from_stash_id"] == stash["id"]
@@ -135,3 +145,9 @@ async def test_stash_invite_can_be_dismissed(client: AsyncClient):
 
     remaining = await client.get("/api/v1/stash-invites", headers=_auth(recipient_key))
     assert remaining.json()["invites"] == []
+
+    viewed = await client.get(
+        f"/api/v1/stashes/{stash['slug']}",
+        headers=_auth(recipient_key),
+    )
+    assert viewed.status_code == 200

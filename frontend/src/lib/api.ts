@@ -977,16 +977,6 @@ export async function listStashInvites(): Promise<StashInvite[]> {
   return data.invites;
 }
 
-export async function acceptStashInvite(
-  inviteId: string,
-  workspaceId: string
-): Promise<WorkspaceStash> {
-  return apiFetch(`/api/v1/stash-invites/${inviteId}/accept`, {
-    method: "POST",
-    body: JSON.stringify({ workspace_id: workspaceId }),
-  });
-}
-
 export async function dismissStashInvite(inviteId: string): Promise<void> {
   await apiFetch(`/api/v1/stash-invites/${inviteId}/dismiss`, { method: "POST" });
 }

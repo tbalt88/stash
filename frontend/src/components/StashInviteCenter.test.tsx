@@ -2,9 +2,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import StashInviteCenter from "./StashInviteCenter";
 import {
-  acceptStashInvite,
   dismissStashInvite,
-  listMyWorkspaces,
   listStashInvites,
 } from "../lib/api";
 
@@ -17,9 +15,7 @@ vi.mock("next/navigation", () => ({
 }));
 
 vi.mock("../lib/api", () => ({
-  acceptStashInvite: vi.fn(),
   dismissStashInvite: vi.fn(),
-  listMyWorkspaces: vi.fn(),
   listStashInvites: vi.fn(),
 }));
 
@@ -38,40 +34,10 @@ const invite = {
   created_at: "2026-05-17T12:00:00Z",
 };
 
-const targetWorkspace = {
-  id: "workspace-2",
-  name: "Recipient Workspace",
-  description: "",
-  creator_id: "user-2",
-  invite_code: "invite",
-  member_count: 1,
-  created_at: "2026-05-17T12:00:00Z",
-  updated_at: "2026-05-17T12:00:00Z",
-};
-
 describe("StashInviteCenter", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(listStashInvites).mockResolvedValue([invite]);
-    vi.mocked(listMyWorkspaces).mockResolvedValue({ workspaces: [targetWorkspace] });
-    vi.mocked(acceptStashInvite).mockResolvedValue({
-      id: "forked-stash",
-      workspace_id: "workspace-2",
-      slug: "partner-stash-fork",
-      title: "Partner Stash",
-      description: "",
-      owner_id: "user-2",
-      access: "workspace",
-      discoverable: false,
-      cover_image_url: null,
-      view_count: 0,
-      items: [],
-      is_external: true,
-      added_to_workspace_id: "workspace-2",
-      forked_from_stash_id: "stash-1",
-      created_at: "2026-05-17T12:00:00Z",
-      updated_at: "2026-05-17T12:00:00Z",
-    });
     vi.mocked(dismissStashInvite).mockResolvedValue(undefined);
   });
 
@@ -79,17 +45,29 @@ describe("StashInviteCenter", () => {
     cleanup();
   });
 
-  it("accepts a pending invite into the selected workspace", async () => {
-    render(<StashInviteCenter activeWorkspaceId="workspace-2" />);
+  it("opens a shared Stash for review", async () => {
+    render(<StashInviteCenter />);
 
-    fireEvent.click(await screen.findByRole("button", { name: "Stash invites (1)" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Stash access (1)" }));
 
     await screen.findByText("Partner Stash");
-    fireEvent.click(screen.getByRole("button", { name: "Add Stash" }));
+    expect(
+      screen.getByText("Henry has given you view access to their Stash.")
+    ).toBeInTheDocument();
 
-    await waitFor(() =>
-      expect(acceptStashInvite).toHaveBeenCalledWith("invite-1", "workspace-2")
-    );
-    expect(nav.push).toHaveBeenCalledWith("/stashes/partner-stash-fork");
+    fireEvent.click(screen.getByRole("button", { name: "View Stash" }));
+
+    expect(nav.push).toHaveBeenCalledWith("/stashes/partner-stash");
+  });
+
+  it("dismisses an access notification", async () => {
+    render(<StashInviteCenter />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Stash access (1)" }));
+    await screen.findByText("Partner Stash");
+    fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
+
+    await waitFor(() => expect(dismissStashInvite).toHaveBeenCalledWith("invite-1"));
+    expect(screen.queryByText("Partner Stash")).not.toBeInTheDocument();
   });
 });

@@ -96,33 +96,7 @@ export default function FolderDetailPage() {
   return (
     <div className="scroll-thin flex-1 overflow-y-auto">
       <div className="mx-auto max-w-[980px] px-12 pb-20 pt-8">
-        {/* Breadcrumb path */}
-        <div className="flex items-center gap-1.5 text-[12.5px] text-muted">
-          <Link href={`/workspaces/${workspaceId}`} className="text-dim hover:text-foreground">
-            Home
-          </Link>
-          {contents?.breadcrumbs.map((crumb, i) => {
-            const isLast = i === contents.breadcrumbs.length - 1;
-            return (
-              <span key={crumb.id} className="flex items-center gap-1.5">
-                <span className="text-muted/60">/</span>
-                {isLast ? (
-                  <span className="font-medium text-foreground">{crumb.name}</span>
-                ) : (
-                  <Link
-                    href={`/workspaces/${workspaceId}/folders/${crumb.id}`}
-                    className="hover:text-foreground"
-                  >
-                    {crumb.name}
-                  </Link>
-                )}
-              </span>
-            );
-          })}
-        </div>
-
-        {/* Header */}
-        <div className="mt-3.5 flex items-end justify-between gap-4">
+        <div className="flex items-end justify-between gap-4">
           <div className="min-w-0">
             <span className="inline-flex h-11 w-11 items-center justify-center rounded-[10px] border border-border bg-surface text-dim">
               <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.6">
