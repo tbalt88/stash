@@ -204,6 +204,7 @@ function StashPageBody({
     position: i,
     label_override: it.label,
   }));
+  const author = stash.owner_display_name || stash.owner_name;
 
   return (
     <div className="scroll-thin min-h-screen bg-background">
@@ -234,6 +235,8 @@ function StashPageBody({
                 {stash.title}
               </h1>
               <div className="mt-1 flex flex-wrap items-center gap-2 text-[12px] text-muted">
+                <span>by {author}</span>
+                <span className="text-muted/60">·</span>
                 <span>
                   {items.length} item{items.length === 1 ? "" : "s"}
                 </span>

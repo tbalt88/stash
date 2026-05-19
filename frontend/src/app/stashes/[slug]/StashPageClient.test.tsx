@@ -97,6 +97,8 @@ function stashDetail(
       title: "Shared Stash",
       description: "",
       owner_id: "user-1",
+      owner_name: "henry",
+      owner_display_name: "Henry",
       access: "public",
       discoverable: false,
       cover_image_url: null,
@@ -192,5 +194,15 @@ describe("StashPageClient sharing", () => {
 
     expect(title).toHaveTextContent("Shared Stash");
     expect(title).not.toHaveTextContent("workspace");
+  });
+
+  it("shows the stash author in the detail header", async () => {
+    vi.mocked(getPublicStash).mockResolvedValueOnce(
+      stashDetail({ owner_name: "sam", owner_display_name: "Sam" })
+    );
+
+    render(<StashPageClient slug="shared-stash" />);
+
+    expect(await screen.findByText("by Sam")).toBeInTheDocument();
   });
 });
