@@ -54,7 +54,8 @@ async def upsert_session(
 async def get_session(workspace_id: UUID, session_id: str) -> dict | None:
     pool = get_pool()
     row = await pool.fetchrow(
-        f"SELECT {_SELECT_COLS} " "FROM sessions WHERE workspace_id = $1 AND session_id = $2",
+        f"SELECT {_SELECT_COLS} FROM sessions "
+        "WHERE workspace_id = $1 AND session_id = $2 AND deleted_at IS NULL",
         workspace_id,
         session_id,
     )
@@ -64,7 +65,7 @@ async def get_session(workspace_id: UUID, session_id: str) -> dict | None:
 async def get_session_by_id(session_row_id: UUID) -> dict | None:
     pool = get_pool()
     row = await pool.fetchrow(
-        f"SELECT {_SELECT_COLS} FROM sessions WHERE id = $1",
+        f"SELECT {_SELECT_COLS} FROM sessions WHERE id = $1 AND deleted_at IS NULL",
         session_row_id,
     )
     return dict(row) if row else None

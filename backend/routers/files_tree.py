@@ -485,7 +485,7 @@ async def delete_page(
         current_user["id"],
         require_write=True,
     )
-    deleted = await files_tree_service.delete_page(page_id, workspace_id)
+    deleted = await files_tree_service.delete_page(page_id, workspace_id, current_user["id"])
     if not deleted:
         raise HTTPException(status_code=404, detail="Page not found")
 

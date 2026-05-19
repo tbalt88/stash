@@ -161,7 +161,7 @@ async def list_ws_files(
     pool = get_pool()
     rows = await pool.fetch(
         "SELECT id, workspace_id, folder_id, name, content_type, size_bytes, storage_key, uploaded_by, created_at, linked_table_id "
-        "FROM files WHERE workspace_id = $1 ORDER BY created_at DESC",
+        "FROM files WHERE workspace_id = $1 AND deleted_at IS NULL ORDER BY created_at DESC",
         workspace_id,
     )
     readable_rows = []
@@ -182,7 +182,7 @@ async def get_ws_file(
     pool = get_pool()
     row = await pool.fetchrow(
         "SELECT id, workspace_id, folder_id, name, content_type, size_bytes, storage_key, uploaded_by, created_at, linked_table_id "
-        "FROM files WHERE id = $1 AND workspace_id = $2",
+        "FROM files WHERE id = $1 AND workspace_id = $2 AND deleted_at IS NULL",
         file_id,
         workspace_id,
     )
@@ -207,7 +207,7 @@ async def download_ws_file(
     await _check_member(workspace_id, current_user["id"])
     pool = get_pool()
     row = await pool.fetchrow(
-        "SELECT storage_key FROM files WHERE id = $1 AND workspace_id = $2",
+        "SELECT storage_key FROM files WHERE id = $1 AND workspace_id = $2 AND deleted_at IS NULL",
         file_id,
         workspace_id,
     )
