@@ -358,6 +358,7 @@ class PageSummary(BaseModel):
 
     id: UUID
     name: str
+    content_type: str
     workspace_id: UUID
     folder_id: UUID | None = None
     created_at: datetime
@@ -441,6 +442,7 @@ class WorkspacePageEntry(BaseModel):
 
     id: UUID
     name: str
+    content_type: str
     workspace_id: UUID
     folder_id: UUID | None = None
     folder_path: list[str] = []

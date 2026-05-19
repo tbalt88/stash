@@ -194,7 +194,7 @@ async def get_folder_contents(
         folder_id,
     )
     pages = await pool.fetch(
-        "SELECT id, name FROM pages WHERE folder_id = $1 "
+        "SELECT id, name, content_type FROM pages WHERE folder_id = $1 "
         "AND COALESCE(metadata->>'shared_in_stash_id', '') = '' "
         "AND deleted_at IS NULL ORDER BY name",
         folder_id,
@@ -281,7 +281,10 @@ async def get_folder_contents(
             }
             for r in subfolders
         ],
-        "pages": [{"id": str(r["id"]), "name": r["name"]} for r in pages],
+        "pages": [
+            {"id": str(r["id"]), "name": r["name"], "content_type": r["content_type"]}
+            for r in pages
+        ],
         "files": file_payload,
     }
 
