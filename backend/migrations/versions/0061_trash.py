@@ -23,12 +23,8 @@ _TABLES = ("sessions", "pages", "files")
 
 def upgrade() -> None:
     for table in _TABLES:
-        op.execute(
-            f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ"
-        )
-        op.execute(
-            f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS deleted_by UUID"
-        )
+        op.execute(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ")
+        op.execute(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS deleted_by UUID")
         # Trash listing scans by workspace + deleted_at; partial index
         # keeps the active-row hot path unaffected.
         op.execute(

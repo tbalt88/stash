@@ -248,8 +248,7 @@ async def _object_title(object_type: str, object_id: UUID) -> str:
         )
     elif object_type == "session":
         row = await pool.fetchrow(
-            "SELECT session_id AS name FROM sessions "
-            "WHERE id = $1 AND deleted_at IS NULL",
+            "SELECT session_id AS name FROM sessions " "WHERE id = $1 AND deleted_at IS NULL",
             object_id,
         )
     else:
