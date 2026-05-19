@@ -12,6 +12,10 @@ interface EditorToolbarProps {
    *  parent to open a comment composer anchored to the current
    *  selection. The parent owns the composer + the server call. */
   onStartComment?: () => void;
+  /** "always" (default) shows the pill whenever the editor is editable.
+   *  "when-focused" hides it unless the editor has focus — right for
+   *  inline editors like workspace + stash descriptions. */
+  visibility?: "always" | "when-focused";
 }
 
 // Fixed pill toolbar centered along the viewport bottom. Rendered via a
@@ -20,17 +24,35 @@ export default function EditorToolbar({
   editor,
   workspaceId,
   onStartComment,
+  visibility = "always",
 }: EditorToolbarProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const [, forceRender] = useState(0);
   const [mounted, setMounted] = useState(false);
   const [tableMenuOpen, setTableMenuOpen] = useState(false);
+  const [isFocused, setIsFocused] = useState(false);
   const tableBtnRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     setMounted(true);
   }, []);
+
+  // Track editor focus for visibility="when-focused" inline use. We keep
+  // the pill alive briefly after blur so clicks on the toolbar itself
+  // don't dismiss it before the click handler fires.
+  useEffect(() => {
+    if (!editor) return;
+    setIsFocused(editor.isFocused);
+    const onFocus = () => setIsFocused(true);
+    const onBlur = () => setIsFocused(editor.isFocused);
+    editor.on("focus", onFocus);
+    editor.on("blur", onBlur);
+    return () => {
+      editor.off("focus", onFocus);
+      editor.off("blur", onBlur);
+    };
+  }, [editor]);
 
   // Close the table menu on outside click / Escape.
   useEffect(() => {
@@ -71,6 +93,7 @@ export default function EditorToolbar({
   }, [tableMenuOpen, inTable]);
 
   if (!editor || !editor.isEditable || !mounted) return null;
+  if (visibility === "when-focused" && !isFocused && !tableMenuOpen) return null;
 
   const selectionEmpty = editor.state.selection.empty;
 

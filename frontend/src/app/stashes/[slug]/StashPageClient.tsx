@@ -289,6 +289,7 @@ function StashPageBody({
 
         <StashDescriptionEditor
           stashId={stash.id}
+          workspaceId={stash.workspace_id}
           description={stash.description}
           canEdit={can_write}
           onSaved={() => {
@@ -528,11 +529,13 @@ function StashIconUpload({
 
 function StashDescriptionEditor({
   stashId,
+  workspaceId,
   description,
   canEdit,
   onSaved,
 }: {
   stashId: string;
+  workspaceId: string;
   description: string;
   canEdit: boolean;
   onSaved: () => void;
@@ -546,6 +549,7 @@ function StashDescriptionEditor({
         canEdit={canEdit}
         placeholder="Describe this Stash…"
         ariaLabel="Stash description"
+        workspaceId={workspaceId}
         onSave={async (html) => {
           await updateStash(stashId, { description: html });
           onSaved();
