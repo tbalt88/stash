@@ -389,6 +389,7 @@ export default function WorkspaceFileBrowser({ workspaceId, folderId }: Props) {
             onSelect={navigateTo}
             onNavigate={navigateTo}
             onReparent={reparent}
+            onDelete={handleDelete}
           />
         )}
         {view === "column" && (
@@ -400,6 +401,7 @@ export default function WorkspaceFileBrowser({ workspaceId, folderId }: Props) {
             currentItems={items}
             onNavigate={navigateTo}
             onReparent={reparent}
+            onDelete={handleDelete}
           />
         )}
       </div>

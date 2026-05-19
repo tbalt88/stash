@@ -17,6 +17,7 @@ interface Props {
   currentItems: GridItem[];
   onNavigate: (item: GridItem) => void;
   onReparent: (payload: FBDragPayload, targetFolderId: string | null) => Promise<void>;
+  onDelete?: (item: GridItem) => Promise<void>;
 }
 
 // Column view: left column is the workspace folder tree (Finder's sidebar),
@@ -29,6 +30,7 @@ export default function ItemsColumns({
   activeFolderId,
   onNavigate,
   onReparent,
+  onDelete,
   currentItems,
 }: Props) {
   return (
@@ -68,6 +70,7 @@ export default function ItemsColumns({
                 item={item}
                 onNavigate={onNavigate}
                 onReparent={onReparent}
+                onDelete={onDelete}
               />
             ))}
           </div>
@@ -230,10 +233,12 @@ function ItemRow({
   item,
   onNavigate,
   onReparent,
+  onDelete,
 }: {
   item: GridItem;
   onNavigate: (item: GridItem) => void;
   onReparent: (payload: FBDragPayload, targetFolderId: string | null) => Promise<void>;
+  onDelete?: (item: GridItem) => Promise<void>;
 }) {
   const [over, setOver] = useState(false);
   const isFolder = item.kind === "folder";
@@ -274,7 +279,7 @@ function ItemRow({
         }
       }}
       className={
-        "flex cursor-pointer select-none items-center gap-3 px-3 py-2 text-[13px] hover:bg-[var(--color-brand-50)]/30 " +
+        "group flex cursor-pointer select-none items-center gap-3 px-3 py-2 text-[13px] hover:bg-[var(--color-brand-50)]/30 " +
         (over ? "ring-1 ring-inset ring-[var(--color-brand-300)]" : "")
       }
     >
@@ -283,6 +288,26 @@ function ItemRow({
       </span>
       <span className="min-w-0 flex-1 truncate font-medium text-foreground">{item.name}</span>
       <span className="hidden text-[11.5px] text-muted sm:inline">{item.subtitle}</span>
+      {onDelete && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            void onDelete(item);
+          }}
+          className="rounded p-1 text-muted opacity-0 transition hover:bg-raised hover:text-red-600 focus-visible:opacity-100 group-hover:opacity-100"
+          title="Delete"
+          aria-label="Delete"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="3 6 5 6 21 6" />
+            <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+            <path d="M10 11v6" />
+            <path d="M14 11v6" />
+            <path d="M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2" />
+          </svg>
+        </button>
+      )}
     </div>
   );
 }
