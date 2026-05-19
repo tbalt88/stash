@@ -514,7 +514,7 @@ describe("AppSidebar tree expansion", () => {
     expect(await screen.findByText("Launch session")).toBeTruthy();
   });
 
-  it("keeps an expanded stash open when another stash is opened", async () => {
+  it("keeps an expanded stash open when another stash is clicked", async () => {
     vi.mocked(getWorkspaceSidebar).mockResolvedValue(sidebarWithTwoStashes);
 
     const first = renderSidebar();
@@ -524,17 +524,17 @@ describe("AppSidebar tree expansion", () => {
     expect(await screen.findByText("Launch session")).toBeTruthy();
 
     fireEvent.click(screen.getByRole("link", { name: "Agent Handoffs" }));
-    expect(await screen.findByText("Handoff session")).toBeTruthy();
     expect(screen.getByText("Launch session")).toBeTruthy();
+    expect(screen.queryByText("Handoff session")).toBeNull();
     expect(localStorage.getItem("stash_sidebar_open_stashes")).toBe(
-      JSON.stringify({ "ws-1:stash-1": true, "ws-1:stash-2": true })
+      JSON.stringify({ "ws-1:stash-1": true })
     );
 
     first.unmount();
 
     renderSidebar();
     expect(await screen.findByText("Launch session")).toBeTruthy();
-    expect(await screen.findByText("Handoff session")).toBeTruthy();
+    expect(screen.queryByText("Handoff session")).toBeNull();
   });
 
   it("rejects non-jsonl files dropped on the Sessions section", async () => {

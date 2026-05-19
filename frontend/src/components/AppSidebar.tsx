@@ -967,7 +967,6 @@ function StashSidebarRow({
         </span>
         <Link
           href={href}
-          onClick={() => onOpenChange(true)}
           className={
             "flex-1 truncate " +
             (active
