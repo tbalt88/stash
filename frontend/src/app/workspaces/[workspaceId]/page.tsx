@@ -2,14 +2,10 @@
 
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { useCallback, useEffect, useRef, useState } from "react";
-import { EditorContent, useEditor } from "@tiptap/react";
-import StarterKit from "@tiptap/starter-kit";
-import Heading from "@tiptap/extension-heading";
-import Bold from "@tiptap/extension-bold";
-import Italic from "@tiptap/extension-italic";
-import TiptapLink from "@tiptap/extension-link";
-import Placeholder from "@tiptap/extension-placeholder";
+import { useCallback, useEffect, useState } from "react";
+import DescriptionEditor, {
+  isBlankDescription,
+} from "../../../components/DescriptionEditor";
 import MembersModal from "../../../components/MembersModal";
 import { SkeletonBlock, WorkspaceHomeSkeleton } from "../../../components/SkeletonStates";
 import StashQuickAdd from "../../../components/StashQuickAdd";
@@ -31,8 +27,6 @@ import type {
   Workspace,
   WorkspaceMember,
 } from "../../../lib/types";
-
-const AUTOSAVE_MS = 1500;
 
 function relativeTime(iso: string): string {
   const ms = Date.now() - new Date(iso).getTime();
@@ -193,6 +187,12 @@ export default function WorkspaceHomePage() {
             </div>
           )}
 
+          <WorkspaceDescriptionEditor
+            workspace={workspace}
+            canEdit={isMember}
+            onSaved={(updated) => setWorkspace(updated)}
+          />
+
           {/* Quick-add: paste URL or drop a file. .jsonl files route to
               session-transcript upload; anything else uploads to Files. */}
           {isMember && (
@@ -203,12 +203,6 @@ export default function WorkspaceHomePage() {
               <StashQuickAdd workspaceId={workspaceId} onAdded={load} />
             </section>
           )}
-
-          <WorkspaceDescriptionEditor
-            workspace={workspace}
-            canEdit={isMember}
-            onSaved={(updated) => setWorkspace(updated)}
-          />
 
           {/* Visualizations: human/agent session activity + 3D embedding view.
               Section renders even when empty so users see the placeholder
@@ -292,92 +286,23 @@ function WorkspaceDescriptionEditor({
   canEdit: boolean;
   onSaved: (updated: Workspace) => void;
 }) {
-  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const lastSaved = useRef<string>("");
   const description = workspace?.description ?? "";
 
-  useEffect(() => {
-    lastSaved.current = description;
-  }, [description]);
-
-  const editor = useEditor({
-    immediatelyRender: false,
-    editable: canEdit,
-    content: description || "<p></p>",
-    extensions: [
-      StarterKit.configure({
-        blockquote: false,
-        codeBlock: false,
-        heading: false,
-        bold: false,
-        italic: false,
-        link: false,
-        underline: false,
-      }),
-      Heading.configure({ levels: [1, 2, 3] }),
-      Bold,
-      Italic,
-      TiptapLink.configure({ openOnClick: true, autolink: true }),
-      Placeholder.configure({ placeholder: "Describe this workspace…" }),
-    ],
-    editorProps: {
-      attributes: {
-        class: "min-h-[120px] focus:outline-none file-page-body",
-      },
-    },
-    onUpdate: ({ editor: ed }) => {
-      if (!workspace) return;
-      const html = ed.getHTML();
-      if (html === lastSaved.current) return;
-      if (saveTimer.current) clearTimeout(saveTimer.current);
-      saveTimer.current = setTimeout(async () => {
-        lastSaved.current = html;
-        const updated = await updateWorkspace(workspace.id, {
-          description: html,
-        });
-        onSaved(updated);
-      }, AUTOSAVE_MS);
-    },
-  });
-
-  useEffect(() => {
-    if (!editor) return;
-    if (editor.getHTML() === description) return;
-    editor.commands.setContent(description || "<p></p>", { emitUpdate: false });
-    lastSaved.current = description;
-  }, [description, editor]);
-
-  // useEditor() captures `editable` at creation time. When membership loads
-  // after first paint, toggle it on the live editor so the description
-  // becomes typeable without a remount.
-  useEffect(() => {
-    if (!editor) return;
-    editor.setEditable(canEdit);
-  }, [editor, canEdit]);
-
-  useEffect(() => {
-    return () => {
-      if (saveTimer.current) clearTimeout(saveTimer.current);
-    };
-  }, []);
-
   if (!workspace) return null;
-  if (!canEdit && !description) return null;
+  if (!canEdit && isBlankDescription(description)) return null;
 
   return (
-    <section className="mt-6">
-      <div className="sys-label mb-1.5">About this workspace</div>
-      <div
-        onClick={() => editor?.commands.focus()}
-        className={
-          "rounded-[10px] border transition-colors " +
-          (canEdit
-            ? "border-dashed border-border bg-surface/40 px-[18px] py-[14px] cursor-text hover:border-[var(--color-brand-300)] hover:bg-[var(--color-brand-50)]/40 focus-within:border-[var(--color-brand-400)] focus-within:bg-base"
-            : "border-border bg-surface/40 px-[18px] py-[14px]")
-        }
-      >
-        <EditorContent editor={editor} />
-      </div>
+    <section className="mt-5">
+      <DescriptionEditor
+        value={description}
+        canEdit={canEdit}
+        placeholder="Describe this workspace…"
+        ariaLabel="Workspace description"
+        onSave={async (html) => {
+          const updated = await updateWorkspace(workspace.id, { description: html });
+          onSaved(updated);
+        }}
+      />
     </section>
   );
 }

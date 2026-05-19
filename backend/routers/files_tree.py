@@ -561,9 +561,7 @@ async def reply_to_thread(
     await _check_ws_access(workspace_id, current_user["id"])
     await _check_content_access("page", page_id, workspace_id, current_user["id"])
     await _check_page_in_workspace(workspace_id, page_id)
-    thread = await comment_service.add_reply(
-        thread_id, body=req.body, author_id=current_user["id"]
-    )
+    thread = await comment_service.add_reply(thread_id, body=req.body, author_id=current_user["id"])
     if thread is None:
         raise HTTPException(status_code=404, detail="Thread not found")
     return CommentThread(**thread)
@@ -605,9 +603,7 @@ async def delete_comment_thread(
     await _check_ws_access(workspace_id, current_user["id"])
     await _check_content_access("page", page_id, workspace_id, current_user["id"])
     await _check_page_in_workspace(workspace_id, page_id)
-    result = await comment_service.delete_thread(
-        thread_id, user_id=current_user["id"]
-    )
+    result = await comment_service.delete_thread(thread_id, user_id=current_user["id"])
     if result == "not_found":
         raise HTTPException(status_code=404, detail="Thread not found")
     if result == "forbidden":
@@ -631,9 +627,7 @@ async def delete_comment_message(
     await _check_ws_access(workspace_id, current_user["id"])
     await _check_content_access("page", page_id, workspace_id, current_user["id"])
     await _check_page_in_workspace(workspace_id, page_id)
-    status, thread = await comment_service.delete_message(
-        message_id, user_id=current_user["id"]
-    )
+    status, thread = await comment_service.delete_message(message_id, user_id=current_user["id"])
     if status == "not_found":
         raise HTTPException(status_code=404, detail="Message not found")
     if status == "forbidden":

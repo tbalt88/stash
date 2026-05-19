@@ -139,9 +139,7 @@ async def test_delete_thread_forbidden_for_other_user(client: AsyncClient) -> No
     ).json()
 
     # Join the workspace as a second user via the invite code.
-    workspace = (
-        await client.get(f"/api/v1/workspaces/{ws_id}", headers=owner_headers)
-    ).json()
+    workspace = (await client.get(f"/api/v1/workspaces/{ws_id}", headers=owner_headers)).json()
     other_key = await _register(client)
     other_headers = _auth(other_key)
     await client.post(

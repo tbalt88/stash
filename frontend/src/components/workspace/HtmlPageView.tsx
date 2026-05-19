@@ -79,13 +79,13 @@ export default function HtmlPageView({
   // first `html` we see so saves (wrap, edit, unwrap) don't reload the iframe
   // and trash the user's caret. Switching pages remounts this component, so
   // a new page picks up its own initial html cleanly.
-  const initialHtmlRef = useRef(html);
+  const [initialHtml] = useState(html);
   const srcDoc = useMemo(
     () =>
       layout === "responsive"
-        ? injectResizeBootstrap(initialHtmlRef.current, channel)
-        : initialHtmlRef.current,
-    [layout, channel],
+        ? injectResizeBootstrap(initialHtml, channel)
+        : initialHtml,
+    [layout, channel, initialHtml],
   );
 
   useEffect(() => {
