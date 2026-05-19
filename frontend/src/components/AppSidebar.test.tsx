@@ -194,6 +194,36 @@ const sidebarWithTree = {
   stashes: [],
 };
 
+function sidebarSession(
+  sessionId: string,
+  title: string,
+  userName: string,
+  lastAt: string
+) {
+  return {
+    id: `row-${sessionId}`,
+    session_id: sessionId,
+    title,
+    user_name: userName,
+    agent_name: "Claude",
+    size_bytes: 256,
+    last_at: lastAt,
+    updated_at: lastAt,
+  };
+}
+
+function sidebarWithSessions(sessions: ReturnType<typeof sidebarSession>[]) {
+  return {
+    sessions,
+    files: {
+      folders: [],
+      pages: [],
+      files: [],
+    },
+    stashes: [],
+  };
+}
+
 function detailsFor(label: string): HTMLDetailsElement {
   const details = screen.getByText(label).closest("details");
   if (!details) throw new Error(`No details element for ${label}`);
@@ -361,6 +391,125 @@ describe("AppSidebar tree expansion", () => {
 
     fireEvent.click(day);
     expect(detailsFor(day.textContent ?? "")).toHaveAttribute("open");
+  });
+
+  it("limits visible session periods and reveals more on demand", async () => {
+    vi.mocked(getWorkspaceSidebar).mockResolvedValue(
+      sidebarWithSessions(
+        Array.from({ length: 11 }, (_, index) =>
+          sidebarSession(
+            `period-${index}`,
+            `Period ${index}`,
+            "Henry",
+            `2026-05-${String(20 - index).padStart(2, "0")}T12:00:00Z`
+          )
+        )
+      )
+    );
+
+    renderSidebar();
+
+    expect(await screen.findByText("Period 0")).toBeTruthy();
+    expect(screen.queryByText("Period 10")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Show 1 more periods" }));
+
+    expect(screen.getByText("Period 10")).toBeTruthy();
+  });
+
+  it("limits visible users within a session period", async () => {
+    vi.mocked(getWorkspaceSidebar).mockResolvedValue(
+      sidebarWithSessions(
+        Array.from({ length: 11 }, (_, index) =>
+          sidebarSession(
+            `user-${index}`,
+            `User ${index} session`,
+            `User ${index}`,
+            `2026-05-20T${String(23 - index).padStart(2, "0")}:00:00Z`
+          )
+        )
+      )
+    );
+
+    renderSidebar();
+
+    expect(await screen.findByText("User 0")).toBeTruthy();
+    expect(screen.queryByText("User 10")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Show 1 more users" }));
+
+    expect(screen.getByText("User 10")).toBeTruthy();
+  });
+
+  it("limits visible sessions within a user bucket", async () => {
+    vi.mocked(getWorkspaceSidebar).mockResolvedValue(
+      sidebarWithSessions(
+        Array.from({ length: 11 }, (_, index) =>
+          sidebarSession(
+            `session-${index}`,
+            `Bucket session ${index}`,
+            "Henry",
+            `2026-05-20T12:${String(59 - index).padStart(2, "0")}:00Z`
+          )
+        )
+      )
+    );
+
+    renderSidebar();
+
+    expect(await screen.findByText("Bucket session 0")).toBeTruthy();
+    expect(screen.queryByText("Bucket session 10")).toBeNull();
+
+    fireEvent.click(screen.getByText("Henry"));
+    fireEvent.click(screen.getByRole("button", { name: "Show 1 more sessions" }));
+
+    expect(screen.getByText("Bucket session 10")).toBeTruthy();
+  });
+
+  it("searches hidden sidebar sessions", async () => {
+    vi.mocked(getWorkspaceSidebar).mockResolvedValue(
+      sidebarWithSessions(
+        Array.from({ length: 11 }, (_, index) =>
+          sidebarSession(
+            `search-${index}`,
+            index === 10 ? "Unique hidden decision" : `Search session ${index}`,
+            "Henry",
+            `2026-05-20T12:${String(59 - index).padStart(2, "0")}:00Z`
+          )
+        )
+      )
+    );
+
+    renderSidebar();
+
+    await screen.findByText("Search session 0");
+    expect(screen.queryByText("Unique hidden decision")).toBeNull();
+
+    fireEvent.change(screen.getByLabelText("Search sessions"), {
+      target: { value: "unique hidden" },
+    });
+
+    expect(screen.getByText("Unique hidden decision")).toBeTruthy();
+  });
+
+  it("pins sessions from the sidebar context menu", async () => {
+    vi.mocked(getWorkspaceSidebar).mockResolvedValue(sidebarWithTree);
+
+    renderSidebar();
+
+    fireEvent.click(await screen.findByText("Henry"));
+    const sessionLink = await screen.findByRole("link", { name: /Planning session/ });
+    fireEvent.contextMenu(sessionLink);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Pin Planning session" }));
+
+    expect(screen.getByText("Pinned (1)")).toBeTruthy();
+    expect(JSON.parse(localStorage.getItem("stash_sidebar_pinned_items") ?? "{}")).toEqual({
+      "ws-1": {
+        sessions: ["session-1"],
+        folders: [],
+        files: [],
+      },
+    });
   });
 
   it("creates pages from the native sidebar modal", async () => {
