@@ -232,6 +232,7 @@ describe("AppShell sidebar collapse", () => {
       id: "session-row-uuid",
       workspace_id: "ws-1",
       session_id: "session-route-id",
+      title: "Debug auth flow",
       agent_name: "codex",
       cwd: null,
       summary: "Debug auth flow. Confirm token expiry.",

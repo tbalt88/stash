@@ -814,6 +814,7 @@ export interface SessionDetail {
   id: string;
   workspace_id: string;
   session_id: string;
+  title: string;
   agent_name: string;
   cwd: string | null;
   summary: string | null;

@@ -20,6 +20,7 @@ from ..services import (
     memory_service,
     permission_service,
     session_service,
+    session_title_service,
     storage_service,
     workspace_service,
 )
@@ -45,6 +46,10 @@ def _session_response(row: dict) -> dict:
         "id": str(row["id"]),
         "workspace_id": str(row["workspace_id"]),
         "session_id": row["session_id"],
+        "title": session_title_service.title_from_summary(
+            row.get("summary"),
+            row["session_id"],
+        ),
         "agent_name": row.get("agent_name") or "",
         "cwd": row.get("cwd"),
         "summary": row.get("summary"),

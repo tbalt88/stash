@@ -16,6 +16,7 @@ from ..services import (
     ask_service,
     files_tree_service,
     memory_service,
+    session_title_service,
     skill_service,
     stash_service,
     workspace_service,
@@ -52,14 +53,10 @@ async def _list_sessions(workspace_id: UUID, user_id: UUID) -> list[dict]:
 
 
 def _auto_session_title(session: dict) -> str:
-    raw = (session.get("summary") or "").strip()
-    if not raw:
-        return session["session_id"]
-
-    first_sentence = raw.split(".")[0].strip()
-    if not first_sentence:
-        return session["session_id"]
-    return first_sentence[:80] if len(first_sentence) > 80 else first_sentence
+    return session_title_service.title_from_summary(
+        session.get("summary"),
+        session["session_id"],
+    )
 
 
 async def _files_tree(workspace_id: UUID, user_id: UUID) -> dict:
