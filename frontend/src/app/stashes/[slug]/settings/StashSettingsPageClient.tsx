@@ -24,17 +24,57 @@ import {
 } from "../../../../lib/api";
 import { resetStashNavigationCache } from "../../../../lib/stashNavigationCache";
 
+type StashVisibility = "private" | "workspace" | "public";
+
+const VISIBILITY_OPTIONS = [
+  { value: "private", label: "Private" },
+  { value: "workspace", label: "Workspace" },
+  { value: "public", label: "Public" },
+];
+
 const WORKSPACE_PERMISSION_OPTIONS = [
-  { value: "none", label: "No workspace access" },
-  { value: "read", label: "Workspace can view" },
-  { value: "write", label: "Workspace can edit" },
+  { value: "none", label: "No access" },
+  { value: "read", label: "Can view" },
+  { value: "write", label: "Can edit" },
 ];
 
 const PUBLIC_PERMISSION_OPTIONS = [
-  { value: "none", label: "No public access" },
-  { value: "read", label: "Anyone with link can view" },
-  { value: "write", label: "Anyone with link can edit" },
+  { value: "none", label: "No access" },
+  { value: "read", label: "Can view" },
+  { value: "write", label: "Can edit" },
 ];
+
+function visibilityForPermissions(
+  workspacePermission: StashGeneralPermission,
+  publicPermission: StashGeneralPermission
+): StashVisibility {
+  if (publicPermission !== "none") return "public";
+  if (workspacePermission !== "none") return "workspace";
+  return "private";
+}
+
+function permissionsForVisibility(
+  visibility: StashVisibility,
+  workspacePermission: StashGeneralPermission,
+  publicPermission: StashGeneralPermission
+): {
+  workspacePermission: StashGeneralPermission;
+  publicPermission: StashGeneralPermission;
+} {
+  if (visibility === "private") {
+    return { workspacePermission: "none", publicPermission: "none" };
+  }
+  if (visibility === "workspace") {
+    return {
+      workspacePermission: workspacePermission === "none" ? "read" : workspacePermission,
+      publicPermission: "none",
+    };
+  }
+  return {
+    workspacePermission: workspacePermission === "none" ? "read" : workspacePermission,
+    publicPermission: publicPermission === "none" ? "read" : publicPermission,
+  };
+}
 
 export default function StashSettingsPageClient({ slug }: { slug: string }) {
   const router = useRouter();
@@ -52,6 +92,18 @@ export default function StashSettingsPageClient({ slug }: { slug: string }) {
   const [discoverable, setDiscoverable] = useState(false);
 
   const stash = data?.stash ?? null;
+  const visibility = visibilityForPermissions(workspacePermission, publicPermission);
+
+  function setVisibility(nextVisibility: StashVisibility) {
+    const next = permissionsForVisibility(
+      nextVisibility,
+      workspacePermission,
+      publicPermission
+    );
+    setWorkspacePermission(next.workspacePermission);
+    setPublicPermission(next.publicPermission);
+    if (next.publicPermission === "none") setDiscoverable(false);
+  }
 
   useBreadcrumbs(
     [
@@ -284,7 +336,19 @@ export default function StashSettingsPageClient({ slug }: { slug: string }) {
                 className="mt-1 w-full rounded-md border border-border bg-surface px-3 py-2 text-[13.5px] text-foreground outline-none focus:border-[var(--color-brand-400)]"
               />
 
-              <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                <div>
+                  <label className="block text-[12px] font-medium text-muted">
+                    Visibility
+                  </label>
+                  <CustomSelect
+                    value={visibility}
+                    options={VISIBILITY_OPTIONS}
+                    onChange={(next) => setVisibility(next as StashVisibility)}
+                    ariaLabel="Visibility"
+                    className="mt-1 w-full rounded-md border border-border bg-surface px-2.5 py-2 text-[12.5px]"
+                  />
+                </div>
                 <div>
                   <label className="block text-[12px] font-medium text-muted">
                     Workspace access
@@ -317,7 +381,7 @@ export default function StashSettingsPageClient({ slug }: { slug: string }) {
                 </div>
                 <label
                   className={
-                    "flex items-center gap-2 rounded-md border border-border bg-surface px-3 py-2 text-[12.5px] sm:col-span-2 " +
+                    "flex items-center gap-2 rounded-md border border-border bg-surface px-3 py-2 text-[12.5px] sm:col-span-3 " +
                     (publicPermission !== "none"
                       ? "cursor-pointer text-foreground"
                       : "cursor-not-allowed text-muted")

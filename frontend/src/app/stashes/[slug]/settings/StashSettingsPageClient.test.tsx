@@ -151,4 +151,22 @@ describe("StashSettingsPageClient", () => {
     expect(await screen.findByText("Saved.")).toBeInTheDocument();
   });
 
+  it("can make the Stash private", async () => {
+    render(<StashSettingsPageClient slug="shared-stash" />);
+
+    await screen.findByRole("heading", { name: "Settings" });
+    fireEvent.click(screen.getByLabelText("Visibility"));
+    fireEvent.click(screen.getByRole("option", { name: /Private/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+
+    await waitFor(() =>
+      expect(updateStash).toHaveBeenCalledWith("stash-1", {
+        title: "Shared Stash",
+        workspace_permission: "none",
+        public_permission: "none",
+        discoverable: false,
+      }),
+    );
+  });
+
 });

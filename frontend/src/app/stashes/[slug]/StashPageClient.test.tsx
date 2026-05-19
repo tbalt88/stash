@@ -17,6 +17,7 @@ import {
   getPublicStash,
   listStashMembers,
   searchUsers,
+  updateStash,
   type PublicStashDetail,
 } from "../../../lib/api";
 
@@ -176,6 +177,10 @@ describe("StashPageClient sharing", () => {
     vi.mocked(searchUsers).mockResolvedValue([
       { id: "user-3", name: "alex", display_name: "Alex" },
     ]);
+    vi.mocked(updateStash).mockImplementation(async (_stashId, updates) => ({
+      ...stashDetail().stash,
+      ...updates,
+    }));
     vi.mocked(addStashMember).mockResolvedValue({
       user_id: "user-3",
       name: "alex",
@@ -207,6 +212,35 @@ describe("StashPageClient sharing", () => {
       ),
     );
     expect(screen.getByRole("button", { name: "Copied" })).toBeInTheDocument();
+  });
+
+  it("can make the Stash private from the Share dropdown", async () => {
+    vi.mocked(getPublicStash).mockResolvedValueOnce({
+      ...stashDetail({
+        access: "public",
+        workspace_permission: "write",
+        public_permission: "read",
+      }),
+      can_write: true,
+    });
+
+    render(<StashPageClient slug="shared-stash" />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Share" }));
+    const dialog = await screen.findByRole("dialog", {
+      name: "Share Shared Stash",
+    });
+    fireEvent.change(within(dialog).getByLabelText("Visibility"), {
+      target: { value: "private" },
+    });
+
+    await waitFor(() =>
+      expect(updateStash).toHaveBeenCalledWith("stash-1", {
+        workspace_permission: "none",
+        public_permission: "none",
+        discoverable: false,
+      }),
+    );
   });
 
   it("manages explicit Stash members from the Share dropdown", async () => {

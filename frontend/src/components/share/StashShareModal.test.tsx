@@ -122,6 +122,39 @@ describe("StashShareModal session sharing", () => {
     );
   });
 
+  it("can create a private Stash", async () => {
+    render(
+      <ShareModalProvider>
+        <OpenSessionShareButton />
+        <StashShareModal />
+      </ShareModalProvider>
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Share session" }));
+
+    await screen.findByRole("heading", { name: "Share session as Stash" });
+    await screen.findByText("1 item selected");
+    fireEvent.click(screen.getByLabelText("Visibility"));
+    fireEvent.click(screen.getByRole("option", { name: /Private/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Create Stash" }));
+
+    await waitFor(() =>
+      expect(createStash).toHaveBeenCalledWith(
+        "workspace-1",
+        "Debug auth flow",
+        [
+          {
+            object_type: "session",
+            object_id: "session-row-uuid",
+            position: 0,
+            label_override: "Debug auth flow",
+          },
+        ],
+        { workspace_permission: "none", public_permission: "none" }
+      )
+    );
+  });
+
   it("closes the share modal with Escape", async () => {
     render(
       <ShareModalProvider>

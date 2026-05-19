@@ -18,10 +18,18 @@ import {
 import { resetStashNavigationCache } from "../../lib/stashNavigationCache";
 import type { UserSearchResult } from "../../lib/types";
 
+type StashVisibility = "private" | "workspace" | "public";
+
 const PERMISSION_OPTIONS: { value: StashMemberPermission; label: string }[] = [
   { value: "read", label: "Read" },
   { value: "write", label: "Write" },
   { value: "admin", label: "Admin" },
+];
+
+const VISIBILITY_OPTIONS: { value: StashVisibility; label: string }[] = [
+  { value: "private", label: "Private" },
+  { value: "workspace", label: "Workspace" },
+  { value: "public", label: "Public" },
 ];
 
 const WORKSPACE_PERMISSION_OPTIONS: { value: StashGeneralPermission; label: string }[] = [
@@ -44,6 +52,38 @@ const PALETTE = [
   { bg: "bg-sky-200", fg: "text-sky-800" },
   { bg: "bg-fuchsia-200", fg: "text-fuchsia-800" },
 ];
+
+function visibilityForPermissions(
+  workspacePermission: StashGeneralPermission,
+  publicPermission: StashGeneralPermission
+): StashVisibility {
+  if (publicPermission !== "none") return "public";
+  if (workspacePermission !== "none") return "workspace";
+  return "private";
+}
+
+function permissionsForVisibility(
+  visibility: StashVisibility,
+  workspacePermission: StashGeneralPermission,
+  publicPermission: StashGeneralPermission
+): {
+  workspacePermission: StashGeneralPermission;
+  publicPermission: StashGeneralPermission;
+} {
+  if (visibility === "private") {
+    return { workspacePermission: "none", publicPermission: "none" };
+  }
+  if (visibility === "workspace") {
+    return {
+      workspacePermission: workspacePermission === "none" ? "read" : workspacePermission,
+      publicPermission: "none",
+    };
+  }
+  return {
+    workspacePermission: workspacePermission === "none" ? "read" : workspacePermission,
+    publicPermission: publicPermission === "none" ? "read" : publicPermission,
+  };
+}
 
 export default function StashShareButton({
   stash,
@@ -254,6 +294,16 @@ export default function StashShareButton({
   }
 
   const ownerLabel = stash.owner_display_name || stash.owner_name;
+  const visibility = visibilityForPermissions(workspacePermission, publicPermission);
+
+  function applyVisibility(nextVisibility: StashVisibility) {
+    const next = permissionsForVisibility(
+      nextVisibility,
+      workspacePermission,
+      publicPermission
+    );
+    void applyGeneralAccess(next.workspacePermission, next.publicPermission);
+  }
 
   return (
     <div ref={popoverRef} className="relative">
@@ -292,6 +342,13 @@ export default function StashShareButton({
             <>
               <div className="sys-label mb-1 mt-3">General access</div>
               <div className="flex flex-col gap-1">
+                <VisibilityAccessRow
+                  label="Visibility"
+                  hint="Choose who can open this Stash"
+                  value={visibility}
+                  options={VISIBILITY_OPTIONS}
+                  onChange={applyVisibility}
+                />
                 <GeneralAccessRow
                   label="Workspace"
                   hint="Anyone in the owning workspace"
@@ -535,6 +592,41 @@ function Avatar({ label }: { label: string }) {
     >
       {initials(label)}
     </span>
+  );
+}
+
+function VisibilityAccessRow({
+  label,
+  hint,
+  value,
+  options,
+  onChange,
+}: {
+  label: string;
+  hint: string;
+  value: StashVisibility;
+  options: { value: StashVisibility; label: string }[];
+  onChange: (next: StashVisibility) => void;
+}) {
+  return (
+    <div className="flex items-center gap-2 rounded-md bg-surface px-2 py-1.5 text-[12px]">
+      <span className="min-w-0">
+        <span className="block font-medium text-foreground">{label}</span>
+        <span className="block text-[11px] text-muted">{hint}</span>
+      </span>
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value as StashVisibility)}
+        className="ml-auto h-7 rounded border border-border bg-base px-1.5 text-[11.5px] text-foreground outline-none focus:border-[var(--color-brand-400)]"
+        aria-label={label}
+      >
+        {options.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+    </div>
   );
 }
 
