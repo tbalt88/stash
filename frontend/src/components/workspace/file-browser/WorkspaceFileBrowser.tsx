@@ -14,7 +14,7 @@ import {
   updateFile,
   updateFolder,
   updatePage,
-  uploadFile,
+  uploadFileOrPage,
   type FolderContents,
 } from "../../../lib/api";
 import type {
@@ -227,7 +227,11 @@ export default function WorkspaceFileBrowser({ workspaceId, folderId }: Props) {
       const file = input.files?.[0];
       if (!file) return;
       try {
-        await uploadFile(workspaceId, file, folderId ?? undefined);
+        const result = await uploadFileOrPage(workspaceId, file, folderId ?? undefined);
+        if (result.kind === "page") {
+          router.push(`/workspaces/${workspaceId}/p/${result.page.id}`);
+          return;
+        }
         await refreshAll();
       } catch (e) {
         setError(e instanceof Error ? e.message : "Upload failed");

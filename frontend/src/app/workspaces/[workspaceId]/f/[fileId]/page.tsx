@@ -20,9 +20,6 @@ import FileViewerHeader from "../../../../../components/workspace/FileViewerHead
 function isCsv(ct: string) {
   return ct?.includes("csv") || ct === "text/csv";
 }
-function isHtml(ct: string) {
-  return ct?.includes("html");
-}
 function isPdf(ct: string) {
   return ct?.includes("pdf");
 }
@@ -246,16 +243,6 @@ function FileBody({ file, text }: { file: FileInfo; text: string | null }) {
       </div>
     );
   }
-  if (isHtml(file.content_type)) {
-    return (
-      <iframe
-        src={file.url}
-        className="h-full w-full bg-white"
-        sandbox="allow-scripts allow-same-origin"
-        title={file.name}
-      />
-    );
-  }
   if (isMarkdown(file.content_type, file.name)) {
     return (
       <article className="markdown-content mx-auto max-w-3xl px-12 py-8 text-[15px] leading-relaxed text-foreground">
@@ -295,7 +282,6 @@ function formatBytes(b: number): string {
 function kindLabel(contentType: string, name: string): string {
   if (isPdf(contentType)) return "pdf";
   if (isImage(contentType)) return "image";
-  if (isHtml(contentType)) return "html";
   if (isMarkdown(contentType, name)) return "markdown";
   if (isText(contentType)) return "text";
   return "file";
@@ -304,7 +290,6 @@ function kindLabel(contentType: string, name: string): string {
 function kindIconColor(contentType: string): string {
   if (isPdf(contentType)) return "#E11D48";
   if (isImage(contentType)) return "#7C3AED";
-  if (isHtml(contentType)) return "var(--color-brand-600)";
   return "var(--text-muted)";
 }
 
@@ -336,16 +321,6 @@ function KindGlyph({ contentType, name }: { contentType: string; name: string })
         <rect x="3" y="4" width="18" height="16" rx="2" />
         <circle cx="9" cy="9.5" r="1.4" />
         <path d="M21 16l-5-5-9 9" />
-      </svg>
-    );
-  }
-  if (isHtml(contentType)) {
-    return (
-      <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" strokeWidth="1.6">
-        <rect x="3" y="4" width="18" height="16" rx="2" />
-        <path d="M3 9h18" />
-        <circle cx="6" cy="6.5" r="0.6" fill="currentColor" />
-        <circle cx="8.2" cy="6.5" r="0.6" fill="currentColor" />
       </svg>
     );
   }

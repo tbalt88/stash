@@ -713,6 +713,35 @@ export async function uploadFile(
   return resp.json();
 }
 
+// HTML is content, not a blob: it goes through the page-create path so it
+// gets the editable + commentable surface. Other types stay on uploadFile.
+export type UploadResult =
+  | { kind: "file"; file: FileInfo }
+  | { kind: "page"; page: Page };
+
+function isHtmlUpload(file: File): boolean {
+  if (file.type && file.type.toLowerCase().includes("html")) return true;
+  return /\.html?$/i.test(file.name);
+}
+
+export async function uploadFileOrPage(
+  workspaceId: string,
+  file: File,
+  folderId?: string | null
+): Promise<UploadResult> {
+  if (isHtmlUpload(file)) {
+    const text = await file.text();
+    const name = file.name.replace(/\.html?$/i, "") || file.name || "Untitled";
+    const page = await createPage(workspaceId, name, folderId ?? null, "", {
+      content_type: "html",
+      content_html: text,
+    });
+    return { kind: "page", page };
+  }
+  const f = await uploadFile(workspaceId, file, folderId);
+  return { kind: "file", file: f };
+}
+
 export async function listFiles(workspaceId: string): Promise<FileInfo[]> {
   const data = await apiFetch<{ files: FileInfo[] }>(`/api/v1/workspaces/${workspaceId}/files`);
   return data.files;

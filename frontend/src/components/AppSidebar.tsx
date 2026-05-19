@@ -13,7 +13,7 @@ import {
   type WorkspaceSidebar,
   type WorkspaceSidebarSession,
   type WorkspaceSidebarStash,
-  uploadFile,
+  uploadFileOrPage,
   uploadTranscript,
 } from "../lib/api";
 import { useShareModal } from "../lib/shareModalContext";
@@ -2004,7 +2004,7 @@ export default function AppSidebar({
         }
       } else {
         for (const file of list) {
-          await uploadFile(workspaceId, file);
+          await uploadFileOrPage(workspaceId, file);
         }
       }
       await refreshSidebar(workspaceId);
