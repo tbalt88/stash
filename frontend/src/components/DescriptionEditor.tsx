@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, type MouseEvent } from "react";
 import { EditorContent, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Heading from "@tiptap/extension-heading";
@@ -8,6 +8,7 @@ import Bold from "@tiptap/extension-bold";
 import Italic from "@tiptap/extension-italic";
 import TiptapLink from "@tiptap/extension-link";
 import Placeholder from "@tiptap/extension-placeholder";
+import { shouldFocusEditorFrame } from "../lib/editorClick";
 
 const AUTOSAVE_MS = 1500;
 
@@ -148,12 +149,18 @@ export default function DescriptionEditor({
     };
   }, [flushPendingSave]);
 
+  function handleEditorFrameClick(event: MouseEvent<HTMLDivElement>) {
+    if (!editor) return;
+    if (!canEdit) return;
+    if (!shouldFocusEditorFrame(editor.view.dom, event.target)) return;
+
+    editor.commands.focus();
+  }
+
   return (
     <div
       data-editable={canEdit ? "true" : "false"}
-      onClick={() => {
-        if (canEdit) editor?.commands.focus();
-      }}
+      onClick={handleEditorFrameClick}
       className={
         "description-editor -mx-1 rounded-md px-1 py-0.5 " +
         (canEdit
