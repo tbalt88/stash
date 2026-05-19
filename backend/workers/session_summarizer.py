@@ -50,6 +50,7 @@ async def _advisory_lock(namespace: int, resource: str):
             except Exception:
                 pass
 
+
 TICK_SECONDS = 10.0
 ERROR_SLEEP_SECONDS = 30.0
 MAX_ATTEMPTS = 4

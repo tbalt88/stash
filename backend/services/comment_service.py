@@ -143,9 +143,7 @@ async def create_thread(
 
 async def add_reply(thread_id: UUID, *, body: str, author_id: UUID) -> dict | None:
     pool = get_pool()
-    exists = await pool.fetchval(
-        "SELECT 1 FROM page_comment_threads WHERE id = $1", thread_id
-    )
+    exists = await pool.fetchval("SELECT 1 FROM page_comment_threads WHERE id = $1", thread_id)
     if not exists:
         return None
     await pool.execute(
@@ -160,9 +158,7 @@ async def add_reply(thread_id: UUID, *, body: str, author_id: UUID) -> dict | No
     return await _fetch_thread(thread_id)
 
 
-async def set_resolved(
-    thread_id: UUID, *, resolved: bool, user_id: UUID
-) -> dict | None:
+async def set_resolved(thread_id: UUID, *, resolved: bool, user_id: UUID) -> dict | None:
     pool = get_pool()
     if resolved:
         updated = await pool.fetchval(
@@ -190,9 +186,7 @@ async def set_resolved(
     return await _fetch_thread(thread_id)
 
 
-async def delete_message(
-    message_id: UUID, *, user_id: UUID
-) -> tuple[str, dict | None]:
+async def delete_message(message_id: UUID, *, user_id: UUID) -> tuple[str, dict | None]:
     """Delete a single message. The author is the only one allowed.
 
     Returns (status, thread):
@@ -212,9 +206,7 @@ async def delete_message(
         return ("forbidden", None)
     async with pool.acquire() as conn:
         async with conn.transaction():
-            await conn.execute(
-                "DELETE FROM page_comment_messages WHERE id = $1", message_id
-            )
+            await conn.execute("DELETE FROM page_comment_messages WHERE id = $1", message_id)
             remaining = await conn.fetchval(
                 "SELECT COUNT(*) FROM page_comment_messages WHERE thread_id = $1",
                 row["thread_id"],

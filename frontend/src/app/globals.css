@@ -243,6 +243,25 @@ details > summary::-webkit-details-marker {
   outline: 1px solid #ca8a04;
 }
 
+.description-editor-content {
+  min-height: 1.7em;
+}
+
+.ProseMirror.description-editor-content p {
+  margin: 0.25em 0;
+}
+
+.ProseMirror.description-editor-content p:first-child,
+.ProseMirror.description-editor-content h1:first-child,
+.ProseMirror.description-editor-content h2:first-child,
+.ProseMirror.description-editor-content h3:first-child {
+  margin-top: 0;
+}
+
+.ProseMirror.description-editor-content p:last-child {
+  margin-bottom: 0;
+}
+
 /* ProseMirror heading styles */
 .ProseMirror h1 {
   font-family: var(--font-display), sans-serif;

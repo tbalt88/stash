@@ -290,10 +290,6 @@ export default function StashPageView() {
     : null;
 
   const baseName = page ? page.name.replace(/\.md$/i, "") : "";
-  const openThreadCount = threads.filter(
-    (t) => !t.resolved_at && !t.orphaned
-  ).length;
-
   return (
     <div className="scroll-thin flex-1 overflow-y-auto">
       <FileViewerHeader

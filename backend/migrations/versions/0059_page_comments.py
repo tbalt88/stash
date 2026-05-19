@@ -18,8 +18,7 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.execute(
-        """
+    op.execute("""
         CREATE TABLE IF NOT EXISTS page_comment_threads (
           id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
           page_id       UUID NOT NULL REFERENCES pages(id) ON DELETE CASCADE,
@@ -32,14 +31,12 @@ def upgrade() -> None:
           resolved_by   UUID REFERENCES users(id),
           orphaned      BOOLEAN NOT NULL DEFAULT FALSE
         )
-        """
-    )
+        """)
     op.execute(
         "CREATE INDEX IF NOT EXISTS ix_page_comment_threads_page_id "
         "ON page_comment_threads(page_id)"
     )
-    op.execute(
-        """
+    op.execute("""
         CREATE TABLE IF NOT EXISTS page_comment_messages (
           id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
           thread_id   UUID NOT NULL REFERENCES page_comment_threads(id) ON DELETE CASCADE,
@@ -48,8 +45,7 @@ def upgrade() -> None:
           created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
           edited_at   TIMESTAMPTZ
         )
-        """
-    )
+        """)
     op.execute(
         "CREATE INDEX IF NOT EXISTS ix_page_comment_messages_thread_id "
         "ON page_comment_messages(thread_id)"

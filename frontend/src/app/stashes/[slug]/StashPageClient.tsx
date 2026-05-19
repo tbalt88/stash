@@ -9,16 +9,12 @@ import {
   type ReactNode,
   type ChangeEvent,
 } from "react";
-import { EditorContent, useEditor } from "@tiptap/react";
-import StarterKit from "@tiptap/starter-kit";
-import Heading from "@tiptap/extension-heading";
-import Bold from "@tiptap/extension-bold";
-import Italic from "@tiptap/extension-italic";
-import TiptapLink from "@tiptap/extension-link";
-import Placeholder from "@tiptap/extension-placeholder";
 
 import AppShell from "../../../components/AppShell";
 import { useBreadcrumbs } from "../../../components/BreadcrumbContext";
+import DescriptionEditor, {
+  isBlankDescription,
+} from "../../../components/DescriptionEditor";
 import { PublicStashSkeleton, SkeletonBlock } from "../../../components/SkeletonStates";
 import AddToStashModal from "../../../components/stash/AddToStashModal";
 import { StashIcon } from "../../../components/StashIcons";
@@ -42,10 +38,6 @@ import AddToWorkspaceButton from "./AddToWorkspaceButton";
 type StashItemGroup = Partial<
   Record<PublicStashItem["object_type"], PublicStashItem[]>
 >;
-
-// Same autosave window as workspace home — slow enough to coalesce
-// keystrokes, fast enough to feel near-realtime.
-const AUTOSAVE_MS = 1500;
 
 // Signed-in viewers see the Stash inside AppShell (sidebar + top bar) so
 // navigation context is preserved. Anonymous viewers see the raw page.
@@ -280,8 +272,6 @@ function StashPageBody({
           </div>
         </div>
 
-        {/* About this Stash — inline editable for writers, read-only for
-            viewers. Mirrors the workspace home editor. */}
         <StashDescriptionEditor
           stashId={stash.id}
           description={stash.description}
@@ -521,10 +511,6 @@ function StashIconUpload({
   );
 }
 
-// Inline-editable About section. Renders nothing for viewers when the
-// description is empty so the page stays uncluttered. Mirrors the
-// workspace home editor: TipTap + autosave-on-idle + click-to-focus
-// affordance with dashed border that goes solid on focus.
 function StashDescriptionEditor({
   stashId,
   description,
@@ -536,86 +522,20 @@ function StashDescriptionEditor({
   canEdit: boolean;
   onSaved: () => void;
 }) {
-  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const lastSaved = useRef<string>(description);
-
-  useEffect(() => {
-    lastSaved.current = description;
-  }, [description]);
-
-  const editor = useEditor({
-    immediatelyRender: false,
-    editable: canEdit,
-    content: description || "<p></p>",
-    extensions: [
-      StarterKit.configure({
-        blockquote: false,
-        codeBlock: false,
-        heading: false,
-        bold: false,
-        italic: false,
-        link: false,
-        underline: false,
-      }),
-      Heading.configure({ levels: [1, 2, 3] }),
-      Bold,
-      Italic,
-      TiptapLink.configure({ openOnClick: true, autolink: true }),
-      Placeholder.configure({ placeholder: "Describe this Stash…" }),
-    ],
-    editorProps: {
-      attributes: {
-        class: "min-h-[120px] focus:outline-none file-page-body",
-      },
-    },
-    onUpdate: ({ editor: ed }) => {
-      const html = ed.getHTML();
-      if (html === lastSaved.current) return;
-      if (saveTimer.current) clearTimeout(saveTimer.current);
-      saveTimer.current = setTimeout(async () => {
-        lastSaved.current = html;
-        await updateStash(stashId, { description: html });
-        onSaved();
-      }, AUTOSAVE_MS);
-    },
-  });
-
-  useEffect(() => {
-    if (!editor) return;
-    if (editor.getHTML() === description) return;
-    editor.commands.setContent(description || "<p></p>", { emitUpdate: false });
-    lastSaved.current = description;
-  }, [description, editor]);
-
-  // useEditor() captures `editable` at creation time. When permission
-  // info loads after first paint, toggle it on the live editor.
-  useEffect(() => {
-    if (!editor) return;
-    editor.setEditable(canEdit);
-  }, [editor, canEdit]);
-
-  useEffect(() => {
-    return () => {
-      if (saveTimer.current) clearTimeout(saveTimer.current);
-    };
-  }, []);
-
-  if (!canEdit && !description) return null;
+  if (!canEdit && isBlankDescription(description)) return null;
 
   return (
-    <section className="mt-6">
-      <div className="sys-label mb-1.5">About this Stash</div>
-      <div
-        onClick={() => editor?.commands.focus()}
-        className={
-          "rounded-[10px] border transition-colors " +
-          (canEdit
-            ? "border-dashed border-border bg-surface/40 px-[18px] py-[14px] cursor-text hover:border-[var(--color-brand-300)] hover:bg-[var(--color-brand-50)]/40 focus-within:border-[var(--color-brand-400)] focus-within:bg-base"
-            : "border-border bg-surface/40 px-[18px] py-[14px]")
-        }
-      >
-        <EditorContent editor={editor} />
-      </div>
+    <section className="mt-5">
+      <DescriptionEditor
+        value={description}
+        canEdit={canEdit}
+        placeholder="Describe this Stash…"
+        ariaLabel="Stash description"
+        onSave={async (html) => {
+          await updateStash(stashId, { description: html });
+          onSaved();
+        }}
+      />
     </section>
   );
 }
