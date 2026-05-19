@@ -50,6 +50,10 @@ interface MarkdownEditorProps {
   onActivateThread?: (threadId: string) => void;
   /** Highlight the currently selected thread's anchor more strongly. */
   activeThreadId?: string | null;
+  /** Asks the editor to strip every `comment` mark matching the given id
+   *  (the anchor wrapper for a thread that the user just deleted). Pass
+   *  a fresh `nonce` each time so the effect re-fires for repeat ids. */
+  stripCommentToken?: { id: string; nonce: number } | null;
 }
 
 export default function MarkdownEditor({
@@ -62,6 +66,7 @@ export default function MarkdownEditor({
   onAddComment,
   onActivateThread,
   activeThreadId,
+  stripCommentToken,
 }: MarkdownEditorProps) {
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -279,6 +284,29 @@ export default function MarkdownEditor({
       );
     });
   }, [activeThreadId, resolvedMarkdown]);
+
+  // When the parent reports a deleted thread, walk the doc and strip the
+  // `comment` mark from every text node that carried this id. Dispatching
+  // the resulting transaction fires onUpdate → autosave, so the markdown
+  // on disk loses the `<span data-comment-id>` wrapper too.
+  useEffect(() => {
+    if (!editor || !stripCommentToken) return;
+    const { state } = editor;
+    const commentMark = state.schema.marks.comment;
+    if (!commentMark) return;
+    const tr = state.tr;
+    let modified = false;
+    state.doc.descendants((node, pos) => {
+      if (!node.isText) return;
+      for (const mark of node.marks) {
+        if (mark.type === commentMark && mark.attrs.id === stripCommentToken.id) {
+          tr.removeMark(pos, pos + node.nodeSize, mark);
+          modified = true;
+        }
+      }
+    });
+    if (modified) editor.view.dispatch(tr);
+  }, [editor, stripCommentToken]);
 
   function openComposer() {
     if (!editor) return;

@@ -34,6 +34,9 @@ type Props = {
   onHtmlMutated?: (nextHtml: string) => void;
   /** Highlight the currently selected thread's anchor span. */
   activeThreadId?: string | null;
+  /** Strip the wrapper for the named thread (after the user deletes it).
+   *  Pass a fresh `nonce` each time so the iframe re-runs the unwrap. */
+  stripCommentToken?: { id: string; nonce: number } | null;
 };
 
 // Iframes don't auto-size to their content — the parent has to decide the
@@ -59,6 +62,7 @@ export default function HtmlPageView({
   onWrapComplete,
   onHtmlMutated,
   activeThreadId,
+  stripCommentToken,
 }: Props) {
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const [height, setHeight] = useState<number | null>(null);
@@ -128,6 +132,17 @@ export default function HtmlPageView({
       "*",
     );
   }, [activeThreadId, channel]);
+
+  // Strip the inline `<span data-comment-id>` wrapper for a just-deleted
+  // thread. The iframe unwraps and posts back the new HTML, which the
+  // parent saves via `onHtmlMutated`.
+  useEffect(() => {
+    if (!stripCommentToken) return;
+    iframeRef.current?.contentWindow?.postMessage(
+      { type: "stash:unwrap", channel, id: stripCommentToken.id },
+      "*",
+    );
+  }, [stripCommentToken, channel]);
 
   function onIframeLoad() {
     if (layout !== "responsive") return;
@@ -245,6 +260,18 @@ function injectResizeBootstrap(html: string, channel: string): string {
       sel.removeAllRanges();
       post({type:"stash:html-mutated",html:document.documentElement.outerHTML});
     }
+    function unwrap(id){
+      var match=document.querySelectorAll('[data-comment-id="'+id+'"]');
+      if(match.length===0) return;
+      for(var i=0;i<match.length;i++){
+        var el=match[i];
+        var parent=el.parentNode;
+        if(!parent) continue;
+        while(el.firstChild) parent.insertBefore(el.firstChild,el);
+        parent.removeChild(el);
+      }
+      post({type:"stash:html-mutated",html:document.documentElement.outerHTML});
+    }
     function applyActive(id){
       var prev=document.querySelectorAll("[data-comment-id].is-active");
       for(var i=0;i<prev.length;i++) prev[i].classList.remove("is-active");
@@ -274,6 +301,7 @@ function injectResizeBootstrap(html: string, channel: string): string {
       if(!d || d.channel!==c) return;
       if(d.type==="stash:probe") postResize();
       else if(d.type==="stash:wrap") wrapSelection(String(d.id||""));
+      else if(d.type==="stash:unwrap") unwrap(String(d.id||""));
       else if(d.type==="stash:active") applyActive(d.id||null);
     });
     postResize();

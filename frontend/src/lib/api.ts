@@ -405,6 +405,28 @@ export async function setCommentResolved(
   );
 }
 
+export async function deleteCommentThread(
+  workspaceId: string,
+  pageId: string,
+  threadId: string,
+): Promise<void> {
+  await apiFetch(
+    `/api/v1/workspaces/${workspaceId}/pages/${pageId}/comments/threads/${threadId}`,
+    { method: "DELETE" },
+  );
+}
+
+export async function deleteCommentMessage(
+  workspaceId: string,
+  pageId: string,
+  messageId: string,
+): Promise<{ thread: CommentThread | null; thread_deleted: boolean }> {
+  return apiFetch(
+    `/api/v1/workspaces/${workspaceId}/pages/${pageId}/comments/messages/${messageId}`,
+    { method: "DELETE" },
+  );
+}
+
 export async function reconcileCommentAnchors(
   workspaceId: string,
   pageId: string,

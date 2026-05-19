@@ -190,6 +190,62 @@ async def set_resolved(
     return await _fetch_thread(thread_id)
 
 
+async def delete_message(
+    message_id: UUID, *, user_id: UUID
+) -> tuple[str, dict | None]:
+    """Delete a single message. The author is the only one allowed.
+
+    Returns (status, thread):
+      ("not_found", None) — no such message
+      ("forbidden", None) — caller is not the author
+      ("ok", thread)      — message removed, returns the updated thread
+      ("ok_thread_gone", None) — last message removed, thread auto-deleted
+    """
+    pool = get_pool()
+    row = await pool.fetchrow(
+        "SELECT thread_id, author_id FROM page_comment_messages WHERE id = $1",
+        message_id,
+    )
+    if row is None:
+        return ("not_found", None)
+    if row["author_id"] != user_id:
+        return ("forbidden", None)
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            await conn.execute(
+                "DELETE FROM page_comment_messages WHERE id = $1", message_id
+            )
+            remaining = await conn.fetchval(
+                "SELECT COUNT(*) FROM page_comment_messages WHERE thread_id = $1",
+                row["thread_id"],
+            )
+            if remaining == 0:
+                await conn.execute(
+                    "DELETE FROM page_comment_threads WHERE id = $1",
+                    row["thread_id"],
+                )
+                return ("ok_thread_gone", None)
+    return ("ok", await _fetch_thread(row["thread_id"]))
+
+
+async def delete_thread(thread_id: UUID, *, user_id: UUID) -> str:
+    """Delete an entire thread and its messages. Only the thread creator
+    is allowed. The frontend should also strip the inline anchor span from
+    the page content so the highlight clears.
+    """
+    pool = get_pool()
+    row = await pool.fetchrow(
+        "SELECT created_by FROM page_comment_threads WHERE id = $1",
+        thread_id,
+    )
+    if row is None:
+        return "not_found"
+    if row["created_by"] != user_id:
+        return "forbidden"
+    await pool.execute("DELETE FROM page_comment_threads WHERE id = $1", thread_id)
+    return "ok"
+
+
 async def reconcile_orphans(page_id: UUID, present_ids: list[UUID]) -> None:
     """Mark threads not in present_ids as orphaned; un-orphan ones that are.
 

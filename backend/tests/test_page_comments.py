@@ -97,6 +97,131 @@ async def test_reply_resolve_and_reopen(client: AsyncClient) -> None:
 
 
 @pytest.mark.asyncio
+async def test_delete_thread_removes_it_for_creator(client: AsyncClient) -> None:
+    api_key = await _register(client)
+    headers = _auth(api_key)
+    ws_id, page_id = await _setup_page(client, headers)
+
+    created = (
+        await client.post(
+            f"/api/v1/workspaces/{ws_id}/pages/{page_id}/comments/threads",
+            json={"quoted_text": "x", "prefix": "", "suffix": "", "body": "msg"},
+            headers=headers,
+        )
+    ).json()
+
+    deleted = await client.delete(
+        f"/api/v1/workspaces/{ws_id}/pages/{page_id}/comments/threads/{created['id']}",
+        headers=headers,
+    )
+    assert deleted.status_code == 204
+
+    listing = (
+        await client.get(
+            f"/api/v1/workspaces/{ws_id}/pages/{page_id}/comments/threads",
+            headers=headers,
+        )
+    ).json()["threads"]
+    assert listing == []
+
+
+@pytest.mark.asyncio
+async def test_delete_thread_forbidden_for_other_user(client: AsyncClient) -> None:
+    owner_key = await _register(client)
+    owner_headers = _auth(owner_key)
+    ws_id, page_id = await _setup_page(client, owner_headers)
+    created = (
+        await client.post(
+            f"/api/v1/workspaces/{ws_id}/pages/{page_id}/comments/threads",
+            json={"quoted_text": "x", "prefix": "", "suffix": "", "body": "msg"},
+            headers=owner_headers,
+        )
+    ).json()
+
+    # Join the workspace as a second user via the invite code.
+    workspace = (
+        await client.get(f"/api/v1/workspaces/{ws_id}", headers=owner_headers)
+    ).json()
+    other_key = await _register(client)
+    other_headers = _auth(other_key)
+    await client.post(
+        f"/api/v1/workspaces/join/{workspace['invite_code']}",
+        headers=other_headers,
+    )
+
+    forbidden = await client.delete(
+        f"/api/v1/workspaces/{ws_id}/pages/{page_id}/comments/threads/{created['id']}",
+        headers=other_headers,
+    )
+    assert forbidden.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_delete_message_auto_deletes_empty_thread(client: AsyncClient) -> None:
+    api_key = await _register(client)
+    headers = _auth(api_key)
+    ws_id, page_id = await _setup_page(client, headers)
+    created = (
+        await client.post(
+            f"/api/v1/workspaces/{ws_id}/pages/{page_id}/comments/threads",
+            json={"quoted_text": "x", "prefix": "", "suffix": "", "body": "only"},
+            headers=headers,
+        )
+    ).json()
+    msg_id = created["messages"][0]["id"]
+
+    resp = await client.delete(
+        f"/api/v1/workspaces/{ws_id}/pages/{page_id}/comments/messages/{msg_id}",
+        headers=headers,
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["thread_deleted"] is True
+    assert body["thread"] is None
+
+    listing = (
+        await client.get(
+            f"/api/v1/workspaces/{ws_id}/pages/{page_id}/comments/threads",
+            headers=headers,
+        )
+    ).json()["threads"]
+    assert listing == []
+
+
+@pytest.mark.asyncio
+async def test_delete_one_message_keeps_thread_alive(client: AsyncClient) -> None:
+    api_key = await _register(client)
+    headers = _auth(api_key)
+    ws_id, page_id = await _setup_page(client, headers)
+    created = (
+        await client.post(
+            f"/api/v1/workspaces/{ws_id}/pages/{page_id}/comments/threads",
+            json={"quoted_text": "x", "prefix": "", "suffix": "", "body": "first"},
+            headers=headers,
+        )
+    ).json()
+    second = (
+        await client.post(
+            f"/api/v1/workspaces/{ws_id}/pages/{page_id}/comments/threads/{created['id']}/messages",
+            json={"body": "second"},
+            headers=headers,
+        )
+    ).json()
+
+    first_msg_id = created["messages"][0]["id"]
+    resp = await client.delete(
+        f"/api/v1/workspaces/{ws_id}/pages/{page_id}/comments/messages/{first_msg_id}",
+        headers=headers,
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["thread_deleted"] is False
+    assert [m["body"] for m in body["thread"]["messages"]] == ["second"]
+    # Lookup by id for sanity.
+    assert body["thread"]["id"] == second["id"]
+
+
+@pytest.mark.asyncio
 async def test_reconcile_flags_missing_threads_as_orphaned(client: AsyncClient) -> None:
     api_key = await _register(client)
     headers = _auth(api_key)

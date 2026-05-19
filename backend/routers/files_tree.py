@@ -591,6 +591,58 @@ async def update_thread_resolved(
     return CommentThread(**thread)
 
 
+@router.delete(
+    "/pages/{page_id}/comments/threads/{thread_id}",
+    status_code=204,
+)
+async def delete_comment_thread(
+    workspace_id: UUID,
+    page_id: UUID,
+    thread_id: UUID,
+    current_user: dict = Depends(get_current_user),
+):
+    """Delete an entire thread. Only the thread creator is allowed."""
+    await _check_ws_access(workspace_id, current_user["id"])
+    await _check_content_access("page", page_id, workspace_id, current_user["id"])
+    await _check_page_in_workspace(workspace_id, page_id)
+    result = await comment_service.delete_thread(
+        thread_id, user_id=current_user["id"]
+    )
+    if result == "not_found":
+        raise HTTPException(status_code=404, detail="Thread not found")
+    if result == "forbidden":
+        raise HTTPException(status_code=403, detail="Only the thread author can delete it")
+
+
+@router.delete(
+    "/pages/{page_id}/comments/messages/{message_id}",
+)
+async def delete_comment_message(
+    workspace_id: UUID,
+    page_id: UUID,
+    message_id: UUID,
+    current_user: dict = Depends(get_current_user),
+):
+    """Delete a single message. Author only. If the deleted message was
+    the last one in its thread, the thread is auto-deleted and the
+    response body's `thread` field is null — the frontend should then
+    strip the inline anchor from the page content.
+    """
+    await _check_ws_access(workspace_id, current_user["id"])
+    await _check_content_access("page", page_id, workspace_id, current_user["id"])
+    await _check_page_in_workspace(workspace_id, page_id)
+    status, thread = await comment_service.delete_message(
+        message_id, user_id=current_user["id"]
+    )
+    if status == "not_found":
+        raise HTTPException(status_code=404, detail="Message not found")
+    if status == "forbidden":
+        raise HTTPException(status_code=403, detail="Only the author can delete this message")
+    if status == "ok_thread_gone":
+        return {"thread": None, "thread_deleted": True}
+    return {"thread": CommentThread(**thread), "thread_deleted": False}
+
+
 @router.post(
     "/pages/{page_id}/comments/reconcile",
     status_code=204,

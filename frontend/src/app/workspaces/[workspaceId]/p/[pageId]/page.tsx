@@ -20,6 +20,8 @@ import CommentComposerPopover from "../../../../../components/workspace/CommentC
 import { useAuth } from "../../../../../hooks/useAuth";
 import {
   createCommentThread,
+  deleteCommentMessage,
+  deleteCommentThread,
   getFolderContents,
   getPage,
   listCommentThreads,
@@ -60,6 +62,12 @@ export default function StashPageView() {
 
   const [threads, setThreads] = useState<CommentThread[]>([]);
   const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
+  // Strip-anchor pulse: bumping nonce tells the editor / iframe to remove
+  // the inline `<span data-comment-id>` wrapper for `id`.
+  const [stripCommentToken, setStripCommentToken] = useState<{
+    id: string;
+    nonce: number;
+  } | null>(null);
   const [htmlSelection, setHtmlSelection] = useState<HtmlSelectionInfo | null>(
     null
   );
@@ -223,6 +231,40 @@ export default function StashPageView() {
     [workspaceId, pageId]
   );
 
+  const handleDeleteThread = useCallback(
+    async (threadId: string) => {
+      try {
+        await deleteCommentThread(workspaceId, pageId, threadId);
+        setThreads((cur) => cur.filter((t) => t.id !== threadId));
+        if (activeThreadId === threadId) setActiveThreadId(null);
+        // Tell the active editor to strip the inline anchor wrapper.
+        setStripCommentToken({ id: threadId, nonce: Date.now() });
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Failed to delete comment");
+      }
+    },
+    [workspaceId, pageId, activeThreadId]
+  );
+
+  const handleDeleteMessage = useCallback(
+    async (threadId: string, messageId: string) => {
+      try {
+        const res = await deleteCommentMessage(workspaceId, pageId, messageId);
+        if (res.thread_deleted) {
+          setThreads((cur) => cur.filter((t) => t.id !== threadId));
+          if (activeThreadId === threadId) setActiveThreadId(null);
+          setStripCommentToken({ id: threadId, nonce: Date.now() });
+        } else if (res.thread) {
+          const updated = res.thread;
+          setThreads((cur) => cur.map((t) => (t.id === threadId ? updated : t)));
+        }
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Failed to delete comment");
+      }
+    },
+    [workspaceId, pageId, activeThreadId]
+  );
+
   useEffect(() => {
     if (user) load();
   }, [user, load]);
@@ -320,6 +362,7 @@ export default function StashPageView() {
                     pendingWrapId={pendingWrapId}
                     onWrapComplete={() => setPendingWrapId(null)}
                     onHtmlMutated={handleHtmlMutated}
+                    stripCommentToken={stripCommentToken}
                   />
                   {htmlSelection && !htmlComposer && (
                     <button
@@ -360,6 +403,7 @@ export default function StashPageView() {
                   onAddComment={handleAddCommentMarkdown}
                   onActivateThread={setActiveThreadId}
                   activeThreadId={activeThreadId}
+                  stripCommentToken={stripCommentToken}
                 />
               )
             ) : (
@@ -387,6 +431,8 @@ export default function StashPageView() {
             onActivate={setActiveThreadId}
             onReply={handleReply}
             onSetResolved={handleSetResolved}
+            onDeleteThread={handleDeleteThread}
+            onDeleteMessage={handleDeleteMessage}
           />
         </div>
       </div>
