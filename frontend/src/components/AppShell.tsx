@@ -500,6 +500,9 @@ async function publishSessionStash(
 }
 
 function sessionShareTitle(session: SessionDetail): string {
+  const title = session.title?.trim();
+  if (title) return title;
+
   const summary = session.summary?.trim();
   if (summary) {
     const firstSentence = summary.split(".")[0]?.trim();
