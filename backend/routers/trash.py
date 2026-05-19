@@ -40,11 +40,7 @@ async def list_trash(
     files = await files_service.list_trashed_files(workspace_id)
     sessions = await session_service.list_trashed_sessions(workspace_id)
 
-    actor_ids = {
-        row["deleted_by"]
-        for row in pages + files + sessions
-        if row.get("deleted_by")
-    }
+    actor_ids = {row["deleted_by"] for row in pages + files + sessions if row.get("deleted_by")}
     actors: dict[UUID, dict] = {}
     if actor_ids:
         pool = get_pool()
@@ -53,8 +49,7 @@ async def list_trash(
             list(actor_ids),
         )
         actors = {
-            r["id"]: {"name": r["name"], "display_name": r["display_name"]}
-            for r in actor_rows
+            r["id"]: {"name": r["name"], "display_name": r["display_name"]} for r in actor_rows
         }
 
     def _render(row: dict, name_key: str) -> dict:
@@ -64,9 +59,7 @@ async def list_trash(
             "name": row[name_key],
             "deleted_at": row["deleted_at"],
             "deleted_by": str(row["deleted_by"]) if row.get("deleted_by") else None,
-            "deleted_by_name": (
-                actor["display_name"] or actor["name"] if actor else None
-            ),
+            "deleted_by_name": (actor["display_name"] or actor["name"] if actor else None),
         }
 
     return {
