@@ -140,6 +140,8 @@ class StashResponse(BaseModel):
     title: str
     description: str
     owner_id: UUID
+    owner_name: str
+    owner_display_name: str | None = None
     access: str
     discoverable: bool
     cover_image_url: str | None = None

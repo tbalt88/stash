@@ -750,6 +750,8 @@ export interface CreatedStash {
   title: string;
   description: string;
   owner_id: string;
+  owner_name: string;
+  owner_display_name: string | null;
   access: "workspace" | "private" | "public";
   discoverable: boolean;
   cover_image_url: string | null;
@@ -825,6 +827,8 @@ export interface WorkspaceStash {
   title: string;
   description: string;
   owner_id: string;
+  owner_name: string;
+  owner_display_name: string | null;
   access: "workspace" | "private" | "public";
   discoverable: boolean;
   cover_image_url: string | null;
