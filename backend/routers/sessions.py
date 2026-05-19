@@ -107,6 +107,7 @@ async def list_my_sessions(
           (ARRAY_AGG(NULLIF(u.display_name, '') ORDER BY he.created_at)
            FILTER (WHERE NULLIF(u.display_name, '') IS NOT NULL))[1] AS user_name,
           MAX(he.agent_name) AS agent_name,
+          COALESCE(MAX(s.summary), '') AS summary,
           COUNT(*)::INT AS event_count,
           MIN(he.created_at) AS started_at,
           MAX(he.created_at) AS last_event_at,
@@ -121,6 +122,9 @@ async def list_my_sessions(
         FROM history_events he
         LEFT JOIN workspaces w ON w.id = he.workspace_id
         LEFT JOIN users u ON u.id = he.created_by
+        LEFT JOIN sessions s ON s.workspace_id IS NOT DISTINCT FROM he.workspace_id
+          AND s.session_id = he.session_id
+          AND s.deleted_at IS NULL
         WHERE {' AND '.join(where)}
         GROUP BY he.session_id, he.workspace_id, w.name
         ORDER BY last_event_at DESC, user_name ASC, session_id ASC
@@ -132,6 +136,10 @@ async def list_my_sessions(
     for session in sessions:
         if not session["user_name"]:
             raise RuntimeError(f"Session {session['session_id']} has no author display_name")
+        session["title"] = session_title_service.title_from_summary(
+            session.pop("summary"),
+            session["session_id"],
+        )
     return {"sessions": sessions}
 
 

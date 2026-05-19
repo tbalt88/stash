@@ -15,7 +15,13 @@ _GENERIC_PREFIXES = (
     "summary of changes",
     "summary",
     "what changed",
+    "what happened",
     "what the session accomplished",
+    "what was accomplished",
+    "accomplishment",
+    "accomplishments",
+    "status",
+    "session status",
     "key files modified or created",
     "key files",
     "important decisions made",
@@ -39,6 +45,10 @@ def _title_from_line(line: str) -> str:
         return ""
 
     text = _strip_generic_prefix(text)
+    if not text:
+        return ""
+
+    text = _strip_generic_lead_in(text)
     if not text:
         return ""
 
@@ -82,6 +92,22 @@ def _truncate(title: str) -> str:
     if len(title) <= MAX_TITLE_LENGTH:
         return title
     return title[:MAX_TITLE_LENGTH]
+
+
+def _strip_generic_lead_in(text: str) -> str:
+    lower = text.lower()
+    for phrase in ("this session just ", "this session is ", "this session was "):
+        if lower.startswith(phrase):
+            return ""
+    if lower.startswith("this session "):
+        return _capitalize_first(text[len("this session ") :].strip())
+    return text
+
+
+def _capitalize_first(text: str) -> str:
+    if not text:
+        return text
+    return text[0].upper() + text[1:]
 
 
 def _normalize(text: str) -> str:
