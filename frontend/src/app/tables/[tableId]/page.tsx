@@ -17,6 +17,7 @@ import {
   deleteTableRowsBatch, duplicateTableRow, summarizeTableRows,
   listAllTables, saveTableView, deleteTableView,
   setTableEmbeddingConfig, backfillTableEmbeddings,
+  getToken,
 } from "../../../lib/api";
 import type { Table, TableColumn, TableRow, TableView } from "../../../lib/types";
 import FileViewerHeader from "../../../components/workspace/FileViewerHeader";
@@ -454,8 +455,15 @@ function TableEditorPageInner() {
     if (sortBy) { p.set("sort_by", sortBy); p.set("sort_order", sortOrder); }
     if (filters.length > 0) p.set("filters", JSON.stringify(filters));
     const url = `${base}/${tableId}/export/csv${p.toString() ? "?" + p : ""}`;
-    const token = localStorage.getItem("api_key") || "";
-    fetch(url, { headers: { Authorization: `Bearer ${token}` } }).then((r) => r.blob()).then((blob) => {
+    const token = getToken();
+    if (!token) {
+      setError("Export requires sign-in");
+      return;
+    }
+    fetch(url, { headers: { Authorization: `Bearer ${token}` } }).then((r) => {
+      if (!r.ok) throw new Error("Export failed");
+      return r.blob();
+    }).then((blob) => {
       const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = `${table.name.replace(/\s+/g, "_")}.csv`; a.click(); URL.revokeObjectURL(a.href);
     }).catch(() => setError("Export failed"));
   };

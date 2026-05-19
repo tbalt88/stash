@@ -204,7 +204,7 @@ describe("AppSidebar tree expansion", () => {
       folder: { id: "folder-1", name: "Product", parent_folder_id: null },
       breadcrumbs: [],
       subfolders: [],
-      pages: [{ id: "page-child", name: "Roadmap" }],
+      pages: [{ id: "page-child", name: "Roadmap", content_type: "markdown" }],
       files: [],
     });
     vi.mocked(uploadFileOrPage).mockResolvedValue({

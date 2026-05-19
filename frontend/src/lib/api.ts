@@ -448,6 +448,7 @@ export async function listAllPages(): Promise<{ pages: UserPageEntry[] }> {
 export interface UserPageEntry {
   id: string;
   name: string;
+  content_type: "markdown" | "html";
   workspace_id: string;
   folder_id: string | null;
   folder_path: string[];
@@ -1115,6 +1116,7 @@ export async function dismissStashInvite(inviteId: string): Promise<void> {
 export interface WorkspacePageEntry {
   id: string;
   name: string;
+  content_type: "markdown" | "html";
   workspace_id: string;
   folder_id: string | null;
   // Chain of folder names from the workspace root down to the page's folder.
@@ -1358,6 +1360,7 @@ export interface WorkspaceFolder {
 export interface WorkspacePage {
   id: string;
   name: string;
+  content_type: "markdown" | "html";
   folder_id: string | null;
 }
 export interface WorkspaceFile {
@@ -1446,7 +1449,7 @@ export interface FolderContents {
   folder: { id: string; name: string; parent_folder_id: string | null };
   breadcrumbs: FolderBreadcrumb[];
   subfolders: FolderSubfolder[];
-  pages: { id: string; name: string }[];
+  pages: { id: string; name: string; content_type: "markdown" | "html" }[];
   files: Omit<WorkspaceFile, "folder_id">[];
 }
 

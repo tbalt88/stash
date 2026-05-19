@@ -77,7 +77,7 @@ async def _files_tree(workspace_id: UUID, user_id: UUID) -> dict:
             workspace_id,
         ),
         pool.fetch(
-            "SELECT id, name, folder_id FROM pages WHERE workspace_id = $1 "
+            "SELECT id, name, content_type, folder_id FROM pages WHERE workspace_id = $1 "
             "AND COALESCE(metadata->>'shared_in_stash_id', '') = '' ORDER BY name",
             workspace_id,
         ),
@@ -138,6 +138,7 @@ async def _files_tree(workspace_id: UUID, user_id: UUID) -> dict:
             {
                 "id": str(r["id"]),
                 "name": r["name"],
+                "content_type": r["content_type"],
                 "folder_id": str(r["folder_id"]) if r["folder_id"] else None,
             }
             for r in pages

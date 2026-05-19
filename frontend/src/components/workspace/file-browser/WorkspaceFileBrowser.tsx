@@ -136,12 +136,7 @@ export default function WorkspaceFileBrowser({ workspaceId, folderId }: Props) {
           name: sub.name,
           subtitle: subtitleForFolder(sub.page_count, sub.file_count),
         })),
-        ...contents.pages.map((p) => ({
-          kind: "page" as const,
-          id: p.id,
-          name: p.name.replace(/\.md$/, ""),
-          subtitle: p.name.toLowerCase().endsWith(".html") ? "html page" : "page",
-        })),
+        ...contents.pages.map((p) => pageToGridItem(p)),
         ...contents.files.map((f) =>
           fileToGridItem({
             id: f.id,
@@ -165,12 +160,7 @@ export default function WorkspaceFileBrowser({ workspaceId, folderId }: Props) {
           0
         ),
       })),
-      ...tree.pages.map((p: PageSummary) => ({
-        kind: "page" as const,
-        id: p.id,
-        name: p.name.replace(/\.md$/, ""),
-        subtitle: p.name.toLowerCase().endsWith(".html") ? "html page" : "page",
-      })),
+      ...tree.pages.map((p: PageSummary) => pageToGridItem(p)),
       ...rootFiles,
     ];
   }, [folderId, contents, tree, rootFiles]);
@@ -431,6 +421,20 @@ function fileToGridItem(file: {
     sizeBytes: file.size_bytes,
     linkedTableId: file.linked_table_id ?? undefined,
     contentType: file.content_type,
+  };
+}
+
+function pageToGridItem(page: {
+  id: string;
+  name: string;
+  content_type: "markdown" | "html";
+}): GridItem {
+  const isHtml = page.content_type === "html";
+  return {
+    kind: isHtml ? "html" : "page",
+    id: page.id,
+    name: page.name.replace(/\.md$/, ""),
+    subtitle: isHtml ? "html page" : "page",
   };
 }
 

@@ -77,6 +77,7 @@ export interface PageSummary {
   workspace_id: string;
   folder_id: string | null;
   name: string;
+  content_type: PageContentType;
   created_at: string;
   updated_at: string;
 }

@@ -23,6 +23,7 @@ import {
   createCommentThread,
   deleteCommentMessage,
   deleteCommentThread,
+  fetchAuthed,
   getFolderContents,
   getPage,
   listCommentThreads,
@@ -46,6 +47,72 @@ function escapeHtml(s: string): string {
   return s.replace(/[&<>"']/g, (c) =>
     c === "&" ? "&amp;" : c === "<" ? "&lt;" : c === ">" ? "&gt;" : c === '"' ? "&quot;" : "&#39;"
   );
+}
+
+function normalizeInternalHref(href: string): string | null {
+  if (href.startsWith("/")) return href;
+  if (!/^https?:\/\//i.test(href)) return null;
+  if (typeof window === "undefined") return null;
+
+  let url: URL;
+  try {
+    url = new URL(href);
+  } catch {
+    return null;
+  }
+  const isCurrentOrigin = url.origin === window.location.origin;
+  const isStashHost = /^(app\.)?stash\.ac$/i.test(url.hostname);
+  if (!isCurrentOrigin && !isStashHost) return null;
+  return `${url.pathname}${url.search}${url.hash}`;
+}
+
+function isAppRoute(path: string): boolean {
+  return (
+    path.startsWith("/workspaces/") ||
+    path.startsWith("/stashes/") ||
+    path.startsWith("/tables/") ||
+    path.startsWith("/search") ||
+    path.startsWith("/settings")
+  );
+}
+
+function isWorkspaceFileDownloadPath(path: string): boolean {
+  return /^\/api\/v1\/workspaces\/[^/]+\/files\/[^/]+\/download(?:[?#].*)?$/i.test(path);
+}
+
+function isSafeExternalHref(href: string): boolean {
+  return /^(https?:|mailto:|tel:)/i.test(href);
+}
+
+async function downloadAuthedFile(path: string) {
+  const res = await fetchAuthed(path);
+  if (!res.ok) throw new Error(`Download failed (${res.status})`);
+  const blob = await res.blob();
+  const filename = filenameFromHeaders(res.headers) ?? filenameFromUrl(res.url) ?? "download";
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+function filenameFromHeaders(headers: Headers): string | null {
+  const disposition = headers.get("content-disposition");
+  if (!disposition) return null;
+  const utf8 = disposition.match(/filename\*=UTF-8''([^;]+)/i);
+  if (utf8?.[1]) return decodeURIComponent(utf8[1]);
+  const ascii = disposition.match(/filename="?([^";]+)"?/i);
+  return ascii?.[1] ?? null;
+}
+
+function filenameFromUrl(url: string): string | null {
+  if (!url) return null;
+  const path = new URL(url, window.location.origin).pathname;
+  const name = path.split("/").filter(Boolean).pop();
+  return name ? decodeURIComponent(name) : null;
 }
 
 export default function StashPageView() {
@@ -267,6 +334,31 @@ export default function StashPageView() {
     [workspaceId, pageId, activeThreadId]
   );
 
+  const handleContentLink = useCallback(
+    (href: string) => {
+      const internalPath = normalizeInternalHref(href);
+      if (internalPath) {
+        if (isWorkspaceFileDownloadPath(internalPath)) {
+          downloadAuthedFile(internalPath).catch((e) => {
+            setError(e instanceof Error ? e.message : "Download failed");
+          });
+          return;
+        }
+        if (isAppRoute(internalPath)) {
+          router.push(internalPath);
+          return;
+        }
+        window.open(internalPath, "_blank", "noopener,noreferrer");
+        return;
+      }
+
+      if (isSafeExternalHref(href)) {
+        window.open(href, "_blank", "noopener,noreferrer");
+      }
+    },
+    [router]
+  );
+
   useEffect(() => {
     if (user) load();
   }, [user, load]);
@@ -339,7 +431,7 @@ export default function StashPageView() {
                   label: "HTML (.html)",
                   onSelect: () =>
                     downloadBlob(
-                      wrapHtml(page.name, page.content_html ?? ""),
+                      isHtml ? page.content_html ?? "" : wrapHtml(page.name, page.content_html ?? ""),
                       "text/html",
                       `${baseName}.html`
                     ),
@@ -372,6 +464,7 @@ export default function StashPageView() {
                     pendingWrapId={pendingWrapId}
                     onWrapComplete={() => setPendingWrapId(null)}
                     onHtmlMutated={handleHtmlMutated}
+                    onNavigateLink={handleContentLink}
                     stripCommentToken={stripCommentToken}
                     editable={htmlEditMode}
                   />
@@ -414,7 +507,7 @@ export default function StashPageView() {
                   file={page}
                   onSave={handleSave}
                   onSaveStatusChange={setSaveStatus}
-                  onNavigateInternal={(href) => router.push(href)}
+                  onNavigateInternal={handleContentLink}
                   onAddComment={handleAddCommentMarkdown}
                   onActivateThread={setActiveThreadId}
                   activeThreadId={activeThreadId}
