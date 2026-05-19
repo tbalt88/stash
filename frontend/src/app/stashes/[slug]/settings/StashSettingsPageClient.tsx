@@ -19,16 +19,21 @@ import {
   getPublicStash,
   updateStash,
   uploadFile,
+  type StashGeneralPermission,
   type PublicStashDetail,
 } from "../../../../lib/api";
 import { resetStashNavigationCache } from "../../../../lib/stashNavigationCache";
 
-type StashAccess = PublicStashDetail["stash"]["access"];
+const WORKSPACE_PERMISSION_OPTIONS = [
+  { value: "none", label: "No workspace access" },
+  { value: "read", label: "Workspace can view" },
+  { value: "write", label: "Workspace can edit" },
+];
 
-const ACCESS_OPTIONS = [
-  { value: "workspace", label: "Workspace" },
-  { value: "private", label: "Private" },
-  { value: "public", label: "Public" },
+const PUBLIC_PERMISSION_OPTIONS = [
+  { value: "none", label: "No public access" },
+  { value: "read", label: "Anyone with link can view" },
+  { value: "write", label: "Anyone with link can edit" },
 ];
 
 export default function StashSettingsPageClient({ slug }: { slug: string }) {
@@ -40,7 +45,10 @@ export default function StashSettingsPageClient({ slug }: { slug: string }) {
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [title, setTitle] = useState("");
-  const [access, setAccess] = useState<StashAccess>("workspace");
+  const [workspacePermission, setWorkspacePermission] =
+    useState<StashGeneralPermission>("read");
+  const [publicPermission, setPublicPermission] =
+    useState<StashGeneralPermission>("none");
   const [discoverable, setDiscoverable] = useState(false);
 
   const stash = data?.stash ?? null;
@@ -85,7 +93,8 @@ export default function StashSettingsPageClient({ slug }: { slug: string }) {
   useEffect(() => {
     if (!stash) return;
     setTitle(stash.title);
-    setAccess(stash.access);
+    setWorkspacePermission(stash.workspace_permission);
+    setPublicPermission(stash.public_permission);
     setDiscoverable(stash.discoverable);
   }, [stash]);
 
@@ -163,10 +172,11 @@ export default function StashSettingsPageClient({ slug }: { slug: string }) {
     setError("");
     setMessage("");
     try {
-      const nextDiscoverable = access === "public" ? discoverable : false;
+      const nextDiscoverable = publicPermission === "none" ? false : discoverable;
       const updated = await updateStash(stash.id, {
         title: trimmedTitle,
-        access,
+        workspace_permission: workspacePermission,
+        public_permission: publicPermission,
         discoverable: nextDiscoverable,
       });
       setData((current) => (current ? { ...current, stash: updated } : current));
@@ -274,31 +284,49 @@ export default function StashSettingsPageClient({ slug }: { slug: string }) {
                 className="mt-1 w-full rounded-md border border-border bg-surface px-3 py-2 text-[13.5px] text-foreground outline-none focus:border-[var(--color-brand-400)]"
               />
 
-              <div className="mt-4 grid gap-3 sm:grid-cols-[160px_minmax(0,1fr)]">
+              <div className="mt-4 grid gap-3 sm:grid-cols-2">
                 <div>
                   <label className="block text-[12px] font-medium text-muted">
-                    Visibility
+                    Workspace access
                   </label>
                   <CustomSelect
-                    value={access}
-                    options={ACCESS_OPTIONS}
-                    onChange={(next) => setAccess(next as StashAccess)}
-                    ariaLabel="Stash visibility"
+                    value={workspacePermission}
+                    options={WORKSPACE_PERMISSION_OPTIONS}
+                    onChange={(next) =>
+                      setWorkspacePermission(next as StashGeneralPermission)
+                    }
+                    ariaLabel="Workspace access"
+                    className="mt-1 w-full rounded-md border border-border bg-surface px-2.5 py-2 text-[12.5px]"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[12px] font-medium text-muted">
+                    Public access
+                  </label>
+                  <CustomSelect
+                    value={publicPermission}
+                    options={PUBLIC_PERMISSION_OPTIONS}
+                    onChange={(next) => {
+                      const permission = next as StashGeneralPermission;
+                      setPublicPermission(permission);
+                      if (permission === "none") setDiscoverable(false);
+                    }}
+                    ariaLabel="Public access"
                     className="mt-1 w-full rounded-md border border-border bg-surface px-2.5 py-2 text-[12.5px]"
                   />
                 </div>
                 <label
                   className={
-                    "mt-5 flex items-center gap-2 rounded-md border border-border bg-surface px-3 py-2 text-[12.5px] " +
-                    (access === "public"
+                    "flex items-center gap-2 rounded-md border border-border bg-surface px-3 py-2 text-[12.5px] sm:col-span-2 " +
+                    (publicPermission !== "none"
                       ? "cursor-pointer text-foreground"
                       : "cursor-not-allowed text-muted")
                   }
                 >
                   <input
                     type="checkbox"
-                    checked={access === "public" && discoverable}
-                    disabled={access !== "public"}
+                    checked={publicPermission !== "none" && discoverable}
+                    disabled={publicPermission === "none"}
                     onChange={(e) => setDiscoverable(e.target.checked)}
                   />
                   <span>List on Discover</span>

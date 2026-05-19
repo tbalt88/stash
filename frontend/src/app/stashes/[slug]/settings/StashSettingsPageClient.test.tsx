@@ -90,6 +90,8 @@ function stashDetail(
       owner_name: "henry",
       owner_display_name: "Henry",
       access: "public",
+      workspace_permission: "read",
+      public_permission: "read",
       discoverable: false,
       cover_image_url: null,
       icon_url: null,
@@ -141,7 +143,8 @@ describe("StashSettingsPageClient", () => {
     await waitFor(() =>
       expect(updateStash).toHaveBeenCalledWith("stash-1", {
         title: "Better Stash",
-        access: "public",
+        workspace_permission: "read",
+        public_permission: "read",
         discoverable: false,
       }),
     );

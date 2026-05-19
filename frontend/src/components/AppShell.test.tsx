@@ -400,6 +400,8 @@ function publishedStashResult(slug: string) {
       owner_name: "henry",
       owner_display_name: "Henry",
       access: "public",
+      workspace_permission: "read",
+      public_permission: "read",
       discoverable: false,
       cover_image_url: null,
       icon_url: null,

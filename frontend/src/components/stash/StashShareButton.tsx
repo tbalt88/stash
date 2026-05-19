@@ -11,18 +11,29 @@ import {
   searchUsers,
   updateStash,
   type PublicStashDetail,
+  type StashGeneralPermission,
   type StashMember,
   type StashMemberPermission,
 } from "../../lib/api";
 import { resetStashNavigationCache } from "../../lib/stashNavigationCache";
 import type { UserSearchResult } from "../../lib/types";
 
-type StashAccess = PublicStashDetail["stash"]["access"];
-
 const PERMISSION_OPTIONS: { value: StashMemberPermission; label: string }[] = [
   { value: "read", label: "Read" },
   { value: "write", label: "Write" },
   { value: "admin", label: "Admin" },
+];
+
+const WORKSPACE_PERMISSION_OPTIONS: { value: StashGeneralPermission; label: string }[] = [
+  { value: "none", label: "No access" },
+  { value: "read", label: "Can view" },
+  { value: "write", label: "Can edit" },
+];
+
+const PUBLIC_PERMISSION_OPTIONS: { value: StashGeneralPermission; label: string }[] = [
+  { value: "none", label: "No access" },
+  { value: "read", label: "Can view" },
+  { value: "write", label: "Can edit" },
 ];
 
 const PALETTE = [
@@ -45,7 +56,10 @@ export default function StashShareButton({
 }) {
   const [open, setOpen] = useState(false);
   const [copied, setCopied] = useState(false);
-  const [vis, setVis] = useState<StashAccess>(stash.access);
+  const [workspacePermission, setWorkspacePermission] =
+    useState<StashGeneralPermission>(stash.workspace_permission);
+  const [publicPermission, setPublicPermission] =
+    useState<StashGeneralPermission>(stash.public_permission);
   const [discoverable, setDiscoverable] = useState(stash.discoverable);
   const [saving, setSaving] = useState(false);
   const [shareMessage, setShareMessage] = useState("");
@@ -64,9 +78,10 @@ export default function StashShareButton({
   useEscapeKey(open, () => setOpen(false));
 
   useEffect(() => {
-    setVis(stash.access);
+    setWorkspacePermission(stash.workspace_permission);
+    setPublicPermission(stash.public_permission);
     setDiscoverable(stash.discoverable);
-  }, [stash.access, stash.discoverable]);
+  }, [stash.workspace_permission, stash.public_permission, stash.discoverable]);
 
   const loadMembers = useCallback(async () => {
     setMembersLoading(true);
@@ -125,17 +140,21 @@ export default function StashShareButton({
     }
   }
 
-  async function applyVisibility(nextAccess: StashAccess) {
-    const nextDiscoverable = nextAccess === "public" ? discoverable : false;
-
+  async function applyGeneralAccess(
+    nextWorkspacePermission: StashGeneralPermission,
+    nextPublicPermission: StashGeneralPermission,
+  ) {
+    const nextDiscoverable = nextPublicPermission === "none" ? false : discoverable;
     setSaving(true);
     setShareMessage("");
     try {
       const updated = await updateStash(stash.id, {
-        access: nextAccess,
+        workspace_permission: nextWorkspacePermission,
+        public_permission: nextPublicPermission,
         discoverable: nextDiscoverable,
       });
-      setVis(updated.access);
+      setWorkspacePermission(updated.workspace_permission);
+      setPublicPermission(updated.public_permission);
       setDiscoverable(updated.discoverable);
       resetStashNavigationCache();
       await onChanged();
@@ -151,10 +170,12 @@ export default function StashShareButton({
     setShareMessage("");
     try {
       const updated = await updateStash(stash.id, {
-        access: "public",
+        workspace_permission: workspacePermission,
+        public_permission: publicPermission,
         discoverable: nextDiscoverable,
       });
-      setVis(updated.access);
+      setWorkspacePermission(updated.workspace_permission);
+      setPublicPermission(updated.public_permission);
       setDiscoverable(updated.discoverable);
       resetStashNavigationCache();
       await onChanged();
@@ -269,32 +290,29 @@ export default function StashShareButton({
 
           {canWrite && (
             <>
-              <div className="sys-label mb-1 mt-3">Visibility</div>
+              <div className="sys-label mb-1 mt-3">General access</div>
               <div className="flex flex-col gap-1">
-                <VisOption
+                <GeneralAccessRow
                   label="Workspace"
-                  hint="Anyone in the owning workspace can view"
-                  value="workspace"
-                  current={vis}
-                  onChange={(v) => void applyVisibility(v)}
+                  hint="Anyone in the owning workspace"
+                  value={workspacePermission}
+                  options={WORKSPACE_PERMISSION_OPTIONS}
+                  onChange={(permission) =>
+                    void applyGeneralAccess(permission, publicPermission)
+                  }
                 />
-                <VisOption
-                  label="Private"
-                  hint="Only the owner and explicit members"
-                  value="private"
-                  current={vis}
-                  onChange={(v) => void applyVisibility(v)}
-                />
-                <VisOption
+                <GeneralAccessRow
                   label="Public"
-                  hint="Anyone with the URL can view"
-                  value="public"
-                  current={vis}
-                  onChange={(v) => void applyVisibility(v)}
+                  hint="Anyone with the URL"
+                  value={publicPermission}
+                  options={PUBLIC_PERMISSION_OPTIONS}
+                  onChange={(permission) =>
+                    void applyGeneralAccess(workspacePermission, permission)
+                  }
                 />
               </div>
 
-              {vis === "public" && (
+              {publicPermission !== "none" && (
                 <label className="mt-3 flex cursor-pointer items-center gap-2 rounded-md border border-border bg-surface px-2 py-1.5">
                   <input
                     type="checkbox"
@@ -520,42 +538,38 @@ function Avatar({ label }: { label: string }) {
   );
 }
 
-function VisOption({
+function GeneralAccessRow({
   label,
   hint,
   value,
-  current,
+  options,
   onChange,
 }: {
   label: string;
   hint: string;
-  value: StashAccess;
-  current: StashAccess;
-  onChange: (next: StashAccess) => void;
+  value: StashGeneralPermission;
+  options: { value: StashGeneralPermission; label: string }[];
+  onChange: (next: StashGeneralPermission) => void;
 }) {
-  const active = value === current;
   return (
-    <button
-      type="button"
-      onClick={() => onChange(value)}
-      className={
-        "flex items-start gap-2 rounded-md px-2 py-1.5 text-left text-[12px] " +
-        (active ? "bg-[var(--color-brand-50)]" : "hover:bg-raised")
-      }
-    >
-      <span
-        className={
-          "mt-[3px] inline-block h-3 w-3 flex-shrink-0 rounded-full border-2 " +
-          (active
-            ? "border-[var(--color-brand-600)] bg-[var(--color-brand-500)]"
-            : "border-border bg-base")
-        }
-      />
+    <div className="flex items-center gap-2 rounded-md bg-surface px-2 py-1.5 text-[12px]">
       <span className="min-w-0">
         <span className="block font-medium text-foreground">{label}</span>
         <span className="block text-[11px] text-muted">{hint}</span>
       </span>
-    </button>
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value as StashGeneralPermission)}
+        className="ml-auto h-7 rounded border border-border bg-base px-1.5 text-[11.5px] text-foreground outline-none focus:border-[var(--color-brand-400)]"
+        aria-label={`${label} access`}
+      >
+        {options.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+    </div>
   );
 }
 

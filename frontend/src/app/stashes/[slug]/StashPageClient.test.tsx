@@ -116,6 +116,8 @@ function stashDetail(
       owner_name: "henry",
       owner_display_name: "Henry",
       access: "public",
+      workspace_permission: "read",
+      public_permission: "read",
       discoverable: false,
       cover_image_url: null,
       icon_url: null,
@@ -209,7 +211,11 @@ describe("StashPageClient sharing", () => {
 
   it("manages explicit Stash members from the Share dropdown", async () => {
     vi.mocked(getPublicStash).mockResolvedValueOnce({
-      ...stashDetail({ access: "private" }),
+      ...stashDetail({
+        access: "private",
+        workspace_permission: "none",
+        public_permission: "none",
+      }),
       can_write: true,
     });
 
@@ -236,7 +242,11 @@ describe("StashPageClient sharing", () => {
 
   it("keeps add/create flows behind the single Add things button", async () => {
     vi.mocked(getPublicStash).mockResolvedValueOnce({
-      ...stashDetail({ access: "workspace" }),
+      ...stashDetail({
+        access: "workspace",
+        workspace_permission: "read",
+        public_permission: "none",
+      }),
       can_write: true,
     });
 
@@ -258,7 +268,11 @@ describe("StashPageClient sharing", () => {
 
   it("does not render stash access as a title badge", async () => {
     vi.mocked(getPublicStash).mockResolvedValueOnce(
-      stashDetail({ access: "workspace" }),
+      stashDetail({
+        access: "workspace",
+        workspace_permission: "read",
+        public_permission: "none",
+      }),
     );
 
     render(<StashPageClient slug="shared-stash" />);

@@ -31,12 +31,40 @@ def _content_hash(content: str) -> str:
 _STASH_COLS = (
     "v.id, v.workspace_id, v.slug, v.title, v.description, v.owner_id, "
     "owner_user.name AS owner_name, owner_user.display_name AS owner_display_name, "
-    "v.access, "
+    "CASE "
+    "WHEN v.public_permission != 'none' THEN 'public' "
+    "WHEN v.workspace_permission != 'none' THEN 'workspace' "
+    "ELSE 'private' "
+    "END AS access, "
+    "v.workspace_permission, v.public_permission, "
     "v.discoverable, v.cover_image_url, v.icon_url, v.view_count, v.forked_from_stash_id, "
     "v.created_at, v.updated_at"
 )
 _STASH_FROM = "FROM stashes v JOIN users owner_user ON owner_user.id = v.owner_id"
 _STASH_SELECT = f"SELECT {_STASH_COLS} {_STASH_FROM}"
+
+_GENERAL_PERMISSION_VALUES = {"none", "read", "write"}
+
+
+def _visibility_for_permissions(workspace_permission: str, public_permission: str) -> str:
+    if public_permission != "none":
+        return "public"
+    if workspace_permission != "none":
+        return "workspace"
+    return "private"
+
+
+def _validate_general_permissions(
+    workspace_permission: str,
+    public_permission: str,
+    discoverable: bool,
+) -> None:
+    if workspace_permission not in _GENERAL_PERMISSION_VALUES:
+        raise ValueError("Unsupported workspace Stash permission")
+    if public_permission not in _GENERAL_PERMISSION_VALUES:
+        raise ValueError("Unsupported public Stash permission")
+    if discoverable and public_permission == "none":
+        raise ValueError("Discover Stashes must be public")
 
 
 async def _attach_items(stash: dict) -> dict:
@@ -51,7 +79,7 @@ async def _attach_items(stash: dict) -> dict:
 
 
 async def _is_anonymously_readable(stash: dict) -> bool:
-    return stash["access"] == "public"
+    return stash["public_permission"] != "none"
 
 
 def _mark_native(stash: dict) -> dict:
@@ -94,7 +122,12 @@ async def _validate_item_partition(conn, access: str, items: list, stash_id: UUI
         rows = []
         for target_type, target_id in targets:
             target_rows = await conn.fetch(
-                "SELECT s.id, s.access FROM stashes s "
+                "SELECT s.id, CASE "
+                "WHEN s.public_permission != 'none' THEN 'public' "
+                "WHEN s.workspace_permission != 'none' THEN 'workspace' "
+                "ELSE 'private' "
+                "END AS access "
+                "FROM stashes s "
                 "JOIN stash_items si ON si.stash_id = s.id "
                 "WHERE si.object_type = $1 AND si.object_id = $2 "
                 "AND ($3::uuid IS NULL OR s.id != $3)",
@@ -191,16 +224,15 @@ async def create_stash(
     owner_id: UUID,
     title: str,
     description: str,
-    access: str,
+    workspace_permission: str,
+    public_permission: str,
     discoverable: bool,
     cover_image_url: str | None,
     items: list,
     icon_url: str | None = None,
 ) -> dict:
-    if access not in {"workspace", "private", "public"}:
-        raise ValueError("Unsupported Stash access")
-    if discoverable and access != "public":
-        raise ValueError("Discover Stashes must be public")
+    _validate_general_permissions(workspace_permission, public_permission, discoverable)
+    access = _visibility_for_permissions(workspace_permission, public_permission)
 
     pool = get_pool()
     slug = _slugify(title)
@@ -209,15 +241,16 @@ async def create_stash(
             await _validate_item_partition(conn, access, items, None)
             inserted = await conn.fetchrow(
                 "INSERT INTO stashes (workspace_id, slug, title, description, owner_id, "
-                "access, discoverable, cover_image_url, icon_url) "
-                "VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) "
+                "workspace_permission, public_permission, discoverable, cover_image_url, icon_url) "
+                "VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) "
                 "RETURNING id",
                 workspace_id,
                 slug,
                 title,
                 description,
                 owner_id,
-                access,
+                workspace_permission,
+                public_permission,
                 discoverable,
                 cover_image_url,
                 icon_url,
@@ -258,19 +291,25 @@ async def update_stash(
 ) -> dict | None:
     pool = get_pool()
     stash = await pool.fetchrow(
-        "SELECT id, workspace_id, owner_id, access FROM stashes WHERE id = $1", stash_id
+        "SELECT id, workspace_id, owner_id, workspace_permission, public_permission "
+        "FROM stashes WHERE id = $1",
+        stash_id,
     )
     if not stash or not await user_can_manage(stash_id, user_id):
         return None
-    access = updates.get("access")
+    workspace_permission = updates.get("workspace_permission")
+    public_permission = updates.get("public_permission")
     discoverable = updates.get("discoverable")
     items = updates.get("items") if "items" in updates else None
-    next_access = access or stash["access"]
-    if next_access not in {"workspace", "private", "public"}:
-        raise ValueError("Unsupported Stash access")
-    if discoverable and next_access != "public":
-        raise ValueError("Discover Stashes must be public")
-    if access and access != "public" and updates.get("discoverable") is None:
+    next_workspace_permission = workspace_permission or stash["workspace_permission"]
+    next_public_permission = public_permission or stash["public_permission"]
+    _validate_general_permissions(
+        next_workspace_permission,
+        next_public_permission,
+        bool(discoverable),
+    )
+    next_access = _visibility_for_permissions(next_workspace_permission, next_public_permission)
+    if public_permission == "none" and updates.get("discoverable") is None:
         updates["discoverable"] = False
 
     sets, args, idx = [], [], 1
@@ -278,7 +317,8 @@ async def update_stash(
     for col in (
         "title",
         "description",
-        "access",
+        "workspace_permission",
+        "public_permission",
         "discoverable",
         "cover_image_url",
         "icon_url",
@@ -295,7 +335,9 @@ async def update_stash(
     async with pool.acquire() as conn:
         async with conn.transaction():
             partition_items = items
-            if partition_items is None and access is not None:
+            if partition_items is None and (
+                workspace_permission is not None or public_permission is not None
+            ):
                 partition_items = await conn.fetch(
                     "SELECT object_type, object_id FROM stash_items WHERE stash_id = $1",
                     stash_id,
@@ -381,7 +423,7 @@ async def list_public_stashes(
 ) -> list[dict]:
     """Catalog of Stashes whose every underlying item is anonymously readable."""
     pool = get_pool()
-    where = ["v.access = 'public'", "v.discoverable = true"]
+    where = ["v.public_permission != 'none'", "v.discoverable = true"]
     args: list = []
     idx = 1
     if query:
@@ -398,7 +440,11 @@ async def list_public_stashes(
 
     rows = await pool.fetch(
         f"SELECT v.id, v.workspace_id, v.slug, v.title, v.description, v.owner_id, "
-        f"v.access, v.discoverable, v.cover_image_url, v.icon_url, v.view_count, "
+        f"CASE WHEN v.public_permission != 'none' THEN 'public' "
+        f"WHEN v.workspace_permission != 'none' THEN 'workspace' "
+        f"ELSE 'private' END AS access, "
+        f"v.workspace_permission, v.public_permission, "
+        f"v.discoverable, v.cover_image_url, v.icon_url, v.view_count, "
         f"v.created_at, v.updated_at, "
         f"u.name AS owner_name, u.display_name AS owner_display_name, "
         f"w.name AS workspace_name "
@@ -419,6 +465,8 @@ async def list_public_stashes(
                     "title": stash["title"],
                     "description": stash["description"],
                     "access": stash["access"],
+                    "workspace_permission": stash["workspace_permission"],
+                    "public_permission": stash["public_permission"],
                     "discoverable": stash["discoverable"],
                     "cover_image_url": stash["cover_image_url"],
                     "view_count": stash["view_count"],
@@ -790,9 +838,10 @@ async def add_external_stash(workspace_id: UUID, slug: str, added_by: UUID) -> d
         async with conn.transaction():
             inserted = await conn.fetchrow(
                 "INSERT INTO stashes "
-                "(workspace_id, slug, title, description, owner_id, access, discoverable, "
+                "(workspace_id, slug, title, description, owner_id, workspace_permission, "
+                "public_permission, discoverable, "
                 "cover_image_url, icon_url, forked_from_stash_id) "
-                "VALUES ($1, $2, $3, $4, $5, 'workspace', false, $6, $7, $8) "
+                "VALUES ($1, $2, $3, $4, $5, 'read', 'none', false, $6, $7, $8) "
                 "RETURNING id",
                 workspace_id,
                 _slugify(stash["title"]),
@@ -1290,9 +1339,13 @@ async def remove_member(stash_id: UUID, user_id: UUID) -> bool:
 
 
 async def user_can_write(stash_id: UUID, user_id: UUID) -> bool:
-    """Stash writes require owner/admin rights or explicit write access."""
+    """Stash writes require owner/admin, explicit write, or general edit access."""
     pool = get_pool()
-    row = await pool.fetchrow("SELECT workspace_id, owner_id FROM stashes WHERE id = $1", stash_id)
+    row = await pool.fetchrow(
+        "SELECT workspace_id, owner_id, workspace_permission, public_permission "
+        "FROM stashes WHERE id = $1",
+        stash_id,
+    )
     if not row:
         return False
     if row["owner_id"] == user_id:
@@ -1302,18 +1355,24 @@ async def user_can_write(stash_id: UUID, user_id: UUID) -> bool:
         stash_id,
         user_id,
     )
-    return bool(member and member["permission"] in ("write", "admin"))
+    if member and member["permission"] in ("write", "admin"):
+        return True
+    role = await workspace_service.get_member_role(row["workspace_id"], user_id)
+    if role is not None and row["workspace_permission"] == "write":
+        return True
+    return row["public_permission"] == "write"
 
 
 async def user_can_read(stash_id: UUID, user_id: UUID | None) -> bool:
     pool = get_pool()
     row = await pool.fetchrow(
-        "SELECT workspace_id, owner_id, access FROM stashes WHERE id = $1",
+        "SELECT workspace_id, owner_id, workspace_permission, public_permission "
+        "FROM stashes WHERE id = $1",
         stash_id,
     )
     if not row:
         return False
-    if row["access"] == "public":
+    if row["public_permission"] != "none":
         return True
     if user_id is None:
         return False
@@ -1327,6 +1386,6 @@ async def user_can_read(stash_id: UUID, user_id: UUID | None) -> bool:
     )
     if member is not None:
         return True
-    if row["access"] == "workspace":
+    if row["workspace_permission"] != "none":
         return role is not None
     return False
