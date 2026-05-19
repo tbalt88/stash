@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useBreadcrumbs } from "../../../../../components/BreadcrumbContext";
 import { downloadBlob } from "../../../../../components/DownloadMenu";
+import { DocumentPageSkeleton } from "../../../../../components/SkeletonStates";
 import { StashIcon } from "../../../../../components/StashIcons";
 import HtmlPageView, {
   extractCommentIdsFromHtml,
@@ -274,9 +275,9 @@ export default function StashPageView() {
     if (!loading && !user) router.push("/login");
   }, [user, loading, router]);
 
-  if (loading)
-    return <div className="flex h-screen items-center justify-center text-muted">Loading…</div>;
+  if (loading) return <DocumentPageSkeleton />;
   if (!user) return null;
+  if (!page && !error) return <DocumentPageSkeleton />;
 
   const isHtml = page?.content_type === "html";
   const updatedAt = page?.updated_at
@@ -424,9 +425,7 @@ export default function StashPageView() {
                   stripCommentToken={stripCommentToken}
                 />
               )
-            ) : (
-              <p className="text-muted">Loading…</p>
-            )}
+            ) : null}
           </article>
 
           {page && !isHtml && (
