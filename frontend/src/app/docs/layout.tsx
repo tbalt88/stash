@@ -74,7 +74,7 @@ export default function DocsLayout({ children }: { children: React.ReactNode }) 
           <div className="flex items-center gap-4">
             <Link href="/" className="text-xs text-dim hover:text-foreground">Dashboard</Link>
             {user ? (
-              <span className="text-xs text-muted">{user.display_name || user.name}</span>
+              <span className="text-xs text-muted">{user.display_name}</span>
             ) : (
               <Link href="/login" className="text-xs text-brand hover:text-brand-hover">Sign in</Link>
             )}

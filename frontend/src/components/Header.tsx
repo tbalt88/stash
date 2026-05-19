@@ -32,8 +32,8 @@ export default function Header({ user, onLogout }: HeaderProps) {
 function HeaderUserMenu({ user, onLogout }: { user: User; onLogout?: () => void }) {
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
-  const label = user.display_name || user.name;
-  const initial = (label || "?")[0].toUpperCase();
+  const label = user.display_name;
+  const initial = label[0].toUpperCase();
 
   useEscapeKey(open, () => setOpen(false));
 

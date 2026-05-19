@@ -144,7 +144,7 @@ export default function StashInviteCenter() {
             ) : (
               <div className="flex flex-col gap-2">
                 {invites.map((invite) => {
-                  const inviter = invite.invited_by_display_name || invite.invited_by_name;
+                  const inviter = invite.invited_by_display_name;
                   const busy = busyInviteId === invite.id;
 
                   return (

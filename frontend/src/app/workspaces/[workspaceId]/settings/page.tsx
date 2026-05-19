@@ -127,7 +127,7 @@ export default function StashSettingsPage() {
               >
                 <div className="min-w-0">
                   <div className="truncate text-[13.5px] font-medium text-foreground">
-                    {m.display_name || m.name}
+                    {m.display_name}
                   </div>
                   <div className="text-[11.5px] text-muted">@{m.name}</div>
                 </div>

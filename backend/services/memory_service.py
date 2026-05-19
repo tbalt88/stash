@@ -319,13 +319,8 @@ async def list_workspace_sessions(workspace_id: UUID, user_id: UUID) -> list[dic
         "SELECT h.session_id, "
         "       s.id::text AS id, "
         "       MAX(h.agent_name) AS agent_name, "
-        "       COALESCE("
-        "         (ARRAY_AGG(NULLIF(u.display_name, '') ORDER BY h.created_at) "
-        "          FILTER (WHERE NULLIF(u.display_name, '') IS NOT NULL))[1], "
-        "         (ARRAY_AGG(NULLIF(u.name, '') ORDER BY h.created_at) "
-        "          FILTER (WHERE NULLIF(u.name, '') IS NOT NULL))[1], "
-        "         'Unknown user'"
-        "       ) AS user_name, "
+        "       (ARRAY_AGG(NULLIF(u.display_name, '') ORDER BY h.created_at) "
+        "        FILTER (WHERE NULLIF(u.display_name, '') IS NOT NULL))[1] AS user_name, "
         "       COALESCE(MAX(s.summary), '') AS summary, "
         "       COUNT(*)::INT AS event_count, "
         "       SUM(LENGTH(h.content))::BIGINT AS size_bytes, "
@@ -341,7 +336,11 @@ async def list_workspace_sessions(workspace_id: UUID, user_id: UUID) -> list[dic
         workspace_id,
         user_id,
     )
-    return [dict(r) for r in rows]
+    sessions = [dict(r) for r in rows]
+    for session in sessions:
+        if not session["user_name"]:
+            raise RuntimeError(f"Session {session['session_id']} has no author display_name")
+    return sessions
 
 
 async def get_workspace_event(event_id: UUID, workspace_id: UUID, user_id: UUID) -> dict | None:
@@ -624,7 +623,7 @@ async def query_all_user_events(
         f"SELECT he.id, he.workspace_id, he.created_by, he.agent_name, he.event_type, "
         f"he.session_id, he.tool_name, he.content, he.metadata, he.created_at, "
         f"w.name AS workspace_name, "
-        f"COALESCE(u.display_name, u.name) AS created_by_name "
+        f"u.display_name AS created_by_name "
         f"FROM history_events he "
         f"LEFT JOIN workspaces w ON w.id = he.workspace_id "
         f"LEFT JOIN users u ON u.id = he.created_by "

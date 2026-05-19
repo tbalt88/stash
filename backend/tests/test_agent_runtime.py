@@ -47,7 +47,7 @@ async def workspace(_db_pool):
     user_id = uuid4()
     ws_id = uuid4()
     await _db_pool.execute(
-        "INSERT INTO users (id, name) VALUES ($1, $2)",
+        "INSERT INTO users (id, name, display_name) VALUES ($1, $2, $2)",
         user_id,
         f"u_{user_id.hex[:6]}",
     )

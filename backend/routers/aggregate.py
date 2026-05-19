@@ -150,7 +150,7 @@ async def list_activity(
         {
             "kind": r["kind"],
             "ts": r["ts"],
-            "actor": users.get(r["actor_id"], {"name": "unknown", "display_name": None}),
+            "actor": users[r["actor_id"]],
             "target_id": r["target_id"],
             "target_label": r["target_label"],
             "workspace_id": r["workspace_id"],

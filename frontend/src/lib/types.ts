@@ -1,7 +1,7 @@
 export interface User {
   id: string;
   name: string;
-  display_name: string | null;
+  display_name: string;
   description: string;
   created_at: string;
   last_seen: string;
@@ -10,7 +10,7 @@ export interface User {
 export interface RegisterResponse {
   id: string;
   name: string;
-  display_name: string | null;
+  display_name: string;
   api_key: string;
 }
 
@@ -33,7 +33,7 @@ export interface Workspace {
 export interface WorkspaceMember {
   user_id: string;
   name: string;
-  display_name: string | null;
+  display_name: string;
   role: string;
   joined_at: string;
 }
@@ -239,5 +239,5 @@ export interface CommentThread {
 export interface UserSearchResult {
   id: string;
   name: string;
-  display_name: string | null;
+  display_name: string;
 }

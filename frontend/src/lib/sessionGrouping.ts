@@ -7,12 +7,9 @@ export type SessionDayGroup = {
   users: { user: string; sessions: SessionSummary[] }[];
 };
 
-export function displaySessionUserName(
-  value: string | null | undefined,
-  fallback = "Unknown user"
-): string {
+export function requireSessionUserName(value: string | null | undefined): string {
   const trimmed = value?.trim() ?? "";
-  if (!trimmed) return fallback;
+  if (!trimmed) throw new Error("Session author display_name is missing");
   return trimmed;
 }
 
@@ -20,7 +17,7 @@ export function groupSessionsByDayAndUser(sessions: SessionSummary[]): SessionDa
   const days = new Map<string, Map<string, SessionSummary[]>>();
   for (const session of sortedSessions(sessions)) {
     const dayKey = sessionDayKey(session.last_event_at || session.started_at);
-    const user = displaySessionUserName(session.user_name, "Unknown user");
+    const user = requireSessionUserName(session.user_name);
     if (!days.has(dayKey)) days.set(dayKey, new Map());
     const users = days.get(dayKey)!;
     users.set(user, [...(users.get(user) ?? []), session]);
@@ -48,8 +45,8 @@ function sortedSessions(sessions: SessionSummary[]): SessionSummary[] {
     const timeDiff = sessionTime(b) - sessionTime(a);
     if (timeDiff !== 0) return timeDiff;
 
-    const userA = displaySessionUserName(a.user_name, "");
-    const userB = displaySessionUserName(b.user_name, "");
+    const userA = requireSessionUserName(a.user_name);
+    const userB = requireSessionUserName(b.user_name);
     const userDiff = userA.localeCompare(userB);
     if (userDiff !== 0) return userDiff;
 
@@ -90,7 +87,7 @@ export type SessionFlatGroup = {
 };
 
 export function groupSessionsByUser(sessions: SessionSummary[]): SessionFlatGroup[] {
-  return groupBy(sessions, (s) => displaySessionUserName(s.user_name, "Unknown user"));
+  return groupBy(sessions, (s) => requireSessionUserName(s.user_name));
 }
 
 export function groupSessionsByAgent(sessions: SessionSummary[]): SessionFlatGroup[] {

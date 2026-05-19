@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 
 class UserRegisterRequest(BaseModel):
     name: str = Field(..., min_length=1, max_length=64, pattern=r"^[a-zA-Z0-9_-]+$")
-    display_name: str | None = Field(None, max_length=128)
+    display_name: str | None = Field(None, min_length=1, max_length=128)
     description: str = Field("", max_length=500)
     password: str | None = Field(None, min_length=8, max_length=128)
 
@@ -16,21 +16,21 @@ class UserRegisterRequest(BaseModel):
 class UserRegisterResponse(BaseModel):
     id: UUID
     name: str
-    display_name: str | None
+    display_name: str
     api_key: str
 
 
 class UserProfile(BaseModel):
     id: UUID
     name: str
-    display_name: str | None
+    display_name: str
     description: str
     created_at: datetime
     last_seen: datetime
 
 
 class UserUpdateRequest(BaseModel):
-    display_name: str | None = Field(None, max_length=128)
+    display_name: str | None = Field(None, min_length=1, max_length=128)
     description: str | None = Field(None, max_length=500)
     password: str | None = Field(None, min_length=8, max_length=128)
     # Required whenever `password` is set — stops a stolen session key from
@@ -46,7 +46,7 @@ class LoginRequest(BaseModel):
 class UserSearchResult(BaseModel):
     id: UUID
     name: str
-    display_name: str | None
+    display_name: str
 
 
 class ApiKeyInfo(BaseModel):
@@ -167,7 +167,7 @@ class StashMemberRequest(BaseModel):
 class StashMemberResponse(BaseModel):
     user_id: UUID
     name: str
-    display_name: str | None
+    display_name: str
     permission: str
     granted_by: UUID | None
     created_at: datetime
@@ -212,7 +212,7 @@ class StashInviteResponse(BaseModel):
     source_workspace_name: str
     invited_by_user_id: UUID
     invited_by_name: str
-    invited_by_display_name: str | None = None
+    invited_by_display_name: str
     permission: str
     created_at: datetime
 
@@ -224,7 +224,7 @@ class StashInviteListResponse(BaseModel):
 class WorkspaceMember(BaseModel):
     user_id: UUID
     name: str
-    display_name: str | None
+    display_name: str
     role: str
     joined_at: datetime
 
@@ -271,7 +271,7 @@ class RedeemInviteResponse(BaseModel):
     api_key: str
     user_id: UUID
     username: str
-    display_name: str | None
+    display_name: str
     workspace_id: UUID
     workspace_name: str
 

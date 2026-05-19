@@ -68,7 +68,7 @@ export default function ActivityFeed({
   return (
     <div className="mt-6 flex flex-col">
       {events.map((event, index) => {
-        const name = event.actor.display_name || event.actor.name;
+        const name = event.actor.display_name;
         const color = colorFor(name);
         const href = targetHref(event);
 

@@ -16,7 +16,7 @@ async def test_summarize_one_claims_session_before_llm(pool, monkeypatch):
     workspace_id = uuid4()
 
     await pool.execute(
-        "INSERT INTO users (id, name) VALUES ($1, $2)",
+        "INSERT INTO users (id, name, display_name) VALUES ($1, $2, $2)",
         user_id,
         f"u_{user_id.hex[:6]}",
     )

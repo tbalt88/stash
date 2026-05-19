@@ -58,13 +58,13 @@ export default function SettingsPage() {
 }
 
 function Profile({ user, onUpdated }: { user: User; onUpdated: () => void }) {
-  const [displayName, setDisplayName] = useState(user.display_name || "");
+  const [displayName, setDisplayName] = useState(user.display_name);
   const [description, setDescription] = useState(user.description || "");
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
 
   useEffect(() => {
-    setDisplayName(user.display_name || "");
+    setDisplayName(user.display_name);
     setDescription(user.description || "");
   }, [user]);
 
