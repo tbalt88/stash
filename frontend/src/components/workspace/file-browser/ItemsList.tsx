@@ -8,6 +8,12 @@ import {
 import { FileIcon, FolderIcon, PageIcon, TableIcon } from "../../StashIcons";
 import type { GridItem, ItemKind } from "./FolderItemGrid";
 
+// Tailwind v4 doesn't generate this `grid-cols-[…]` class reliably when
+// minmax() with commas is the first column token, so set the template via
+// inline style. Keeps the four-column Drive-style layout: name takes 2fr,
+// modified + type each take 1fr, action button is fixed 36px.
+const LIST_GRID_COLS = "minmax(0,2fr) minmax(0,1fr) minmax(0,1fr) 36px";
+
 interface Props {
   items: GridItem[];
   onNavigate: (item: GridItem) => void;
@@ -27,7 +33,10 @@ export default function ItemsList({
 }: Props) {
   return (
     <div className="scroll-thin overflow-y-auto">
-      <div className="grid grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)_36px] items-center gap-3 border-b border-border-subtle bg-surface/40 px-4 py-2 text-[11px] font-medium uppercase tracking-wide text-muted">
+      <div
+        className="grid items-center gap-3 border-b border-border-subtle bg-surface/40 px-4 py-2 text-[11px] font-medium uppercase tracking-wide text-muted"
+        style={{ gridTemplateColumns: LIST_GRID_COLS }}
+      >
         <span>Name</span>
         <span>Modified</span>
         <span>Type</span>
@@ -104,9 +113,10 @@ function Row({
         }
       }}
       className={
-        "group grid cursor-pointer select-none grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)_36px] items-center gap-3 border-b border-border-subtle px-4 py-1.5 text-[13px] hover:bg-[var(--color-brand-50)]/40 " +
+        "group grid cursor-pointer select-none items-center gap-3 border-b border-border-subtle px-4 py-1.5 text-[13px] hover:bg-[var(--color-brand-50)]/40 " +
         (over ? "ring-1 ring-inset ring-[var(--color-brand-300)]" : "")
       }
+      style={{ gridTemplateColumns: LIST_GRID_COLS }}
     >
       <div className="flex min-w-0 items-center gap-2.5">
         <span className={"flex h-4 w-4 flex-shrink-0 items-center justify-center " + tintFor(item)}>
