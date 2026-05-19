@@ -117,9 +117,7 @@ class StashItem(BaseModel):
 class StashCreateRequest(BaseModel):
     title: str = Field(..., min_length=1, max_length=160)
     description: str = Field("", max_length=2000)
-    workspace_permission: StashGeneralPermission = Field(
-        "read", pattern=r"^(none|read|write)$"
-    )
+    workspace_permission: StashGeneralPermission = Field("read", pattern=r"^(none|read|write)$")
     public_permission: StashGeneralPermission = Field("none", pattern=r"^(none|read|write)$")
     discoverable: bool = False
     cover_image_url: str | None = None
@@ -133,9 +131,7 @@ class StashUpdateRequest(BaseModel):
     workspace_permission: StashGeneralPermission | None = Field(
         None, pattern=r"^(none|read|write)$"
     )
-    public_permission: StashGeneralPermission | None = Field(
-        None, pattern=r"^(none|read|write)$"
-    )
+    public_permission: StashGeneralPermission | None = Field(None, pattern=r"^(none|read|write)$")
     discoverable: bool | None = None
     cover_image_url: str | None = None
     icon_url: str | None = None
@@ -643,9 +639,7 @@ class PublishRequest(BaseModel):
     content: str = ""
     content_type: str = Field("markdown", pattern=r"^(markdown|html)$")
     html_layout: str = Field("responsive", pattern=r"^(responsive|fixed-aspect)$")
-    workspace_permission: StashGeneralPermission = Field(
-        "read", pattern=r"^(none|read|write)$"
-    )
+    workspace_permission: StashGeneralPermission = Field("read", pattern=r"^(none|read|write)$")
     public_permission: StashGeneralPermission = Field("read", pattern=r"^(none|read|write)$")
     folder_id: UUID | None = None
 

@@ -482,12 +482,12 @@ async def test_invited_private_external_stash_can_be_added_to_workspace(client: 
     stash = (
         await client.post(
             f"/api/v1/workspaces/{source_workspace['id']}/stashes",
-        json={
-            "title": "Private external brief",
-            "workspace_permission": "none",
-            "public_permission": "none",
-            "items": [{"object_type": "page", "object_id": page["id"]}],
-        },
+            json={
+                "title": "Private external brief",
+                "workspace_permission": "none",
+                "public_permission": "none",
+                "items": [{"object_type": "page", "object_id": page["id"]}],
+            },
             headers=_auth(owner_key),
         )
     ).json()
