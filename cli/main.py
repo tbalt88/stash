@@ -2359,7 +2359,8 @@ def hist_delete(
         except StashError as e:
             _err(e)
     console.print(
-        "[green]Session permanently deleted.[/green]" if permanent
+        "[green]Session permanently deleted.[/green]"
+        if permanent
         else "[green]Session moved to trash.[/green]"
     )
 
@@ -3066,7 +3067,8 @@ def files_rm(
         except StashError as e:
             _err(e)
     console.print(
-        "[green]File permanently deleted.[/green]" if permanent
+        "[green]File permanently deleted.[/green]"
+        if permanent
         else "[green]File moved to trash.[/green]"
     )
 
@@ -3117,7 +3119,8 @@ def files_rm_page(
         except StashError as e:
             _err(e)
     console.print(
-        "[green]Page permanently deleted.[/green]" if permanent
+        "[green]Page permanently deleted.[/green]"
+        if permanent
         else "[green]Page moved to trash.[/green]"
     )
 

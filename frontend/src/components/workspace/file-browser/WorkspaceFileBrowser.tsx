@@ -149,13 +149,7 @@ export default function WorkspaceFileBrowser({ workspaceId, folderId }: Props) {
         subtitle: subtitleForFolder(sub.pages?.length ?? 0, 0),
         updatedAt: sub.updated_at,
       })),
-      ...tree.pages.map((p: PageSummary) => ({
-        kind: "page" as const,
-        id: p.id,
-        name: p.name.replace(/\.md$/, ""),
-        subtitle: p.name.toLowerCase().endsWith(".html") ? "html page" : "page",
-        updatedAt: p.updated_at,
-      })),
+      ...tree.pages.map((p: PageSummary) => pageToGridItem(p)),
       ...rootFiles,
     ];
   }, [tree, rootFiles]);
@@ -170,12 +164,7 @@ export default function WorkspaceFileBrowser({ workspaceId, folderId }: Props) {
           name: sub.name,
           subtitle: subtitleForFolder(sub.page_count, sub.file_count),
         })),
-        ...contents.pages.map((p) => ({
-          kind: "page" as const,
-          id: p.id,
-          name: p.name.replace(/\.md$/, ""),
-          subtitle: p.name.toLowerCase().endsWith(".html") ? "html page" : "page",
-        })),
+        ...contents.pages.map((p) => pageToGridItem(p)),
         ...contents.files.map((f) =>
           fileToGridItem({
             id: f.id,
@@ -201,13 +190,7 @@ export default function WorkspaceFileBrowser({ workspaceId, folderId }: Props) {
         ),
         updatedAt: sub.updated_at,
       })),
-      ...tree.pages.map((p: PageSummary) => ({
-        kind: "page" as const,
-        id: p.id,
-        name: p.name.replace(/\.md$/, ""),
-        subtitle: p.name.toLowerCase().endsWith(".html") ? "html page" : "page",
-        updatedAt: p.updated_at,
-      })),
+      ...tree.pages.map((p: PageSummary) => pageToGridItem(p)),
       ...rootFiles,
     ];
   }, [folderId, contents, tree, rootFiles]);
@@ -513,6 +496,22 @@ function fileToGridItem(file: {
     linkedTableId: file.linked_table_id ?? undefined,
     contentType: file.content_type,
     updatedAt: file.created_at,
+  };
+}
+
+function pageToGridItem(page: {
+  id: string;
+  name: string;
+  content_type: "markdown" | "html";
+  updated_at?: string;
+}): GridItem {
+  const isHtml = page.content_type === "html";
+  return {
+    kind: isHtml ? "html" : "page",
+    id: page.id,
+    name: page.name.replace(/\.md$/, ""),
+    subtitle: isHtml ? "html page" : "page",
+    updatedAt: page.updated_at,
   };
 }
 

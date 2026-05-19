@@ -188,9 +188,7 @@ async def _check_session_write(
     operate on rows the live-only `get_session_by_id` won't return.
     """
     if not await workspace_service.can_write(workspace_id, user_id):
-        raise HTTPException(
-            status_code=403, detail="Viewers can read but not modify sessions"
-        )
+        raise HTTPException(status_code=403, detail="Viewers can read but not modify sessions")
     pool = get_pool()
     row = await pool.fetchrow(
         "SELECT id, workspace_id FROM sessions WHERE id = $1",
@@ -218,9 +216,7 @@ async def delete_workspace_session(
 ):
     """Soft delete: stamps deleted_at + deleted_by."""
     await _check_session_write(workspace_id, session_row_id, current_user["id"])
-    deleted = await session_service.delete_session(
-        session_row_id, workspace_id, current_user["id"]
-    )
+    deleted = await session_service.delete_session(session_row_id, workspace_id, current_user["id"])
     if not deleted:
         raise HTTPException(status_code=404, detail="Session not found")
 

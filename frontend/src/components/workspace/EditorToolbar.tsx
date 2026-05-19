@@ -57,10 +57,11 @@ export default function EditorToolbar({ editor, workspaceId, onStartComment }: E
     setUploading(true);
     try {
       const result = await uploadFile(workspaceId, file);
+      const href = fileDownloadHref(workspaceId, result.id);
       if (result.content_type.startsWith("image/")) {
         editor.chain().focus().setImage({ src: result.url, alt: result.name }).run();
       } else {
-        editor.chain().focus().setLink({ href: result.url }).insertContent(result.name).run();
+        editor.chain().focus().setLink({ href }).insertContent(result.name).run();
       }
     } catch {
       // Storage may not be configured
@@ -197,10 +198,14 @@ export default function EditorToolbar({ editor, workspaceId, onStartComment }: E
       <input
         ref={fileInputRef}
         type="file"
-        accept="image/*,.pdf,.doc,.docx,.txt,.csv"
+        accept="image/*,.pdf,.doc,.docx,.txt,.csv,.xls,.xlsx"
         className="hidden"
         onChange={handleImageUpload}
       />
     </>
   );
+}
+
+function fileDownloadHref(workspaceId: string, fileId: string): string {
+  return `/api/v1/workspaces/${workspaceId}/files/${fileId}/download`;
 }
