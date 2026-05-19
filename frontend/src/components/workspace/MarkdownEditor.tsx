@@ -481,7 +481,7 @@ export default function MarkdownEditor({
         ref={scrollContainerRef}
         className="relative flex-1 overflow-y-auto bg-background"
       >
-        <div className="mx-auto w-full max-w-[820px] px-12 py-10">
+        <div className="mx-auto w-full max-w-[820px] px-12 pt-10 pb-24">
           <EditorContent editor={editor} className="file-page-content" />
         </div>
         {composerState && onAddComment && (
