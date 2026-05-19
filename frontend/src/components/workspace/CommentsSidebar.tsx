@@ -26,8 +26,8 @@ export default function CommentsSidebar({
   const resolved = threads.filter((t) => t.resolved_at);
 
   return (
-    <aside className="mt-20 hidden lg:block">
-      <div className="card-soft sticky top-16 max-h-[calc(100vh-6rem)] overflow-y-auto p-3.5">
+    <aside>
+      <div className="card-soft max-h-[calc(100vh-6rem)] overflow-y-auto p-3.5">
         <div className="sys-label">Comments</div>
         {threads.length === 0 ? (
           <div className="mt-2 text-[12px] leading-relaxed text-muted">

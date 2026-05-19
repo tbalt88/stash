@@ -60,7 +60,6 @@ export default function StashPageView() {
 
   const [threads, setThreads] = useState<CommentThread[]>([]);
   const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
-  const [showComments, setShowComments] = useState(false);
   const [htmlSelection, setHtmlSelection] = useState<HtmlSelectionInfo | null>(
     null
   );
@@ -163,7 +162,6 @@ export default function StashPageView() {
     }) => {
       try {
         const created = await createCommentThread(workspaceId, pageId, args);
-        setShowComments(true);
         setActiveThreadId(created.id);
         setThreads((cur) => [...cur, created]);
         return created.id;
@@ -185,7 +183,6 @@ export default function StashPageView() {
           suffix: htmlComposer.selection.suffix,
           body,
         });
-        setShowComments(true);
         setActiveThreadId(created.id);
         setThreads((cur) => [...cur, created]);
         // Ask the iframe to wrap the (still-live) selection. The iframe
@@ -275,26 +272,6 @@ export default function StashPageView() {
         tags={isHtml ? [{ label: "html", tone: "brand" }] : undefined}
         meta={updatedAt ? [`Last edited ${updatedAt}`] : undefined}
         saveStatus={page && !isHtml ? saveStatus : null}
-        rightExtras={
-          page ? (
-            <button
-              type="button"
-              onClick={() => setShowComments((v) => !v)}
-              className={`rounded-md border px-2.5 py-1 text-[12px] font-medium ${
-                showComments
-                  ? "border-[var(--color-brand-600)] bg-[var(--color-brand-50)] text-[var(--color-brand-700)]"
-                  : "border-border-subtle bg-background text-foreground hover:bg-raised"
-              }`}
-            >
-              Comments
-              {openThreadCount > 0 && (
-                <span className="ml-1 rounded-sm bg-[var(--color-brand-600)] px-1 text-[11px] text-white">
-                  {openThreadCount}
-                </span>
-              )}
-            </button>
-          ) : undefined
-        }
         downloadOptions={
           page
             ? [
@@ -338,10 +315,7 @@ export default function StashPageView() {
                     title={page.name}
                     layout={page.html_layout}
                     onSelection={setHtmlSelection}
-                    onActivateThread={(id) => {
-                      setShowComments(true);
-                      setActiveThreadId(id);
-                    }}
+                    onActivateThread={setActiveThreadId}
                     activeThreadId={activeThreadId}
                     pendingWrapId={pendingWrapId}
                     onWrapComplete={() => setPendingWrapId(null)}
@@ -384,10 +358,7 @@ export default function StashPageView() {
                   onSaveStatusChange={setSaveStatus}
                   onNavigateInternal={(href) => router.push(href)}
                   onAddComment={handleAddCommentMarkdown}
-                  onActivateThread={(id) => {
-                    setShowComments(true);
-                    setActiveThreadId(id);
-                  }}
+                  onActivateThread={setActiveThreadId}
                   activeThreadId={activeThreadId}
                 />
               )
@@ -407,7 +378,8 @@ export default function StashPageView() {
           )}
         </main>
 
-        {showComments ? (
+        <div className="mt-20 hidden flex-col gap-4 lg:flex">
+          <StashAside stashes={containingStashes} />
           <CommentsSidebar
             threads={threads}
             activeThreadId={activeThreadId}
@@ -416,9 +388,7 @@ export default function StashPageView() {
             onReply={handleReply}
             onSetResolved={handleSetResolved}
           />
-        ) : (
-          <StashAside stashes={containingStashes} />
-        )}
+        </div>
       </div>
     </div>
   );
@@ -426,8 +396,8 @@ export default function StashPageView() {
 
 function StashAside({ stashes }: { stashes: WorkspaceStash[] }) {
   return (
-    <aside className="mt-20 hidden lg:block">
-      <div className="card-soft sticky top-16 p-3.5">
+    <aside>
+      <div className="card-soft p-3.5">
         <div className="sys-label">In Stashes</div>
         {stashes.length > 0 ? (
           <div className="mt-2 flex flex-col gap-1.5">

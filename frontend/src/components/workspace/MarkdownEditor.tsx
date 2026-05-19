@@ -68,10 +68,6 @@ export default function MarkdownEditor({
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastSaved = useRef<string>(file.content_markdown);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
-  const [commentPopover, setCommentPopover] = useState<{
-    top: number;
-    left: number;
-  } | null>(null);
   // Holds the selection range alive while the composer is open — the
   // <textarea> taking focus changes the editor's selection, so we capture
   // the range up front and re-apply when we set the mark.
@@ -269,42 +265,6 @@ export default function MarkdownEditor({
     };
   }, [confirmSave, editor, onSave]);
 
-  // Selection-anchored "Comment" popover. Mounted at the selection's
-  // bottom-right, anchored to the scrolling container.
-  useEffect(() => {
-    if (!editor || !onAddComment) {
-      setCommentPopover(null);
-      return;
-    }
-    const update = () => {
-      // Don't move the button while the composer is open — that would
-      // make it look like a fresh selection cancelled the open thread.
-      if (composerState) return;
-      const { from, to, empty } = editor.state.selection;
-      if (empty || from === to) {
-        setCommentPopover(null);
-        return;
-      }
-      const container = scrollContainerRef.current;
-      if (!container) return;
-      const coords = editor.view.coordsAtPos(to);
-      const rect = container.getBoundingClientRect();
-      setCommentPopover({
-        top: coords.bottom - rect.top + container.scrollTop + 6,
-        left: Math.min(
-          coords.left - rect.left + container.scrollLeft,
-          rect.width - 140,
-        ),
-      });
-    };
-    editor.on("selectionUpdate", update);
-    editor.on("focus", update);
-    return () => {
-      editor.off("selectionUpdate", update);
-      editor.off("focus", update);
-    };
-  }, [editor, onAddComment, composerState]);
-
   // Paint the active thread's anchor strongly. Toggles an `is-active`
   // class on the matching span(s) via direct DOM ops — the editor's
   // schema doesn't need to track presentation state.
@@ -321,7 +281,7 @@ export default function MarkdownEditor({
   }, [activeThreadId, resolvedMarkdown]);
 
   function openComposer() {
-    if (!editor || !commentPopover) return;
+    if (!editor) return;
     const { from, to, empty } = editor.state.selection;
     if (empty) return;
     const doc = editor.state.doc;
@@ -330,16 +290,22 @@ export default function MarkdownEditor({
     const suffixEnd = Math.min(doc.content.size, to + ANCHOR_CONTEXT_CHARS);
     const prefix = doc.textBetween(prefixStart, from, "\n", "\n");
     const suffix = doc.textBetween(to, suffixEnd, "\n", "\n");
+    const container = scrollContainerRef.current;
+    if (!container) return;
+    const coords = editor.view.coordsAtPos(to);
+    const rect = container.getBoundingClientRect();
     setComposerState({
-      top: commentPopover.top,
-      left: commentPopover.left,
+      top: coords.bottom - rect.top + container.scrollTop + 6,
+      left: Math.min(
+        Math.max(0, coords.left - rect.left + container.scrollLeft),
+        rect.width - 280,
+      ),
       from,
       to,
       quoted_text: quoted,
       prefix,
       suffix,
     });
-    setCommentPopover(null);
   }
 
   async function submitComposer(body: string) {
@@ -387,7 +353,11 @@ export default function MarkdownEditor({
 
   return (
     <div className="flex h-full flex-col">
-      <EditorToolbar editor={editor} workspaceId={workspaceId} />
+      <EditorToolbar
+        editor={editor}
+        workspaceId={workspaceId}
+        onStartComment={onAddComment ? openComposer : undefined}
+      />
       <div
         ref={scrollContainerRef}
         className="relative flex-1 overflow-y-auto bg-background"
@@ -395,20 +365,6 @@ export default function MarkdownEditor({
         <div className="mx-auto w-full max-w-[820px] px-12 py-10">
           <EditorContent editor={editor} className="file-page-content" />
         </div>
-        {commentPopover && onAddComment && !composerState && (
-          <button
-            type="button"
-            onMouseDown={(e) => {
-              // Keep the editor selection alive across the click.
-              e.preventDefault();
-            }}
-            onClick={openComposer}
-            className="absolute z-30 rounded-md border border-border-subtle bg-raised px-3 py-1.5 text-sm font-medium text-foreground shadow-md hover:bg-raised-2"
-            style={{ top: commentPopover.top, left: commentPopover.left }}
-          >
-            Comment
-          </button>
-        )}
         {composerState && onAddComment && (
           <CommentComposerPopover
             top={composerState.top}
