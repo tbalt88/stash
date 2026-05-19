@@ -20,7 +20,6 @@ import {
 import type { Table, TableColumn, TableRow, TableView } from "../../../lib/types";
 import FileViewerHeader from "../../../components/workspace/FileViewerHeader";
 
-// --- Constants ---
 const TYPE_ICONS: Record<string, string> = {
   text: "Aa", number: "#", boolean: "\u2713", date: "\uD83D\uDCC5", datetime: "\uD83D\uDD53",
   url: "\uD83D\uDD17", email: "@", select: "\u25BC", multiselect: "\u2261", json: "{}",
@@ -297,7 +296,6 @@ function TableEditorPageInner() {
     else { setSortBy(colId); setSortOrder("asc"); }
   };
 
-  // --- Filter ---
   const addFilter = () => {
     if (sortedColumns.length === 0) return;
     setFilters((prev) => [...prev, { column_id: sortedColumns[0].id, op: "eq", value: "" }]);
@@ -306,7 +304,6 @@ function TableEditorPageInner() {
   const updateFilter = (idx: number, field: keyof FilterDef, val: string) => setFilters((prev) => prev.map((f, i) => (i === idx ? { ...f, [field]: val } : f)));
   const removeFilter = (idx: number) => setFilters((prev) => prev.filter((_, i) => i !== idx));
 
-  // --- Table ops ---
   const handleDelete = async () => {
     if (!confirm("Delete this table and all its data?")) return;
     try {
@@ -315,7 +312,6 @@ function TableEditorPageInner() {
     } catch (err) { setError(err instanceof Error ? err.message : "Failed to delete"); }
   };
 
-  // --- Column ops ---
   const handleAddColumn = async () => {
     if (!newColName.trim()) return;
     try {
@@ -346,7 +342,6 @@ function TableEditorPageInner() {
     try { setTable(await reorderTableColumns(wsId, tableId, ids)); } catch (err) { setError(err instanceof Error ? err.message : "Failed"); }
   };
 
-  // --- Row ops ---
   const handleAddRow = async () => {
     try { const row = await createTableRow(wsId, tableId, {}); setRows((prev) => [...prev, row]); setTotalCount((c) => c + 1); }
     catch (err) { setError(err instanceof Error ? err.message : "Failed to add row"); }
@@ -365,7 +360,6 @@ function TableEditorPageInner() {
     catch (err) { setError(err instanceof Error ? err.message : "Failed"); }
   };
 
-  // --- Cell editing ---
   const startEditing = (rowId: string, colId: string, currentValue: unknown) => {
     if (readOnly) return;
     setEditingCell({ rowId, colId }); setCellValue(currentValue != null ? String(currentValue) : "");
