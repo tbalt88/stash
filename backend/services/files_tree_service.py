@@ -548,7 +548,7 @@ async def list_workspace_pages(workspace_id: UUID, user_id: UUID | None = None) 
         "  FROM folders f JOIN chain c ON f.parent_folder_id = c.id "
         "  WHERE f.workspace_id = $1"
         ") "
-        "SELECT p.id, p.name, p.workspace_id, p.folder_id, "
+        "SELECT p.id, p.name, p.content_type, p.workspace_id, p.folder_id, "
         "COALESCE(c.path, ARRAY[]::text[]) AS folder_path, p.updated_at "
         "FROM pages p LEFT JOIN chain c ON c.id = p.folder_id "
         "WHERE p.workspace_id = $1 "
@@ -573,7 +573,7 @@ async def list_user_pages(user_id: UUID) -> list[dict]:
         "  SELECT f.id, f.parent_folder_id, f.name, c.path || f.name, f.workspace_id "
         "  FROM folders f JOIN chain c ON f.parent_folder_id = c.id"
         ") "
-        "SELECT p.id, p.name, p.workspace_id, p.folder_id, "
+        "SELECT p.id, p.name, p.content_type, p.workspace_id, p.folder_id, "
         "COALESCE(c.path, ARRAY[]::text[]) AS folder_path, "
         "w.name AS workspace_name, p.updated_at "
         "FROM pages p "
@@ -593,7 +593,7 @@ async def list_workspace_tree(workspace_id: UUID, user_id: UUID | None = None) -
     folders = await list_folders(workspace_id, user_id)
     pool = get_pool()
     page_rows = await pool.fetch(
-        "SELECT id, workspace_id, folder_id, name, created_at, updated_at "
+        "SELECT id, workspace_id, folder_id, name, content_type, created_at, updated_at "
         f"FROM pages WHERE workspace_id = $1 AND {_WORKSPACE_PAGE_FILTER} ORDER BY name",
         workspace_id,
     )
@@ -633,12 +633,18 @@ async def search_pages_fts(
         "COALESCE((SELECT string_agg(kw, ' ') "
         "FROM jsonb_array_elements_text(COALESCE(metadata->'keywords', '[]'::jsonb)) AS kw), '')"
     )
+    content_text_expr = (
+        "CASE WHEN content_type = 'html' "
+        "THEN regexp_replace(COALESCE(content_html, ''), '<[^>]+>', ' ', 'g') "
+        "ELSE COALESCE(content_markdown, '') END"
+    )
     vec_expr = (
-        f"setweight(to_tsvector('english', content_markdown), 'B') || "
+        f"setweight(to_tsvector('english', {content_text_expr}), 'B') || "
         f"setweight(to_tsvector('english', {kw_text_expr}), 'A')"
     )
     rows = await pool.fetch(
-        f"SELECT id, workspace_id, folder_id, name, content_markdown, metadata, updated_at, "
+        f"SELECT id, workspace_id, folder_id, name, content_markdown, content_html, "
+        f"content_type, {content_text_expr} AS search_text, metadata, updated_at, "
         f"ts_rank({vec_expr}, websearch_to_tsquery('english', $2)) AS rank "
         f"FROM pages "
         f"WHERE workspace_id = $1 "
@@ -686,7 +692,8 @@ async def search_pages_vector(
 ) -> list[dict]:
     pool = get_pool()
     rows = await pool.fetch(
-        "SELECT id, workspace_id, folder_id, name, content_markdown, metadata, "
+        "SELECT id, workspace_id, folder_id, name, content_markdown, content_html, "
+        "content_type, html_layout, metadata, "
         "created_by, updated_by, created_at, updated_at, "
         "1 - (embedding <=> $2) AS similarity "
         f"FROM pages WHERE workspace_id = $1 AND {_WORKSPACE_PAGE_FILTER} "

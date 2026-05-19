@@ -217,7 +217,7 @@ async def _grep_pages(args: dict) -> dict:
         {
             "id": str(r["id"]),
             "name": r["name"],
-            "snippet": (r.get("content_markdown") or "")[:300],
+            "snippet": (r.get("search_text") or r.get("content_markdown") or "")[:300],
         }
         for r in rows
     ]

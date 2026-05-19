@@ -100,7 +100,7 @@ export default function MarkdownEditor({
   // parent re-rendering with a stale prop must not yank the editor back.
   const [sourceMarkdown, setSourceMarkdown] = useState<string>(file.content_markdown);
   // Resolved markdown — relative image refs like ![](a69cb715b010.jpg) get
-  // rewritten to absolute signed URLs if a matching workspace file exists.
+  // rewritten to signed URLs if a matching workspace file exists.
   // While the lookup is in-flight, show the raw markdown so the page never
   // flashes empty.
   const [resolvedMarkdown, setResolvedMarkdown] = useState<string>(file.content_markdown);
@@ -505,10 +505,12 @@ type JSONNode = {
   content?: JSONNode[];
 };
 
-function isAbsoluteUrl(url: string): boolean {
-  // Only resolve remote images; relative paths like `a69cb715b010.jpg`
-  // point at files we never uploaded into the page's storage and would 404.
-  return /^https?:\/\//i.test(url);
+function isSupportedImageUrl(url: string): boolean {
+  return /^https?:\/\//i.test(url) || isWorkspaceFileDownloadPath(url);
+}
+
+function isWorkspaceFileDownloadPath(url: string): boolean {
+  return /^\/api\/v1\/workspaces\/[^/]+\/files\/[^/]+\/download(?:[?#].*)?$/i.test(url);
 }
 
 const COMMENT_SPAN_RE = /<span\s+data-comment-id="([^"]+)">([\s\S]*?)<\/span>/g;
@@ -578,7 +580,7 @@ function parseInlineMarkdownInner(text: string): JSONNode[] {
       const alt = match[3];
       const src = match[4];
       const href = match[5];
-      if (isAbsoluteUrl(src)) {
+      if (isSupportedImageUrl(src)) {
         nodes.push({ type: "image", attrs: { src, alt, title: href } });
       } else {
         nodes.push({ type: "text", text: match[0] });
@@ -587,7 +589,7 @@ function parseInlineMarkdownInner(text: string): JSONNode[] {
       // ![alt](src)
       const alt = match[6];
       const src = match[7];
-      if (isAbsoluteUrl(src)) {
+      if (isSupportedImageUrl(src)) {
         nodes.push({ type: "image", attrs: { src, alt } });
       } else {
         // Keep the raw markdown visible so it isn't silently lost.

@@ -56,7 +56,7 @@ const sidebar = {
   stashes: [],
   files: {
     folders: [],
-    pages: [{ id: "page-1", name: "Launch Roadmap.md", folder_id: null }],
+    pages: [{ id: "page-1", name: "Launch Roadmap.md", content_type: "markdown", folder_id: null }],
     files: [],
   },
 };
