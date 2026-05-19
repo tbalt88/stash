@@ -2252,6 +2252,14 @@ export default function AppSidebar({
               : pathname === "/"
           }
         />
+        {activeWorkspace ? (
+          <NavRow
+            href={`/workspaces/${activeWorkspace.id}/members`}
+            icon={<PersonIcon />}
+            label="Members"
+            active={pathname === `/workspaces/${activeWorkspace.id}/members`}
+          />
+        ) : null}
         <NavRow
           href="/discover"
           icon={<DiscoverIcon />}
