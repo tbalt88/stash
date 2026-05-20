@@ -13,8 +13,7 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.execute(
-        """
+    op.execute("""
         CREATE TABLE IF NOT EXISTS page_collab_documents (
             page_id UUID PRIMARY KEY REFERENCES pages(id) ON DELETE CASCADE,
             workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
@@ -22,8 +21,7 @@ def upgrade() -> None:
             created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
             updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
         )
-        """
-    )
+        """)
     op.execute(
         "CREATE INDEX IF NOT EXISTS idx_page_collab_documents_workspace "
         "ON page_collab_documents(workspace_id)"
