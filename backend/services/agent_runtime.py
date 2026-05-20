@@ -110,6 +110,8 @@ def _stash_to_dict(stash: dict) -> dict:
         "title": stash["title"],
         "description": stash["description"],
         "access": stash["access"],
+        "workspace_permission": stash["workspace_permission"],
+        "public_permission": stash["public_permission"],
         "discoverable": bool(stash["discoverable"]),
         "view_count": stash["view_count"],
         "items": [_stash_item_to_dict(item) for item in stash.get("items", [])],
@@ -383,10 +385,15 @@ async def _list_stashes(args: dict) -> dict:
         "properties": {
             "title": {"type": "string"},
             "description": {"type": "string", "default": ""},
-            "access": {
+            "workspace_permission": {
                 "type": "string",
-                "enum": ["workspace", "private", "public"],
-                "default": "workspace",
+                "enum": ["none", "read", "write"],
+                "default": "read",
+            },
+            "public_permission": {
+                "type": "string",
+                "enum": ["none", "read", "write"],
+                "default": "none",
             },
             "discoverable": {"type": "boolean", "default": False},
             "items": {
@@ -413,9 +420,10 @@ async def _list_stashes(args: dict) -> dict:
 async def _create_stash(args: dict) -> dict:
     workspace_id = _current_workspace()
     user_id = _current_user()
-    access = args.get("access") or "workspace"
+    workspace_permission = args.get("workspace_permission") or "read"
+    public_permission = args.get("public_permission") or "none"
     discoverable = bool(args.get("discoverable", False))
-    if discoverable and access != "public":
+    if discoverable and public_permission == "none":
         return _text_result(json.dumps({"error": "Discover Stashes must be public"}))
     items = await _parse_stash_items(args.get("items") or [], workspace_id)
     stash = await stash_service.create_stash(
@@ -423,7 +431,8 @@ async def _create_stash(args: dict) -> dict:
         owner_id=user_id,
         title=args["title"],
         description=args.get("description") or "",
-        access=access,
+        workspace_permission=workspace_permission,
+        public_permission=public_permission,
         discoverable=discoverable,
         cover_image_url=None,
         items=items,
@@ -440,9 +449,13 @@ async def _create_stash(args: dict) -> dict:
             "stash_id": {"type": "string"},
             "title": {"type": "string"},
             "description": {"type": "string"},
-            "access": {
+            "workspace_permission": {
                 "type": "string",
-                "enum": ["workspace", "private", "public"],
+                "enum": ["none", "read", "write"],
+            },
+            "public_permission": {
+                "type": "string",
+                "enum": ["none", "read", "write"],
             },
             "discoverable": {"type": "boolean"},
             "items": {
@@ -473,7 +486,15 @@ async def _update_stash(args: dict) -> dict:
         return _text_result(json.dumps({"error": "not allowed"}))
 
     updates = {
-        key: args[key] for key in ("title", "description", "access", "discoverable") if key in args
+        key: args[key]
+        for key in (
+            "title",
+            "description",
+            "workspace_permission",
+            "public_permission",
+            "discoverable",
+        )
+        if key in args
     }
     if "items" in args:
         updates["items"] = await _parse_stash_items(args.get("items") or [], workspace_id)

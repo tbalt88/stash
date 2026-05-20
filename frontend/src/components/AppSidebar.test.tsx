@@ -120,6 +120,8 @@ const sidebarWithStash = {
       title: "Project Alpha",
       description: "",
       access: "workspace" as const,
+      workspace_permission: "read" as const,
+      public_permission: "none" as const,
       discoverable: false,
       is_external: false,
       forked_from_stash_id: null,

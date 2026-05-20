@@ -161,6 +161,8 @@ async def _list_stashes(workspace_id: UUID, user_id: UUID) -> list[dict]:
             "title": stash["title"],
             "description": stash["description"],
             "access": stash["access"],
+            "workspace_permission": stash["workspace_permission"],
+            "public_permission": stash["public_permission"],
             "discoverable": stash["discoverable"],
             "is_external": stash["is_external"],
             "item_count": len(stash.get("items", [])),
