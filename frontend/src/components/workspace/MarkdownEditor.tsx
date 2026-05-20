@@ -183,7 +183,8 @@ export default function MarkdownEditor({
     ],
     editorProps: {
       attributes: {
-        class: "max-w-none min-h-[200px] focus:outline-none file-page-body",
+        class:
+          "prose prose-sm max-w-none min-h-[200px] focus:outline-none file-page-body",
       },
       handleDOMEvents: {
         paste: (_view, event) => {

@@ -121,7 +121,8 @@ export default function DescriptionEditor({
     editorProps: {
       attributes: {
         "aria-label": ariaLabel,
-        class: "description-editor-content focus:outline-none file-page-body",
+        class:
+          "prose prose-sm max-w-none description-editor-content focus:outline-none file-page-body",
       },
       handleDOMEvents: {
         blur: () => {

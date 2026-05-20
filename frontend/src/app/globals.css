@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@plugin "@tailwindcss/typography";
 
 /* === Design System Tokens (DESIGN.md) === */
 
@@ -264,113 +265,70 @@ details > summary::-webkit-details-marker {
 }
 
 /* ---------------------------------------------------------------
- * Markdown typography — shared by the Tiptap editor (.ProseMirror)
- * and the read-only react-markdown renderer (.markdown-content). One
- * visual language: tight tracking on headings, generous breathing
- * room between blocks, brand-orange accents on code + links.
+ * Markdown typography — `@tailwindcss/typography` (the `prose` class)
+ * is our base. Add `prose` to any container that holds rendered
+ * markdown (the Tiptap .ProseMirror node, the react-markdown
+ * <article>, etc.). The override below pins prose's CSS-variable
+ * palette to our brand tokens so links are orange, body text uses
+ * --text-dim, code chips use a faint orange, and quotes accent with
+ * the brand border. Sized as `prose-sm` by default at the call site.
  * --------------------------------------------------------------- */
+.prose {
+  --tw-prose-body: var(--text-dim);
+  --tw-prose-headings: var(--text-primary);
+  --tw-prose-lead: var(--text-dim);
+  --tw-prose-links: #F97316;
+  --tw-prose-bold: var(--text-primary);
+  --tw-prose-counters: var(--text-muted);
+  --tw-prose-bullets: var(--text-muted);
+  --tw-prose-hr: var(--border-color);
+  --tw-prose-quotes: var(--text-dim);
+  --tw-prose-quote-borders: #fb923c;
+  --tw-prose-captions: var(--text-muted);
+  --tw-prose-code: #c2410c;
+  --tw-prose-pre-code: var(--text-dim);
+  --tw-prose-pre-bg: var(--bg-raised);
+  --tw-prose-th-borders: var(--border-subtle-color);
+  --tw-prose-td-borders: var(--border-subtle-color);
 
-.ProseMirror h1,
-.markdown-content h1 {
-  font-family: var(--font-display), sans-serif;
-  font-size: 1.9rem;
-  font-weight: 700;
-  line-height: 1.15;
-  letter-spacing: -0.02em;
-  margin: 1.5rem 0 0.35rem;
-  color: var(--text-primary);
+  /* Headings use the display family + tighter tracking. */
+  font-family: inherit;
+  color: var(--tw-prose-body);
+  max-width: none;
 }
-
-.ProseMirror h2,
-.markdown-content h2 {
+.prose :where(h1, h2, h3, h4):not(:where([class~="not-prose"] *)) {
   font-family: var(--font-display), sans-serif;
-  font-size: 1.4rem;
-  font-weight: 700;
-  line-height: 1.2;
   letter-spacing: -0.015em;
-  margin: 1.25rem 0 0.3rem;
+}
+.prose :where(h2):not(:where([class~="not-prose"] *)) {
   padding-bottom: 0.2rem;
   border-bottom: 1px solid var(--border-subtle-color, rgba(0, 0, 0, 0.06));
-  color: var(--text-primary);
 }
 
-.ProseMirror h3,
-.markdown-content h3 {
-  font-family: var(--font-display), sans-serif;
-  font-size: 1.15rem;
-  font-weight: 600;
-  line-height: 1.25;
-  letter-spacing: -0.01em;
-  margin: 1rem 0 0.25rem;
-  color: var(--text-primary);
+/* Inline code: orange chip with a thin tinted border to match the
+   rest of the brand-accent treatment. */
+.prose :where(code):not(:where([class~="not-prose"] *, pre *)) {
+  background: rgba(249, 115, 22, 0.08);
+  border: 1px solid rgba(249, 115, 22, 0.18);
+  padding: 0.1em 0.4em;
+  border-radius: 4px;
+  font-weight: inherit;
+}
+.prose :where(code):not(:where([class~="not-prose"] *, pre *))::before,
+.prose :where(code):not(:where([class~="not-prose"] *, pre *))::after {
+  content: "";
 }
 
-/* First block after a heading hugs the heading — avoids a top-margin
-   collapse that leaves an awkward gap. */
-.ProseMirror h1 + *,
-.ProseMirror h2 + *,
-.ProseMirror h3 + *,
-.markdown-content h1 + *,
-.markdown-content h2 + *,
-.markdown-content h3 + * {
-  margin-top: 0.25rem;
-}
-
-.ProseMirror ul,
-.markdown-content ul {
-  list-style-type: disc;
-  padding-left: 1.5em;
-  margin: 0.4em 0;
-}
-
-.ProseMirror ol,
-.markdown-content ol {
-  list-style-type: decimal;
-  padding-left: 1.5em;
-  margin: 0.4em 0;
-}
-
-.ProseMirror li,
-.markdown-content li {
-  margin: 0.1em 0;
-}
-.ProseMirror li > p,
-.markdown-content li > p {
-  margin: 0;
-}
-.ProseMirror li::marker,
-.markdown-content li::marker {
-  color: var(--text-muted);
-}
-
-.ProseMirror li > ul,
-.ProseMirror li > ol,
-.markdown-content li > ul,
-.markdown-content li > ol {
-  margin: 0.2em 0 0.2em 0;
-}
-
-.ProseMirror blockquote,
-.markdown-content blockquote {
-  margin: 0.6em 0;
-  padding: 0.4em 1em;
-  border-left: 3px solid var(--color-brand-400, #fb923c);
+/* Block quote: soft brand-tinted bg + rounded right edge. */
+.prose :where(blockquote):not(:where([class~="not-prose"] *)) {
   background: rgba(249, 115, 22, 0.05);
   border-radius: 0 6px 6px 0;
-  color: var(--text-dim);
+  padding: 0.4em 1em;
   font-style: italic;
 }
-.ProseMirror blockquote > p:first-child,
-.markdown-content blockquote > p:first-child {
-  margin-top: 0;
-}
-.ProseMirror blockquote > p:last-child,
-.markdown-content blockquote > p:last-child {
-  margin-bottom: 0;
-}
 
-.ProseMirror hr,
-.markdown-content hr {
+/* Horizontal rule: fade out the line so it looks intentional. */
+.prose :where(hr):not(:where([class~="not-prose"] *)) {
   border: none;
   height: 1px;
   background: linear-gradient(
@@ -379,76 +337,32 @@ details > summary::-webkit-details-marker {
     var(--border-color, rgba(0, 0, 0, 0.12)),
     transparent
   );
-  margin: 1.25rem 0;
 }
 
-.ProseMirror code,
-.markdown-content code {
-  font-family: var(--font-mono), ui-monospace, monospace;
-  font-size: 0.88em;
-  color: #c2410c;
-  background: rgba(249, 115, 22, 0.08);
-  border: 1px solid rgba(249, 115, 22, 0.18);
-  padding: 0.1em 0.4em;
-  border-radius: 4px;
-}
-
-.ProseMirror pre,
-.markdown-content pre {
-  font-family: var(--font-mono), ui-monospace, monospace;
-  background: var(--bg-raised, #fafafa);
+/* Tables — match the rounded-outer, light-inner-border look. */
+.prose :where(table):not(:where([class~="not-prose"] *)) {
+  border-collapse: separate;
+  border-spacing: 0;
   border: 1px solid var(--border-subtle-color, rgba(0, 0, 0, 0.08));
   border-radius: 8px;
-  padding: 0.875em 1em;
-  margin: 1em 0;
-  overflow-x: auto;
-  font-size: 0.88em;
-  line-height: 1.55;
+  overflow: hidden;
 }
-
-.ProseMirror pre code,
-.markdown-content pre code {
-  background: none;
-  border: none;
-  padding: 0;
-  border-radius: 0;
-  color: var(--text-dim);
-  font-size: inherit;
-}
-
-.ProseMirror p,
-.markdown-content p {
-  margin: 0.4em 0;
-  color: var(--text-dim);
-}
-
-.ProseMirror strong,
-.markdown-content strong {
-  font-weight: 700;
+.prose :where(thead th):not(:where([class~="not-prose"] *)) {
+  background: var(--bg-muted, #fafafa);
   color: var(--text-primary);
 }
-
-.ProseMirror em,
-.markdown-content em {
-  font-style: italic;
+.prose :where(table td):not(:where([class~="not-prose"] *)),
+.prose :where(table th):not(:where([class~="not-prose"] *)) {
+  border-right: 1px solid var(--border-subtle-color);
+  border-bottom: 1px solid var(--border-subtle-color);
 }
-
-.ProseMirror s,
-.markdown-content s,
-.ProseMirror del,
-.markdown-content del {
-  text-decoration: line-through;
-  text-decoration-color: var(--text-muted);
-  color: var(--text-muted);
+.prose :where(table tr:last-child td):not(:where([class~="not-prose"] *)) {
+  border-bottom: none;
 }
-
-/* Images render inline, capped at content width with soft rounding. */
-.ProseMirror img,
-.markdown-content img {
-  max-width: 100%;
-  height: auto;
-  border-radius: 6px;
-  margin: 1em 0;
+.prose :where(table td:last-child, table th:last-child):not(
+    :where([class~="not-prose"] *)
+  ) {
+  border-right: none;
 }
 
 /* Collaboration cursor styles */
@@ -643,53 +557,6 @@ details > summary::-webkit-details-marker {
 .markdown-content input[type="checkbox"] {
   margin-right: 0.4em;
   accent-color: #F97316;
-}
-
-/* Tables in pages (GitHub-flavored pipe tables). */
-.ProseMirror table.file-page-table,
-.ProseMirror table,
-.markdown-content table {
-  border-collapse: separate;
-  border-spacing: 0;
-  margin: 1.25em 0;
-  width: 100%;
-  font-size: 0.93em;
-  border: 1px solid var(--border-subtle-color, rgba(0, 0, 0, 0.08));
-  border-radius: 8px;
-  overflow: hidden;
-}
-
-.ProseMirror table th,
-.ProseMirror table td,
-.markdown-content table th,
-.markdown-content table td {
-  border-right: 1px solid var(--border-subtle-color, rgba(0, 0, 0, 0.08));
-  border-bottom: 1px solid var(--border-subtle-color, rgba(0, 0, 0, 0.08));
-  padding: 0.55rem 0.85rem;
-  text-align: left;
-  vertical-align: top;
-  color: var(--text-dim);
-}
-
-.ProseMirror table th:last-child,
-.ProseMirror table td:last-child,
-.markdown-content table th:last-child,
-.markdown-content table td:last-child {
-  border-right: none;
-}
-
-.ProseMirror table tr:last-child td,
-.markdown-content table tr:last-child td {
-  border-bottom: none;
-}
-
-.ProseMirror table th,
-.markdown-content table th {
-  background: var(--bg-muted, #fafafa);
-  font-weight: 600;
-  color: var(--text-primary);
-  font-size: 0.86em;
-  letter-spacing: 0.01em;
 }
 
 /* Multi-cell selection — Tiptap/prosemirror-tables sets `.selectedCell`
