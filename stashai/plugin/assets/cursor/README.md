@@ -56,7 +56,7 @@ Override with env vars (set in Cursor's environment):
 | `beforeSubmitPrompt` | `user_message` | User's prompt text |
 | `postToolUse` | `tool_use` | Tool name, tool_input, tool_output preview |
 | `afterAgentResponse` | `assistant_message` | Final model text for the turn |
-| `stop` | `session_end` | Tool-count event |
+| `stop` | `session_end` | Tool count and files changed |
 | `sessionEnd` | — (clears session state) | — |
 
 ## Commands
@@ -77,9 +77,12 @@ Everything is a plain `stash` CLI subcommand — no Cursor-specific slash comman
 ## Retrieval
 
 Cursor's agent has shell access, so for reads mid-conversation just let it
-shell out to the `stash` CLI. All commands support `--json`:
+shell out to the `stash` CLI. Use `stash vfs` for filesystem-style browsing without an OS mount:
 
 ```
+stash vfs "find /workspaces -maxdepth 3 -type f"
+stash vfs "rg \"database migration\" /workspaces"
+stash vfs "cat '/workspaces/<workspace>/README.md' | sed -n '1,80p'"
 stash history query --ws <id> --limit 20 --json
 stash history search "<query>" --ws <id> --json
 stash whoami --json

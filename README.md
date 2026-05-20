@@ -36,7 +36,7 @@
 ## How it works
 
 - Stash installs a hook for your coding agents that automatically uploads session transcripts to a shared store.
-- It exposes a CLI and MCP server that let humans and agents query sessions, write pages, and create Product Stashes.
+- It exposes a CLI, MCP server, and app-level virtual filesystem shell that let humans and agents query sessions, browse Stash with bash-shaped commands, write pages, and create Product Stashes.
 - Product Stashes bundle pages and sessions into shareable links. You can publish them publicly, list them in Discover, or fork external Stashes into your workspace.
 
 ## Why shared beats individual
@@ -73,6 +73,15 @@ Then try it: ask your coding agent if it has access to Stash.
 <p align="center">
   <img src="docs/assets/agent-access.png" alt="Coding agent confirming access to the Stash CLI" width="900" />
 </p>
+
+Agents can browse Stash with an app-level virtual filesystem shell:
+
+```bash
+stash vfs ls /
+stash vfs "tree /workspaces -L 2"
+stash vfs "find /workspaces -maxdepth 3 -type f | head -n 20"
+stash vfs "rg \"database migration\" /workspaces"
+```
 
 ## Integrations
 

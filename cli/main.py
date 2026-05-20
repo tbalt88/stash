@@ -3329,6 +3329,12 @@ Your coding agent has the `stash` CLI on its PATH. Run `stash --help` to see com
 why something was built a certain way, what's been tried before, or what teammates are working on,
 search Stash first — it has the full session record and human decisions across the team.
 
+Use `stash vfs` when you want to browse Stash like a filesystem without mounting anything into the OS:
+- `stash vfs ls /`
+- `stash vfs "find /workspaces -maxdepth 3 -type f"`
+- `stash vfs "rg \"query\" /workspaces"`
+- `stash vfs "cat '/workspaces/<workspace>/README.md' | sed -n '1,80p'"`
+
 Common reads (all support `--json`):
 - `stash sessions search "<query>"` — full-text search across transcripts
 - `stash sessions query --limit 20` — latest events
@@ -3823,6 +3829,7 @@ def _show_setup_complete_splash() -> None:
         "\n"
         f"{workspace_link_section}"
         "[bold]Commands your agent can now use[/bold]\n"
+        '  [#1e3a8a]stash vfs "find /workspaces -maxdepth 3 -type f"[/#1e3a8a]   browse Stash like a filesystem\n'
         '  [#1e3a8a]stash sessions search "<query>"[/#1e3a8a]   full-text search across transcripts\n'
         "  [#1e3a8a]stash sessions query --agent <name>[/#1e3a8a]   pull a specific agent's events\n"
         "\n"
@@ -4035,6 +4042,112 @@ def disconnect_cmd():
     if workspace_id:
         clear_streaming(workspace_id)
     console.print(f"  [green]✓[/green] Removed [cyan]{MANIFEST_FILE}[/cyan] — repo disconnected.")
+
+
+@app.command("mount", hidden=True)
+def mount_command(
+    mountpoint: str | None = typer.Argument(
+        None,
+        help="Directory where Stash should be mounted. Defaults to /Volumes/Stash on macOS.",
+    ),
+    workspace_id: str = typer.Option(
+        None,
+        "--ws",
+        help="Mount one workspace by id. By default every accessible workspace is exposed.",
+    ),
+    check: bool = typer.Option(
+        False,
+        "--check",
+        help="Verify the local experimental FUSE runtime is available, then exit.",
+    ),
+):
+    """Experimentally mount Stash as a local FUSE filesystem."""
+    from .mount import StashMountError, check_fuse_runtime, mount_stash
+
+    if check:
+        try:
+            check_fuse_runtime()
+        except StashMountError as e:
+            console.print(f"[red]{e}[/red]")
+            raise typer.Exit(1)
+        console.print("[green]FUSE runtime available.[/green]")
+        return
+
+    if mountpoint is None and sys.platform == "darwin":
+        mountpoint = "/Volumes/Stash"
+
+    if mountpoint is None:
+        console.print("[red]MOUNTPOINT is required unless --check is set.[/red]")
+        raise typer.Exit(1)
+
+    cfg = load_config()
+    if not cfg.get("api_key"):
+        console.print("[red]Not signed in. Run [bold]stash signin[/bold] first.[/red]")
+        raise typer.Exit(1)
+
+    client = StashClient(base_url=cfg["base_url"], api_key=cfg["api_key"])
+    try:
+        console.print(f"[green]Mounting Stash at {mountpoint}[/green]")
+        console.print("[dim]Press Ctrl-C to unmount.[/dim]")
+        mount_stash(client, Path(mountpoint).expanduser(), workspace_id=workspace_id)
+    except StashMountError as e:
+        console.print(f"[red]{e}[/red]")
+        raise typer.Exit(1)
+    finally:
+        client.close()
+
+
+@app.command("vfs", context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
+def vfs_command(
+    ctx: typer.Context,
+    workspace_id: str = typer.Option(
+        None,
+        "--ws",
+        help="Use one workspace by id. By default every accessible workspace is exposed.",
+    ),
+    cwd: str = typer.Option("/", "--cwd", help="Virtual working directory."),
+):
+    """Run bash-shaped commands against Stash without mounting a filesystem."""
+    from .app_vfs import StashAppVfsShell
+    from .mount import StashMountError, StashVfsModel
+
+    cfg = load_config()
+    if not cfg.get("api_key"):
+        console.print("[red]Not signed in. Run [bold]stash signin[/bold] first.[/red]")
+        raise typer.Exit(1)
+
+    client = StashClient(base_url=cfg["base_url"], api_key=cfg["api_key"])
+    try:
+        model = StashVfsModel(client, workspace_id=workspace_id)
+        model.refresh()
+        shell = StashAppVfsShell(model, cwd=cwd)
+
+        command = " ".join(ctx.args).strip()
+        if command:
+            result = shell.run(command)
+            sys.stdout.write(result.stdout)
+            sys.stderr.write(result.stderr)
+            if result.exit_code:
+                raise typer.Exit(result.exit_code)
+            return
+
+        while True:
+            try:
+                command = input(f"stash:{shell.cwd}$ ").strip()
+            except EOFError:
+                return
+            if command in ("exit", "quit"):
+                return
+            if not command:
+                continue
+            result = shell.run(command)
+            sys.stdout.write(result.stdout)
+            sys.stderr.write(result.stderr)
+    except StashMountError as e:
+        console.print(f"[red]{e}[/red]")
+        raise typer.Exit(1)
+    finally:
+        client.close()
 
 
 # ===========================================================================

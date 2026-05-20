@@ -56,7 +56,8 @@ approval behavior.
 
 1. **Bash-only tool hooks.** Codex's `PostToolUse` today only fires for Bash.
    Edit/read/write won't stream until OpenAI expands hook coverage. The
-   `on_stop.py` captures the final assistant message even without per-tool hooks.
+   `on_stop.py` captures turn-level stats even without
+   per-tool hooks.
 2. **Windows.** Codex hook support is disabled on Windows in current builds.
 3. **No SessionEnd event.** Codex only exposes `Stop`, so the plugin uploads the assistant message and transcript there.
 
@@ -72,9 +73,12 @@ approval behavior.
 ## Retrieval
 
 Codex has shell access. For reads mid-conversation, have the agent invoke
-the `stash` CLI — all commands support `--json`:
+the `stash` CLI. Use `stash vfs` for filesystem-style browsing without an OS mount:
 
 ```
+stash vfs "find /workspaces -maxdepth 3 -type f"
+stash vfs "rg \"database migration\" /workspaces"
+stash vfs "cat '/workspaces/<workspace>/README.md' | sed -n '1,80p'"
 stash history query --ws <id> --limit 20 --json
 stash history search "<query>" --ws <id> --json
 stash whoami --json
