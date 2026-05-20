@@ -130,9 +130,13 @@ describe("StashSettingsPageClient", () => {
     expect(await screen.findByRole("heading", { name: "Settings" })).toBeInTheDocument();
     expect(await screen.findByDisplayValue("Shared Stash")).toBeInTheDocument();
     expect(screen.queryByText("Members")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Visibility")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Workspace access")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Public access")).not.toBeInTheDocument();
+    expect(screen.queryByText("List on Discover")).not.toBeInTheDocument();
   });
 
-  it("saves title and visibility changes", async () => {
+  it("saves title changes only", async () => {
     render(<StashSettingsPageClient slug="shared-stash" />);
 
     fireEvent.change(await screen.findByLabelText("Title"), {
@@ -143,30 +147,8 @@ describe("StashSettingsPageClient", () => {
     await waitFor(() =>
       expect(updateStash).toHaveBeenCalledWith("stash-1", {
         title: "Better Stash",
-        workspace_permission: "read",
-        public_permission: "read",
-        discoverable: false,
       }),
     );
     expect(await screen.findByText("Saved.")).toBeInTheDocument();
   });
-
-  it("can make the Stash private", async () => {
-    render(<StashSettingsPageClient slug="shared-stash" />);
-
-    await screen.findByRole("heading", { name: "Settings" });
-    fireEvent.click(screen.getByLabelText("Visibility"));
-    fireEvent.click(screen.getByRole("option", { name: /Private/ }));
-    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
-
-    await waitFor(() =>
-      expect(updateStash).toHaveBeenCalledWith("stash-1", {
-        title: "Shared Stash",
-        workspace_permission: "none",
-        public_permission: "none",
-        discoverable: false,
-      }),
-    );
-  });
-
 });
