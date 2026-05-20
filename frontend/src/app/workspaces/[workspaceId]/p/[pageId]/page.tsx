@@ -402,7 +402,7 @@ export default function StashPageView() {
             : undefined
         }
       />
-      <div className="mx-auto mt-6 grid max-w-[1100px] gap-7 px-12 pb-20 lg:grid-cols-[minmax(0,1fr)_240px]">
+      <div className="mx-auto mt-6 grid max-w-[1200px] gap-7 px-12 pb-20 lg:grid-cols-[minmax(0,1fr)_240px]">
         <main className="min-w-0">
           {error && (
             <div className="mb-4 rounded-lg border border-red-300/40 bg-red-500/10 px-4 py-2 text-[13px] text-red-500">
