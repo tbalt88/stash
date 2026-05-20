@@ -521,6 +521,15 @@ async def purge_page(page_id: UUID, workspace_id: UUID) -> bool:
     return result == "DELETE 1"
 
 
+async def delete_page_collab_state(page_id: UUID, workspace_id: UUID) -> None:
+    pool = get_pool()
+    await pool.execute(
+        "DELETE FROM page_collab_documents WHERE page_id = $1 AND workspace_id = $2",
+        page_id,
+        workspace_id,
+    )
+
+
 async def list_trashed_pages(workspace_id: UUID) -> list[dict]:
     pool = get_pool()
     rows = await pool.fetch(

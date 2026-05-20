@@ -476,6 +476,8 @@ async def update_page(
         raise HTTPException(status_code=409, detail=str(e))
     if not page:
         raise HTTPException(status_code=404, detail="Page not found")
+    if req.content is not None and not req.collab_projection:
+        await files_tree_service.delete_page_collab_state(page_id, workspace_id)
     return PageResponse(**page)
 
 
