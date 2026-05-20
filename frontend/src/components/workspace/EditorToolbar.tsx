@@ -128,10 +128,15 @@ export default function EditorToolbar({
     editor.chain().focus().extendMarkRange("link").setLink({ href: url }).run();
   }
 
+  const inline = visibility === "when-focused";
   const toolbar = (
     <div
-      className="fixed left-1/2 z-40 inline-flex -translate-x-1/2 items-center gap-0.5 rounded-full border border-border bg-surface px-2 py-1.5 shadow-[0_6px_20px_-4px_rgba(0,0,0,0.18)]"
-      style={{ bottom: 16 }}
+      className={
+        inline
+          ? "inline-flex items-center gap-0.5 rounded-full border border-border bg-surface px-2 py-1.5 shadow-[0_6px_20px_-4px_rgba(0,0,0,0.18)]"
+          : "fixed left-1/2 z-40 inline-flex -translate-x-1/2 items-center gap-0.5 rounded-full border border-border bg-surface px-2 py-1.5 shadow-[0_6px_20px_-4px_rgba(0,0,0,0.18)]"
+      }
+      style={inline ? undefined : { bottom: 16 }}
       onMouseDown={(e) => e.preventDefault()}
     >
       <Btn
@@ -303,6 +308,11 @@ export default function EditorToolbar({
     </div>
   );
 
+  if (inline) {
+    // Render in the document flow under the editor so descriptions don't
+    // anchor their toolbar to the viewport bottom.
+    return <div className="mt-3 flex justify-start">{toolbar}</div>;
+  }
   return createPortal(toolbar, document.body);
 }
 
