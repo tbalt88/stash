@@ -1,7 +1,10 @@
+import asyncio
 import uuid
 
 import pytest
 from httpx import AsyncClient
+
+from backend.services import files_tree_service
 
 
 def _auth(api_key: str) -> dict[str, str]:
@@ -113,3 +116,70 @@ async def test_collab_rejects_html_pages(client: AsyncClient):
     )
 
     assert response.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_collab_projection_save_disables_content_hash_guard(
+    client: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    api_key, _user = await _register(client)
+    workspace = (
+        await client.post(
+            "/api/v1/workspaces",
+            json={"name": "Collab"},
+            headers=_auth(api_key),
+        )
+    ).json()
+    page = (
+        await client.post(
+            f"/api/v1/workspaces/{workspace['id']}/pages/new",
+            json={"name": "Plan", "content": "# Draft"},
+            headers=_auth(api_key),
+        )
+    ).json()
+
+    async def update_page_with_conflict(*args, **kwargs):
+        assert kwargs["guard_content_hash"] is False
+        return {**page, "content_markdown": kwargs["content"]}
+
+    monkeypatch.setattr(files_tree_service, "update_page", update_page_with_conflict)
+
+    response = await client.patch(
+        f"/api/v1/workspaces/{workspace['id']}/pages/{page['id']}",
+        json={"content": "CRDT projection", "collab_projection": True},
+        headers=_auth(api_key),
+    )
+
+    assert response.status_code == 200
+    assert response.json()["content_markdown"] == "CRDT projection"
+
+
+@pytest.mark.asyncio
+async def test_concurrent_collab_projection_saves_do_not_500(client: AsyncClient):
+    api_key, _user = await _register(client)
+    workspace = (
+        await client.post(
+            "/api/v1/workspaces",
+            json={"name": "Collab"},
+            headers=_auth(api_key),
+        )
+    ).json()
+    page = (
+        await client.post(
+            f"/api/v1/workspaces/{workspace['id']}/pages/new",
+            json={"name": "Plan", "content": "# Draft"},
+            headers=_auth(api_key),
+        )
+    ).json()
+
+    async def save_projection(index: int):
+        return await client.patch(
+            f"/api/v1/workspaces/{workspace['id']}/pages/{page['id']}",
+            json={"content": f"CRDT projection {index}", "collab_projection": True},
+            headers=_auth(api_key),
+        )
+
+    responses = await asyncio.gather(*(save_projection(i) for i in range(12)))
+
+    assert [response.status_code for response in responses] == [200] * 12
