@@ -11,6 +11,7 @@ from pydantic import BaseModel
 from starlette.responses import StreamingResponse
 
 from ..auth import get_current_user
+from ..config import settings
 from ..database import get_pool
 from ..services import (
     ask_service,
@@ -231,11 +232,23 @@ async def ask_workspace(
     workspace = await workspace_service.get_workspace(workspace_id)
     if not workspace:
         raise HTTPException(status_code=404, detail="Workspace not found")
-
-    convo = [{"role": m.role, "content": m.content} for m in req.messages]
+    if not settings.ANTHROPIC_API_KEY:
+        raise HTTPException(
+            status_code=503,
+            detail="Ask-the-workspace is not configured (ANTHROPIC_API_KEY unset).",
+        )
+    # Single-turn only. Multi-turn ask should ship as session resumption
+    # (ClaudeAgentOptions.resume), not as conversation replay through this
+    # request shape — see ask_service.stream_ask.
+    if len(req.messages) != 1 or req.messages[0].role != "user":
+        raise HTTPException(
+            status_code=400,
+            detail="Ask currently accepts exactly one user message per request.",
+        )
+    prompt = req.messages[0].content
 
     return StreamingResponse(
-        ask_service.stream_ask(workspace_id, workspace["name"], convo, current_user["id"]),
+        ask_service.stream_ask(workspace_id, workspace["name"], prompt, current_user["id"]),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
