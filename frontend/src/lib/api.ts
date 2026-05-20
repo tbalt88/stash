@@ -796,7 +796,6 @@ export interface SessionSummary {
   event_count: number;
   started_at: string;
   last_event_at: string;
-  first_prompt_preview: string | null;
 }
 
 export async function listMySessions(workspaceId?: string, limit = 50): Promise<SessionSummary[]> {
@@ -829,8 +828,6 @@ export interface SessionDetail {
   title: string;
   agent_name: string;
   cwd: string | null;
-  summary: string | null;
-  summary_status: string | null;
   files_touched: string[] | string;
   started_at: string | null;
   finished_at: string | null;
