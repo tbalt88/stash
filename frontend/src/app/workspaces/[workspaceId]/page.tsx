@@ -300,6 +300,7 @@ function WorkspaceDescriptionEditor({
         canEdit={canEdit}
         placeholder="Describe this workspace…"
         ariaLabel="Workspace description"
+        workspaceId={workspace.id}
         onSave={async (html) => {
           const updated = await updateWorkspace(workspace.id, {
             description: html,
