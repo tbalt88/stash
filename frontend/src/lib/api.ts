@@ -772,6 +772,7 @@ export async function updateFile(
 
 export interface SessionSummary {
   session_id: string;
+  title: string;
   workspace_id: string | null;
   workspace_name: string | null;
   user_name: string;

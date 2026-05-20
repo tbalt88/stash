@@ -24,6 +24,8 @@ from ..services import (
 
 router = APIRouter(prefix="/api/v1/workspaces", tags=["workspaces"])
 
+SIDEBAR_ETAG_VERSION = "sidebar-session-title-v2"
+
 
 # ---------------------------------------------------------------------------
 # Overview + Sidebar — the per-workspace view shapes
@@ -305,7 +307,11 @@ async def _sidebar_etag(workspace_id: UUID, user_id: UUID) -> str:
           (SELECT MAX(created_at) FROM files
             WHERE workspace_id = $1 AND deleted_at IS NULL)                       AS f,
           (SELECT MAX(updated_at) FROM folders WHERE workspace_id = $1)          AS d,
-          (SELECT MAX(GREATEST(finished_at, started_at)) FROM sessions
+          (SELECT MAX(GREATEST(
+            COALESCE(finished_at, started_at),
+            started_at,
+            COALESCE(summary_last_attempt_at, started_at)
+          )) FROM sessions
             WHERE workspace_id = $1 AND deleted_at IS NULL)                       AS s,
           (SELECT MAX(updated_at) FROM stashes WHERE workspace_id = $1)            AS st,
           (SELECT MAX(sm.created_at) FROM stash_members sm
@@ -316,7 +322,10 @@ async def _sidebar_etag(workspace_id: UUID, user_id: UUID) -> str:
         workspace_id,
         user_id,
     )
-    raw = "|".join(str(row[k] or "") for k in ("p", "f", "d", "s", "st", "sm", "w"))
+    raw = "|".join(
+        [SIDEBAR_ETAG_VERSION]
+        + [str(row[k] or "") for k in ("p", "f", "d", "s", "st", "sm", "w")]
+    )
     return f'W/"{_short_hash(raw)}"'
 
 
