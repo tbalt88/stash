@@ -188,6 +188,7 @@ const sidebarWithTree = {
       {
         id: "page-root",
         name: "Overview",
+        content_type: "markdown" as const,
         folder_id: null,
       },
     ],
@@ -639,7 +640,6 @@ describe("AppSidebar tree expansion", () => {
         files: [
           {
             id: "deep-file",
-            workspace_id: "ws-1",
             name: "Deep Search File.md",
             folder_id: "folder-parent",
             size_bytes: 12,

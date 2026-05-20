@@ -65,6 +65,34 @@ class Settings:
     # browser. Leave unset to disable admin endpoints entirely.
     ADMIN_PASSWORD: str | None = os.getenv("ADMIN_PASSWORD")
 
+    # --- Background tasks (Celery + Redis) ---
+    REDIS_URL: str = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+
+    # --- Integrations (OAuth + per-user token storage) ---
+    # Fernet key for encrypting access/refresh tokens at rest.
+    # Generate with: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+    INTEGRATIONS_ENCRYPTION_KEY: str | None = os.getenv("INTEGRATIONS_ENCRYPTION_KEY")
+
+    GOOGLE_OAUTH_CLIENT_ID: str | None = os.getenv("GOOGLE_OAUTH_CLIENT_ID")
+    GOOGLE_OAUTH_CLIENT_SECRET: str | None = os.getenv("GOOGLE_OAUTH_CLIENT_SECRET")
+    GOOGLE_OAUTH_REDIRECT_URI: str | None = os.getenv("GOOGLE_OAUTH_REDIRECT_URI")
+
+    GITHUB_OAUTH_CLIENT_ID: str | None = os.getenv("GITHUB_OAUTH_CLIENT_ID")
+    GITHUB_OAUTH_CLIENT_SECRET: str | None = os.getenv("GITHUB_OAUTH_CLIENT_SECRET")
+    GITHUB_OAUTH_REDIRECT_URI: str | None = os.getenv("GITHUB_OAUTH_REDIRECT_URI")
+
+    NOTION_OAUTH_CLIENT_ID: str | None = os.getenv("NOTION_OAUTH_CLIENT_ID")
+    NOTION_OAUTH_CLIENT_SECRET: str | None = os.getenv("NOTION_OAUTH_CLIENT_SECRET")
+    NOTION_OAUTH_REDIRECT_URI: str | None = os.getenv("NOTION_OAUTH_REDIRECT_URI")
+
+    # Google Drive Picker requires TWO things distinct from the OAuth
+    # client: a browser API key (`PICKER_API_KEY`) and the GCP project
+    # number (`PICKER_APP_ID`). Both are visible in the Google Cloud
+    # Console — the project number is the numeric id shown on the
+    # project dashboard. The OAuth client_id is NOT the same thing.
+    GOOGLE_PICKER_API_KEY: str | None = os.getenv("GOOGLE_PICKER_API_KEY")
+    GOOGLE_PICKER_APP_ID: str | None = os.getenv("GOOGLE_PICKER_APP_ID")
+
     # --- LLM (Anthropic) ---
     # Two tiers used across ask-the-stash and background workers.
     #   ANTHROPIC_MODEL      — quality tier (Sonnet): ask

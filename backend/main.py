@@ -1,4 +1,3 @@
-import asyncio
 import logging
 from contextlib import asynccontextmanager
 
@@ -9,16 +8,21 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 from starlette.responses import JSONResponse
 
+from . import exports as _exports  # noqa: F401 — registers exporter Celery tasks
+from . import integrations as _integrations  # noqa: F401 — registers providers + importers
 from .config import settings
 from .database import close_db, init_db
+from .integrations.router import router as integrations_router
 from .middleware import limiter
 from .routers import (
     admin,
     aggregate,
     collab,
     discover,
+    exports,
     files,
     files_tree,
+    imports,
     memory,
     publish,
     sessions,
@@ -26,6 +30,7 @@ from .routers import (
     stash_invites,
     stashes,
     tables,
+    tasks,
     transcripts,
     trash,
     users,
@@ -33,36 +38,19 @@ from .routers import (
     workspaces,
 )
 from .services.row_validation import RowValidationError
-from .workers import dispatcher as extraction_dispatcher
-from .workers import (
-    embedding_reconciler,
-    viz_precompute,
-)
 
 logger = logging.getLogger("stash")
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Background workers (file extraction, embedding reconcile, viz
+    # precompute, session summarizer) now run in the Celery `worker` and
+    # `beat` services — see backend/celery_app.py.
     await init_db()
-    dispatcher_task = asyncio.create_task(extraction_dispatcher.run())
-    reconciler_task = asyncio.create_task(embedding_reconciler.run())
-    viz_task = asyncio.create_task(viz_precompute.run())
-    tasks = (
-        dispatcher_task,
-        reconciler_task,
-        viz_task,
-    )
     try:
         yield
     finally:
-        for task in tasks:
-            task.cancel()
-        for task in tasks:
-            try:
-                await task
-            except (asyncio.CancelledError, Exception):
-                pass
         await close_db()
 
 
@@ -114,6 +102,10 @@ app.include_router(admin.router)
 app.include_router(sessions.router)
 app.include_router(trash.router)
 app.include_router(publish.router)
+app.include_router(tasks.router)
+app.include_router(integrations_router)
+app.include_router(imports.router)
+app.include_router(exports.router)
 
 if settings.AUTH0_ENABLED:
     from backend.managed.auth0 import router as auth0_router
