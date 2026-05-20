@@ -1886,16 +1886,6 @@ function FilesBlock({
   const hiddenSearchCount = searchResults.length - visibleSearchResults.length;
   const folderById = new Map((tree?.folders ?? []).map((folder) => [folder.id, folder]));
   const fileById = new Map((tree?.files ?? []).map((file) => [file.id, file]));
-  const pinnedFolderRows = pinnedFolders.map((id) => {
-    const folder = folderById.get(id);
-    const label = pinnedLabels.folders[id] ?? folder?.name ?? "Folder";
-    return {
-      id,
-      label,
-      href: `/workspaces/${workspace.id}/folders/${id}`,
-      icon: <FolderIcon />,
-    };
-  });
   const pinnedFileRows = pinnedFiles.map((id) => {
     const file = fileById.get(id);
     if (!file) {
@@ -2057,16 +2047,19 @@ function FilesBlock({
                     Unpin all
                   </button>
                 </div>
-                {pinnedFolderRows.map((folder) => (
-                  <NavRow
-                    key={`pinned-folder-${folder.id}`}
-                    href={folder.href}
-                    icon={folder.icon}
-                    label={folder.label}
-                    active={pathname === folder.href}
-                    onContextMenu={(event) =>
-                      showPinMenu(event, "folder", folder.id, folder.label, true)
+                {pinnedFolders.map((folderId) => (
+                  <FolderTreeNode
+                    key={`pinned-folder-${folderId}`}
+                    workspaceId={workspace.id}
+                    folderId={folderId}
+                    name={
+                      pinnedLabels.folders[folderId] ??
+                      folderById.get(folderId)?.name ??
+                      "Folder"
                     }
+                    isFolderPinned={(id) => pinnedFolderSet.has(id)}
+                    isFilePinned={(id) => pinnedFileSet.has(id)}
+                    onPinMenu={showPinMenu}
                   />
                 ))}
                 {pinnedFileRows.map((file) => (

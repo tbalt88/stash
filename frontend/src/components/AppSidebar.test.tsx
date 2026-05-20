@@ -575,6 +575,35 @@ describe("AppSidebar tree expansion", () => {
     expect(screen.getByText("Root File.md")).toBeTruthy();
   });
 
+  it("keeps pinned folders expandable", async () => {
+    localStorage.setItem(
+      "stash_sidebar_pinned_items",
+      JSON.stringify({
+        "ws-1": { sessions: [], folders: ["folder-1"], files: [] },
+      })
+    );
+    localStorage.setItem(
+      "stash_sidebar_pinned_item_labels",
+      JSON.stringify({
+        "ws-1": { sessions: {}, folders: { "folder-1": "Product" }, files: {} },
+      })
+    );
+    vi.mocked(getWorkspaceSidebar).mockResolvedValue(sidebarWithTree);
+
+    renderSidebar();
+
+    await screen.findByText("Pinned (1)");
+    expect(detailsFor("Product")).not.toHaveAttribute("open");
+
+    fireEvent.click(screen.getByText("Product"));
+
+    expect(detailsFor("Product")).toHaveAttribute("open");
+    await waitFor(() =>
+      expect(getFolderContents).toHaveBeenCalledWith("ws-1", "folder-1")
+    );
+    expect(await screen.findByText("Roadmap")).toBeTruthy();
+  });
+
   it("searches hidden sidebar files", async () => {
     vi.mocked(getWorkspaceSidebar).mockResolvedValue({
       sessions: [],
