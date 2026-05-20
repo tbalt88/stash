@@ -133,10 +133,10 @@ export default function EditorToolbar({
     <div
       className={
         inline
-          ? "inline-flex items-center gap-0.5 rounded-full border border-border bg-surface/95 px-2 py-1.5 shadow-[0_14px_36px_-8px_rgba(0,0,0,0.25),0_4px_12px_-4px_rgba(0,0,0,0.10)] ring-1 ring-black/[0.04] backdrop-blur-md"
-          : "fixed left-1/2 z-40 inline-flex -translate-x-1/2 items-center gap-0.5 rounded-full border border-border bg-surface/95 px-2 py-1.5 shadow-[0_14px_36px_-8px_rgba(0,0,0,0.25),0_4px_12px_-4px_rgba(0,0,0,0.10)] ring-1 ring-black/[0.04] backdrop-blur-md"
+          ? "inline-flex items-center gap-0.5 rounded-full border border-border bg-white px-2 py-1.5 shadow-[0_14px_36px_-8px_rgba(0,0,0,0.25),0_4px_12px_-4px_rgba(0,0,0,0.10)] ring-1 ring-black/[0.04]"
+          : "fixed left-1/2 z-40 inline-flex -translate-x-1/2 items-center gap-0.5 rounded-full border border-border bg-white px-2 py-1.5 shadow-[0_14px_36px_-8px_rgba(0,0,0,0.25),0_4px_12px_-4px_rgba(0,0,0,0.10)] ring-1 ring-black/[0.04]"
       }
-      style={inline ? undefined : { bottom: 16 }}
+      style={inline ? undefined : { bottom: 40 }}
       onMouseDown={(e) => e.preventDefault()}
     >
       <Btn
