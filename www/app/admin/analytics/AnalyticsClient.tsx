@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Area,
   AreaChart,
@@ -55,6 +55,7 @@ type SummaryResponse = {
   onboardings_completed: number;
   active_users: number;
   cli_active_users: number;
+  generated_at: string;
 };
 
 type FunnelStage = {
@@ -218,9 +219,7 @@ export default function AnalyticsClient({
               Admin · Analytics
             </span>
           </div>
-          <span className="text-[11px] text-gray-400">
-            generated {new Date(data.summary && Date.now()).toLocaleString()}
-          </span>
+          <GeneratedAt iso={data.summary.generated_at} />
         </div>
       </header>
 
@@ -263,6 +262,22 @@ export default function AnalyticsClient({
         />
       </section>
     </main>
+  );
+}
+
+// Server renders the ISO timestamp as-is; client upgrades to the user's
+// locale-formatted version after mount. Splitting the two passes avoids
+// the locale/timezone hydration mismatch that triggers React #418 and
+// kills event handlers on the whole client tree.
+function GeneratedAt({ iso }: { iso: string }) {
+  const [pretty, setPretty] = useState<string | null>(null);
+  useEffect(() => {
+    setPretty(new Date(iso).toLocaleString());
+  }, [iso]);
+  return (
+    <span className="text-[11px] text-gray-400" suppressHydrationWarning>
+      generated {pretty ?? iso}
+    </span>
   );
 }
 
