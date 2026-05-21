@@ -59,7 +59,7 @@ With Stash, every agent on the repo has context about every session created from
 ## Quick Start
 
 ```bash
-pip install stashai
+pip install stashai / uv tool install stashai
 stash login
 ```
 
