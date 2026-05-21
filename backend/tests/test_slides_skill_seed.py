@@ -47,9 +47,7 @@ async def _register_and_create_workspace(client: AsyncClient) -> tuple[str, str]
 
 async def _seed(workspace_id: str, api_key: str, client: AsyncClient) -> None:
     """Run the seed against the workspace as the registered owner."""
-    me = await client.get(
-        "/api/v1/users/me", headers={"Authorization": f"Bearer {api_key}"}
-    )
+    me = await client.get("/api/v1/users/me", headers={"Authorization": f"Bearer {api_key}"})
     assert me.status_code == 200
     user_id = me.json()["id"]
     from uuid import UUID
@@ -87,12 +85,12 @@ async def test_slides_skill_body_covers_canvas(client: AsyncClient, enable_seed)
     assert resp.status_code == 200, resp.text
     body = resp.json()
     combined = body.get("combined", "") or body.get("body", "")
-    assert "1920" in combined and "1080" in combined, (
-        "slides skill must spell out the canvas dimensions so agents stop overflowing"
-    )
-    assert "<section class=\"slide\">" in combined or "section.slide" in combined, (
-        "slides skill must spell out the slide element format"
-    )
+    assert (
+        "1920" in combined and "1080" in combined
+    ), "slides skill must spell out the canvas dimensions so agents stop overflowing"
+    assert (
+        '<section class="slide">' in combined or "section.slide" in combined
+    ), "slides skill must spell out the slide element format"
 
 
 @pytest.mark.asyncio
