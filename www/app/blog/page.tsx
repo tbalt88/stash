@@ -16,6 +16,13 @@ type Post = {
 
 const POSTS: Post[] = [
   {
+    title: "Three Dimensions That Matter To An Agent Memory Store",
+    blurb:
+      "An opinionated take on three key decisions memory builders need to make: retrieval, structure, and knowledge graphs.",
+    href: "https://x.com/henrytdowling/status/2054246434506199529",
+    author: "Henry Dowling",
+  },
+  {
     title: "Agents are Octopuses",
     blurb:
       "Collaborative agent systems with shared memory as a new paradigm beyond swarms and assembly lines.",
