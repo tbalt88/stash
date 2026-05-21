@@ -130,7 +130,7 @@ curl http://localhost:3456/health
 Then install the CLI:
 
 ```bash
-pip install stashai
+pip install stashai / uv tool install stashai
 cd /path/to/the/repo/you/want/to/connect
 stash config base_url http://localhost:3456
 stash login
