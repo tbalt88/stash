@@ -136,6 +136,13 @@ stash config base_url http://localhost:3456
 stash login
 ```
 
+Finally see it in action:
+
+```
+claude
+> what did I get done last week? check stash.
+```
+
 ## Privacy
 
 Stash is built for engineering teams working in private repos.
