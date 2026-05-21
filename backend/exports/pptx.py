@@ -71,8 +71,8 @@ def _strip_body_state(html: str) -> str:
     `style="zoom: …"` from applyCanvasZoom, and `contenteditable` /
     `spellcheck` from the WYSIWYG. Legacy pages saved before this strip
     was added still have these baked in — without removing them, the
-    export viewport renders the body shrunk to ~835px on a 1920px
-    canvas, leaving the rest as body bg."""
+    export viewport renders the body shrunk to a fraction of the slide
+    width, leaving the rest as body bg."""
     return re.sub(
         r"<body([^>]*)>",
         lambda m: "<body" + _clean_body_attrs(m.group(1)) + ">",
