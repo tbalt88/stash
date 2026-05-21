@@ -538,17 +538,39 @@ export function extractCommentIdsFromHtml(html: string): string[] {
 // `stash:slide-goto` from the parent and shows only that section.
 // Pages with zero `<section class="slide">` elements bypass this path.
 function injectSlideDeckBootstrap(html: string, channel: string): string {
-  const script = `<script>(function(){
+  // Defensive: a previous save round-trip may have left our bootstrap script
+  // or style tag embedded in `html`. Strip any prior copies so the iframe
+  // starts with exactly one fresh bootstrap.
+  const cleaned = html
+    .replace(/<script\s+id=["']__stash_slide_script__["'][\s\S]*?<\/script>/gi, "")
+    .replace(/<style\s+id=["']__stash_slide_css__["'][\s\S]*?<\/style>/gi, "");
+  const script = `<script id="__stash_slide_script__">(function(){
+    // Idempotency: the bootstrap script gets re-injected on every srcDoc
+    // build, and the iframe's saved HTML round-trip may already contain a
+    // previous copy. Exit on the second copy so we don't double-up the
+    // message handlers.
+    if(window.__stash_slide_bootstrapped__) return;
+    window.__stash_slide_bootstrapped__=true;
     var c=${JSON.stringify(channel)};
     var editable=false;
     var currentIdx=0;
+    // Canvas-enforcing CSS: every slide is a 1920x1080 box that clips its own
+    // overflow. body is zoomed to fit the responsive iframe width — 100vw/1920
+    // is 1 during export (Playwright viewport is 1920) and <1 during viewing,
+    // so what authors see in the viewer matches the export pixel-for-pixel.
+    var CANVAS_CSS = "html,body{margin:0;padding:0;overflow-x:hidden;}body{width:1920px;zoom:calc(100vw / 1920);}section.slide{width:1920px;height:1080px;overflow:hidden;position:relative;box-sizing:border-box;display:block;}";
     // Visual feedback for edit mode: dashed outline on the body, text caret
     // on all descendants, and let slides flow normally so the user can scroll
     // and click between them.
     var EDIT_CSS = "body[contenteditable=\\"true\\"]{outline:2px dashed rgba(59,130,246,.5);outline-offset:-4px;}body[contenteditable=\\"true\\"] *{cursor:text;}body[contenteditable=\\"true\\"] section.slide{display:flex !important;position:relative !important;inset:auto !important;margin-bottom:24px !important;}";
     (function injectStyle(){
+      if(document.getElementById("__stash_slide_css__")) return;
       var s=document.createElement('style');
-      s.textContent=EDIT_CSS;
+      s.id="__stash_slide_css__";
+      // Canvas rules first so any agent rules in the document can override
+      // by specificity or document order. Edit rules use !important so they
+      // win where needed.
+      s.textContent=CANVAS_CSS+EDIT_CSS;
       (document.head||document.documentElement).appendChild(s);
     })();
     function applyIndex(idx){
@@ -567,12 +589,23 @@ function injectSlideDeckBootstrap(html: string, channel: string): string {
     }
     var mutateTimer=null;
     function post(o){parent.postMessage(Object.assign({channel:c},o),'*');}
+    // Serialize the document without our injected bootstrap so saved HTML
+    // doesn't accumulate copies of the script/style on every edit.
+    function serializeClean(){
+      var clone=document.documentElement.cloneNode(true);
+      var nodes=clone.querySelectorAll('#__stash_slide_css__, #__stash_slide_script__');
+      for(var i=0;i<nodes.length;i++){
+        var n=nodes[i];
+        if(n.parentNode) n.parentNode.removeChild(n);
+      }
+      return clone.outerHTML;
+    }
     function scheduleMutate(){
       if(!editable) return;
       if(mutateTimer) clearTimeout(mutateTimer);
       mutateTimer=setTimeout(function(){
         mutateTimer=null;
-        post({type:'stash:html-mutated',html:document.documentElement.outerHTML});
+        post({type:'stash:html-mutated',html:serializeClean()});
       },500);
     }
     document.addEventListener('input',scheduleMutate);
@@ -593,7 +626,7 @@ function injectSlideDeckBootstrap(html: string, channel: string): string {
             if(mutateTimer){
               clearTimeout(mutateTimer);
               mutateTimer=null;
-              post({type:'stash:html-mutated',html:document.documentElement.outerHTML});
+              post({type:'stash:html-mutated',html:serializeClean()});
             }
           }
         }
@@ -602,6 +635,6 @@ function injectSlideDeckBootstrap(html: string, channel: string): string {
     });
     applyIndex(0);
   })();</script>`;
-  if (/<\/body\s*>/i.test(html)) return html.replace(/<\/body\s*>/i, script + "</body>");
-  return html + script;
+  if (/<\/body\s*>/i.test(cleaned)) return cleaned.replace(/<\/body\s*>/i, script + "</body>");
+  return cleaned + script;
 }
