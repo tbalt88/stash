@@ -423,6 +423,7 @@ describe("AppSidebar tree expansion", () => {
         content_type: "text/markdown",
         size_bytes: 5,
         url: "/files/file-1",
+        app_url: "/files/file-1",
         uploaded_by: "user-1",
         created_at: "2026-05-11T00:00:00Z",
         linked_table_id: null,

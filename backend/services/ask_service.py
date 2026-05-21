@@ -1,8 +1,9 @@
-"""Ask-the-workspace agent loop.
+"""Ask-the-workspace tool-use loop.
 
-Streams text + tool-use events as Server-Sent Events. The agent runtime
-(`agent_runtime`) handles model + tool plumbing via the Claude Agent SDK;
-this module just renders the system prompt and forwards the SSE stream.
+Streams text + tool-use events as SSE. Backed by tool_loop.py (direct
+Anthropic API + native tool-use), not the Agent SDK — running the CLI
+under the hood led to MCP serialization errors and hallucinated
+"let me use the Bash/Monitor tool" fallbacks.
 """
 
 from __future__ import annotations
@@ -10,7 +11,7 @@ from __future__ import annotations
 from collections.abc import AsyncIterator
 from uuid import UUID
 
-from . import agent_runtime, prompts
+from . import llm, prompts, tool_loop
 
 
 async def stream_ask(
@@ -19,17 +20,18 @@ async def stream_ask(
     prompt: str,
     user_id: UUID,
 ) -> AsyncIterator[str]:
-    """Run the agent and yield SSE-encoded chunks.
+    """Run the ask-the-workspace tool-use loop and yield SSE chunks.
 
-    The ask endpoint is single-turn today: one user prompt in, one streamed
-    response out. When multi-turn follow-ups land, do them through the SDK's
-    native session resumption (`ClaudeAgentOptions(resume=session_id)`),
-    not by stuffing prior turns into the prompt string."""
+    Single-turn today: one user prompt in, one streamed response out.
+    When multi-turn follow-ups land, plumb history through here as
+    additional turns on the messages list inside tool_loop."""
     system = prompts.render_ask_system(workspace_name)
-    async for chunk in agent_runtime.stream_agent(
+    async for chunk in tool_loop.stream_tool_loop(
+        tier=llm.ModelTier.QUALITY,
         system=system,
         prompt=prompt,
         workspace_id=workspace_id,
         user_id=user_id,
+        tool_set=prompts.ASK_TOOL_SET,
     ):
         yield chunk

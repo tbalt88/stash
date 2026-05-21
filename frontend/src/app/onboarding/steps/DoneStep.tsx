@@ -1,12 +1,30 @@
 "use client";
 
+import { useEffect, useRef } from "react";
 import Link from "next/link";
+
+import { useAuth } from "@/hooks/useAuth";
+import { seedWelcomePage } from "@/lib/onboarding/seedWelcome";
 
 type Props = {
   workspaceId: string | null;
 };
 
 export default function DoneStep({ workspaceId }: Props) {
+  const { user } = useAuth();
+  // Guard so we don't fire twice in dev-mode strict-mode double-invocations.
+  const seededRef = useRef(false);
+
+  useEffect(() => {
+    if (!workspaceId || !user || seededRef.current) return;
+    seededRef.current = true;
+    void seedWelcomePage({
+      workspaceId,
+      userId: user.id,
+      displayName: user.display_name || user.name,
+    });
+  }, [workspaceId, user]);
+
   return (
     <div className="space-y-6">
       <div className="space-y-2">
@@ -14,7 +32,8 @@ export default function DoneStep({ workspaceId }: Props) {
           You&rsquo;re set up
         </h1>
         <p className="text-sm text-dim max-w-md">
-          Two things you might want next.
+          We dropped a welcome page into your workspace&rsquo;s About — open
+          it, keep what&rsquo;s useful, delete the rest.
         </p>
       </div>
 
@@ -44,8 +63,8 @@ export default function DoneStep({ workspaceId }: Props) {
           Go to your workspace
         </div>
         <p className="text-[12px] text-muted leading-relaxed">
-          Open the workspace home — anything you shared, imported, or copied
-          in is already there.
+          Open the workspace home — your welcome page and everything you
+          imported is already there.
         </p>
         {workspaceId && (
           <Link
@@ -59,3 +78,4 @@ export default function DoneStep({ workspaceId }: Props) {
     </div>
   );
 }
+
