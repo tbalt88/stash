@@ -30,6 +30,11 @@ Anything outside this list across other surfaces is either legacy, internal, or 
 
 ### 🔴 MUST FIX — surfaces that ship broken commands today
 
+#### F0. Cached plugin versions still inject dead command text (resolved with version bump)
+The wrong "Doc Claude" SessionStart text I keep seeing at the top of conversations (`stash view <url>`, `stash history search`, `stash notebooks list --all`) comes from cached old plugin versions in `~/.claude/plugins/cache/stash-plugins/stash/0.1.65/` and `0.1.70/`. The marketplace at `~/.claude/plugins/marketplaces/stash-plugins/` is currently pinned at v0.1.70 — it has the same dead text.
+
+**Resolution**: bumped `plugins/claude-plugin/.claude-plugin/plugin.json` to 0.1.84. Once this PR lands and the user pulls the marketplace refresh, Claude Code will fetch the new version (the version bump forces a cache miss), and new users installing for the first time will get the fixed `on_session_start.py` immediately. The fixed script uses `stash sessions search/query/agents` and `stash files pages` — all real commands.
+
 #### F1. Plugin SessionStart hooks inject **dead commands**
 Every plugin's `on_session_start.py` (and the per-plugin AGENTS.md / CLAUDE.md / GEMINI.md / stash.mdc files) tells the agent to use `stash history search`, `stash history query`, `stash history push`, `stash history agents`. **There is no `stash history` group** — `cli/main.py:2076` registers the group as `name="sessions"` (the variable is `hist_app` internally, but the public name is `sessions`).
 
@@ -111,12 +116,10 @@ Initial reading flagged `stash share / publish / upload / browse / read` as dupl
 
 **Resolution**: Concepts page now lists Workspace, Stash, Session, **Files** (the workspace's virtual filesystem, peer of Stashes and Sessions — one tree with three kinds of node inside: **folder**, **page**, **file**), Table, plus cross-cutting Discover, Activity, Search. Note the capital-F "Files" category vs lowercase "file" leaf type — that ambiguity is real, called out explicitly in the description.
 
-#### F11. README install command still references the curl install
-`README.md` Quick Start:
-```bash
-bash -c "$(curl -fsSL https://raw.githubusercontent.com/Fergana-Labs/stash/main/install.sh)"
-```
-Frontend docs/cli says `pip install stashai`. Frontend docs/quickstart says `pip install stashai && stash login`. Both work, but the install paths are diverging. Decide: is the canonical install `pipx`/`pip install stashai`, or the curl one-liner? Document one prominently, mention the other as fallback.
+#### F11. README install command still references the curl install (resolved)
+`README.md` Quick Start used to lead with the `bash <(curl …)` one-liner while frontend docs lead with `pip install stashai`. Diverged.
+
+**Resolution**: README Quick Start now leads with `pip install stashai && stash connect` (matching the frontend docs and what the docs/cli page tells users). The curl one-liner is preserved inside a `<details>` block as the fallback for users who don't already have a Python toolchain.
 
 #### F12a. Legacy "notebook" terminology — mostly already cleaned up
 Earlier draft of this audit claimed the DB tables still used `notebook_*` prefixes. **That's incorrect** — migration `0026_remove_notebooks.py` (already applied) renamed `notebook_folders` → `folders` and `notebook_pages` → `pages`, then dropped the `notebooks` table entirely. The "notebook" references in the source tree that remain after that migration:
@@ -128,8 +131,10 @@ Earlier draft of this audit claimed the DB tables still used `notebook_*` prefix
 
 Net: DB is already clean. DESIGN.md fixed. No other current-code references to chase.
 
-#### F12. `CHANGELOG.md` is functionally empty
-Only 2 entries despite many shipped features (folders, tables, integrations, plugins, publish flow, vfs). Acceptable if v0 is the policy starting point — but say so in the file, or backfill.
+#### F12. `CHANGELOG.md` is functionally empty (resolved)
+Only 2 entries despite many shipped features.
+
+**Resolution**: added a header line saying v0 is the open-source baseline and prior history lives in `git log`, plus a full Unreleased section capturing every shipped change in this audit PR (upload routing, MCP parity additions, MCP rename, BACKEND_INTERNAL_URL self-host fix, env-var additions, doc cleanup, plugin version bump).
 
 ---
 
@@ -138,8 +143,23 @@ Only 2 entries despite many shipped features (folders, tables, integrations, plu
 #### N1. `stash files` group correctly umbrellas folders + pages + files
 Confirmed intentional. Not a finding.
 
-#### N2. MCP capability gaps (subset of CLI) — mostly intentional
-MCP doesn't ship: `discover_search_public`, `invite_accept`, `session_import_jsonl`, `signin`/`connect`/`start`/`stop`/`welcome`/`config`. The latter group is correctly CLI-only (local state / streaming control / auth). The former three are arguable gaps; defer unless an agent reports needing them.
+#### N2. MCP capability parity with CLI (resolved)
+Earlier draft listed MCP gaps (discover, invite accept, session import) as deferred. **Closed in this PR**: ten new MCP tools added to reach parity on the agent-useful surface.
+
+| New MCP tool | What it does |
+|---|---|
+| `stash_search_public_stashes` | Browse / full-text search the public Discover catalog |
+| `stash_read_public_stash` | Fetch a public Stash as plain text (replaces WebFetch for joinstash.ai/v/ URLs) |
+| `stash_search_pages` | Full-text page search across a workspace |
+| `stash_session_transcript` | Fetch a session's full JSONL transcript |
+| `stash_delete_session` | Soft-delete a session (restore/purge already polymorphic via `stash_restore`/`stash_purge`) |
+| `stash_create_invite` | Mint a workspace invite token |
+| `stash_revoke_invite` | Revoke an invite token |
+| `stash_set_stash_access` | Change a Stash's access (private/workspace/public) and Discover opt-in |
+| `stash_update_table` | Rename / update a table's metadata |
+| `stash_export_table` | Get all rows of a table as JSON |
+
+MCP now ships 59 `stash_*` tools. The remaining CLI-only commands are intentionally CLI-only: auth flow (`register`/`login`/`signin`/`auth`/`logout`/`disconnect`), repo binding (`connect`/`join`/`leave`), streaming control (`start`/`stop`), local config (`config`/`settings`/`status`/`welcome`), API key management (`keys`), `vfs`/`mount`, and `prompts agent-guidance` (returns text for the agent to re-inject).
 
 #### N3. Plugin endpoint config is *consistent* via `~/.stash/config.json`
 All plugins resolve the endpoint by:

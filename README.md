@@ -58,11 +58,25 @@ With Stash, every agent on the repo has context about every session created from
 
 ## Quick Start
 
-Run this in a terminal:
+```bash
+pip install stashai
+stash connect
+```
+
+`stash connect` walks you through account creation, picks a workspace, and
+wires up coding-agent plugins. That's it.
+
+<details>
+<summary>Prefer a one-liner?</summary>
 
 ```bash
 bash -c "$(curl -fsSL https://raw.githubusercontent.com/Fergana-Labs/stash/main/install.sh)"
 ```
+
+The installer just runs `uv tool install stashai` and then `stash connect`.
+Use this when you don't already have a Python toolchain on your machine.
+
+</details>
 
 <p align="center">
   <img src="docs/assets/welcome.png" alt="Stash welcome screen after install" width="900" />
