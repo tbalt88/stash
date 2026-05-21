@@ -25,13 +25,28 @@ const CONCEPTS: { name: string; badge: string; badgeColor: string; desc: React.R
     badgeColor: "bg-green-500/10 text-green-600",
     desc: (
       <>
-        The workspace&apos;s virtual filesystem — nested folders containing
-        pages (markdown / HTML documents with autosave + live collaboration)
-        and uploads (images, PDFs, docs in S3-compatible storage). Everything
-        lives in one tree: <code className="font-mono text-[13px]">stash files tree</code>,{" "}
-        <code className="font-mono text-[13px]">stash vfs ls /</code>, and the
-        sidebar all see the same nodes. Pages, folders, and uploads are kinds
-        of files — not separate concepts.
+        The workspace&apos;s virtual filesystem. Peer of Stashes and Sessions
+        at the workspace level. One tree with three kinds of node inside it:
+        <ul className="mt-2 mb-2 list-disc pl-5 space-y-1">
+          <li>
+            <strong>folder</strong> — a directory. Nests other folders, pages,
+            and files.
+          </li>
+          <li>
+            <strong>page</strong> — markdown or HTML document edited in the
+            app, with autosave, live collaboration, and semantic search.
+          </li>
+          <li>
+            <strong>file</strong> — a binary stored in S3-compatible object
+            storage (images, PDFs, CSVs, etc.). Text-extracted on upload so
+            it&apos;s searchable.
+          </li>
+        </ul>
+        The same tree is visible via the sidebar,{" "}
+        <code className="font-mono text-[13px]">stash files tree</code>, and{" "}
+        <code className="font-mono text-[13px]">stash vfs ls /</code>. The
+        capital-F &quot;Files&quot; is the category; lowercase &quot;file&quot;
+        is one of the three node types inside it.
       </>
     ),
   },
@@ -51,7 +66,7 @@ const CONCEPTS: { name: string; badge: string; badgeColor: string; desc: React.R
     name: "Activity",
     badge: "Cross-cutting",
     badgeColor: "bg-muted/20 text-muted",
-    desc: "Timeline of recent events across workspaces — session uploads, page edits, file uploads, Stash publishes. Filterable per-workspace or global.",
+    desc: "Timeline of recent events across workspaces — new sessions, page edits, new files, Stash publishes. Filterable per-workspace or global.",
   },
   {
     name: "Search",

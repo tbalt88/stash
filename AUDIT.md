@@ -15,7 +15,7 @@ Cross-surface audit of the product: **UI vs CLI vs MCP vs Backend API vs Plugins
 | Workspace | Workspaces | sidebar switcher; `/workspaces/[id]` |
 | Stash | Stashes | shareable bundles; `/stashes/[slug]`, sidebar group |
 | Session | Sessions | agent transcripts; sidebar group |
-| Files | Files | the workspace's virtual filesystem: nested folders containing pages (markdown/HTML docs) and uploads (blobs). One tree — `stash files tree` / `stash vfs ls /` / sidebar all see the same nodes. Pages and folders and uploads are *kinds of files*, not separate concepts. |
+| Files | Files | the workspace's virtual filesystem. Peer of Stashes and Sessions at the workspace level. One tree with three kinds of node inside it: **folder** (directory), **page** (markdown/HTML doc edited in-app), **file** (S3-backed binary). Same tree via sidebar / `stash files tree` / `stash vfs ls /`. The capital-F "Files" is the category; lowercase "file" is one of three node types — confusing but real. |
 | Table | Tables | structured rows; `/tables/[id]` |
 
 **Cross-cutting**: Activity (`/activity`), Discover (`/discover`), Search (`/search`), Trash (per-workspace), Comments (page-level), Integrations (GitHub / Google Drive / Notion / Obsidian).
@@ -107,9 +107,9 @@ Initial reading flagged `stash share / publish / upload / browse / read` as dupl
 **Resolution: keep both, no changes.** The top-level forms exist for the muscle-memory verbs that match UI buttons; the grouped forms are the explicit / lower-level variants. Documenting the distinction is the docs/cli page's job (see F3 fix — the page now lists them separately under "Sessions", "Stashes", and "Uploaded files" sections).
 
 #### F10. `concepts` page omits Stashes, Discover, Activity, and splits Files into three peers
-`frontend/src/app/docs/concepts/page.tsx` previously listed six concepts: Workspace, Sessions, Files (badge "Pages"), Table, File (badge "Attachment"), Search. **Stashes were missing** — the eponymous concept of the product. The "Files / File" split also fragmented one concept into two, suggesting pages and uploads were separate things rather than two kinds of file in the same VFS.
+`frontend/src/app/docs/concepts/page.tsx` previously listed six concepts: Workspace, Sessions, Files (badge "Pages"), Table, File (badge "Attachment"), Search. **Stashes were missing** — the eponymous concept of the product. The "Files / File" split also fragmented one concept into two, suggesting pages and files were separate things rather than two kinds of node in the same VFS.
 
-**Resolution**: Concepts page now lists Workspace, Stash, Session, **Files** (the workspace's virtual filesystem — nested folders containing pages and uploads, all one tree visible via `stash files tree`, `stash vfs ls /`, and the sidebar), Table, plus cross-cutting Discover, Activity, Search. Pages, folders, and uploads are explicitly described as *kinds of files*, not separate concepts — matching the CLI's `stash files` umbrella and the sidebar's "Files" group.
+**Resolution**: Concepts page now lists Workspace, Stash, Session, **Files** (the workspace's virtual filesystem, peer of Stashes and Sessions — one tree with three kinds of node inside: **folder**, **page**, **file**), Table, plus cross-cutting Discover, Activity, Search. Note the capital-F "Files" category vs lowercase "file" leaf type — that ambiguity is real, called out explicitly in the description.
 
 #### F11. README install command still references the curl install
 `README.md` Quick Start:
@@ -117,6 +117,13 @@ Initial reading flagged `stash share / publish / upload / browse / read` as dupl
 bash -c "$(curl -fsSL https://raw.githubusercontent.com/Fergana-Labs/stash/main/install.sh)"
 ```
 Frontend docs/cli says `pip install stashai`. Frontend docs/quickstart says `pip install stashai && stash login`. Both work, but the install paths are diverging. Decide: is the canonical install `pipx`/`pip install stashai`, or the curl one-liner? Document one prominently, mention the other as fallback.
+
+#### F12a. Database tables still use legacy `notebook_*` prefix
+The product was called "Notebook" before becoming "Stash". The schema still reflects that history: `notebook_pages`, `notebook_folders`, and the `notebooks` table itself (which is now an implementation detail under workspaces — each workspace has a default notebook that everything lives in).
+
+User-visible surfaces all say "page" and "folder" with no notebook prefix. The DB layer is the only place the legacy name leaks. Code in `backend/services/files_tree_service.py` and the SQL in migrations still references `notebook_pages` / `notebook_folders`.
+
+**Not in this PR** — a rename migration touches every query, model, FK constraint, and index that references those tables. Big surface, separate change. Filed as a follow-up: rename `notebook_pages` → `pages`, `notebook_folders` → `folders`, and consider whether the `notebooks` middle table can be collapsed into a direct `workspace_id` on `folders`/`pages` (the latter would let us delete the `notebooks` table entirely — historically each workspace has exactly one notebook so it's a vestigial join).
 
 #### F12. `CHANGELOG.md` is functionally empty
 Only 2 entries despite many shipped features (folders, tables, integrations, plugins, publish flow, vfs). Acceptable if v0 is the policy starting point — but say so in the file, or backfill.
