@@ -562,6 +562,32 @@ function sessionLabelForSidebar(session: WorkspaceSidebarSession): string {
   return raw.length > 26 ? `${raw.slice(0, 26)}…` : raw;
 }
 
+function primarySessionTicket(session: WorkspaceSidebarSession) {
+  return session.linear_tickets[0] ?? null;
+}
+
+function SessionTicketPill({
+  ticket,
+}: {
+  ticket: WorkspaceSidebarSession["linear_tickets"][number] | null;
+}) {
+  if (!ticket) return null;
+
+  const title = ticket.ticket_title
+    ? `${ticket.ticket_identifier}: ${ticket.ticket_title}`
+    : ticket.ticket_identifier;
+
+  return (
+    <span
+      title={title}
+      aria-label={`Linear ticket ${title}`}
+      className="pointer-events-none inline-flex h-4 max-w-[74px] shrink-0 items-center truncate rounded border border-[var(--color-brand-200)] bg-[var(--color-brand-50)] px-1.5 text-[10px] font-semibold leading-none text-[var(--color-brand-700)] opacity-0 transition-opacity group-hover/nav:opacity-100 group-focus-within/nav:opacity-100"
+    >
+      {ticket.ticket_identifier}
+    </span>
+  );
+}
+
 function displaySidebarSessionUser(raw: string | null | undefined): string {
   return requireSessionUserName(raw);
 }
@@ -625,7 +651,7 @@ function SessionRowTimestamp({
       title={title}
       aria-label={title}
       className={
-        "ml-1 shrink-0 font-mono text-[9.5px] leading-none tabular-nums " +
+        "shrink-0 font-mono text-[9.5px] leading-none tabular-nums " +
         (active
           ? "text-[var(--color-brand-700)] opacity-70"
           : "text-muted/70 group-hover/nav:text-muted")
@@ -633,6 +659,23 @@ function SessionRowTimestamp({
     >
       {compact}
     </time>
+  );
+}
+
+function SessionRowTrailing({
+  session,
+  active,
+  timestampMode = "dateTime",
+}: {
+  session: WorkspaceSidebarSession;
+  active?: boolean;
+  timestampMode?: SessionTimestampMode;
+}) {
+  return (
+    <span className="ml-1 flex shrink-0 items-center gap-1">
+      <SessionTicketPill ticket={primarySessionTicket(session)} />
+      <SessionRowTimestamp session={session} active={active} mode={timestampMode} />
+    </span>
   );
 }
 
@@ -657,6 +700,13 @@ function searchSidebarSessions(
     const searchable = [
       session.title,
       session.session_id,
+      ...session.linear_tickets.flatMap((ticket) => [
+        ticket.ticket_identifier,
+        ticket.ticket_title,
+        ticket.ticket_status,
+        ticket.ticket_assignee_name,
+        ticket.ticket_project_name,
+      ]),
       session.user_name,
       session.agent_name,
     ]
@@ -929,10 +979,10 @@ function SessionNavRow({
       active={active}
       onContextMenu={(event) => onPinMenu?.(event, session)}
       trailing={
-        <SessionRowTimestamp
+        <SessionRowTrailing
           session={session}
           active={active}
-          mode={timestampMode}
+          timestampMode={timestampMode}
         />
       }
     />
@@ -1168,9 +1218,7 @@ function SessionsBlock({
                         showSessionPinMenu(event, row.id, row.label)
                       }
                       trailing={
-                        row.session ? (
-                          <SessionRowTimestamp session={row.session} active={active} />
-                        ) : null
+                        row.session ? <SessionRowTrailing session={row.session} active={active} /> : null
                       }
                     />
                   );
@@ -1613,7 +1661,7 @@ function StashTreeRow({ row }: { row: StashTreeItem }) {
       label={row.label}
       active={active}
       trailing={
-        row.session ? <SessionRowTimestamp session={row.session} active={active} /> : null
+        row.session ? <SessionRowTrailing session={row.session} active={active} /> : null
       }
     />
   );

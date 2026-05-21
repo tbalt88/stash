@@ -793,6 +793,7 @@ export async function updateFile(
 export interface SessionSummary {
   session_id: string;
   title: string;
+  linear_tickets: LinearTicketLabel[];
   workspace_id: string | null;
   workspace_name: string | null;
   user_name: string;
@@ -800,6 +801,22 @@ export interface SessionSummary {
   event_count: number;
   started_at: string;
   last_event_at: string;
+}
+
+export interface LinearTicketLabel {
+  ticket_identifier: string;
+  ticket_title: string | null;
+  ticket_url: string | null;
+  source: string;
+  confidence: number;
+  linear_issue_id: string | null;
+  ticket_status: string | null;
+  ticket_assignee_name: string | null;
+  ticket_team_key: string | null;
+  ticket_team_name: string | null;
+  ticket_project_name: string | null;
+  linear_updated_at: string | null;
+  enriched_at: string | null;
 }
 
 export async function listMySessions(workspaceId?: string, limit = 50): Promise<SessionSummary[]> {
@@ -833,6 +850,7 @@ export interface SessionDetail {
   agent_name: string;
   cwd: string | null;
   files_touched: string[] | string;
+  linear_tickets: LinearTicketLabel[];
   started_at: string | null;
   finished_at: string | null;
   created_by: string | null;
@@ -1373,6 +1391,7 @@ export interface WorkspaceSidebarSession {
   id: string | null;
   session_id: string;
   title: string;
+  linear_tickets: LinearTicketLabel[];
   user_name: string;
   agent_name: string;
   size_bytes: number;

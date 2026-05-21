@@ -11,6 +11,7 @@ import {
   listMyWorkspaces,
   uploadFileOrPage,
   uploadTranscript,
+  type WorkspaceSidebarSession,
 } from "../lib/api";
 
 const nav = vi.hoisted(() => ({
@@ -100,6 +101,7 @@ const sidebarWithStash = {
       id: "session-row-1",
       session_id: "session-1",
       title: "Planning session",
+      linear_tickets: [],
       user_name: "Henry",
       agent_name: "Claude",
       size_bytes: 256,
@@ -166,6 +168,7 @@ const sidebarWithTree = {
       id: "session-row-1",
       session_id: "session-1",
       title: "Planning session",
+      linear_tickets: [],
       user_name: "Henry",
       agent_name: "Claude",
       size_bytes: 256,
@@ -201,17 +204,40 @@ function sidebarSession(
   sessionId: string,
   title: string,
   userName: string,
-  lastAt: string
+  lastAt: string,
+  linearTickets: WorkspaceSidebarSession["linear_tickets"] = []
 ) {
   return {
     id: `row-${sessionId}`,
     session_id: sessionId,
     title,
+    linear_tickets: linearTickets,
     user_name: userName,
     agent_name: "Claude",
     size_bytes: 256,
     last_at: lastAt,
     updated_at: lastAt,
+  };
+}
+
+function linearTicket(
+  identifier: string,
+  title: string | null = null
+): WorkspaceSidebarSession["linear_tickets"][number] {
+  return {
+    ticket_identifier: identifier,
+    ticket_title: title,
+    ticket_url: null,
+    source: "github_pr_title",
+    confidence: 0.9,
+    linear_issue_id: null,
+    ticket_status: null,
+    ticket_assignee_name: null,
+    ticket_team_key: null,
+    ticket_team_name: null,
+    ticket_project_name: null,
+    linear_updated_at: null,
+    enriched_at: null,
   };
 }
 
@@ -538,6 +564,27 @@ describe("AppSidebar tree expansion", () => {
     fireEvent.click(screen.getByRole("button", { name: "Show 1 more sessions" }));
 
     expect(screen.getByText("Bucket session 10")).toBeTruthy();
+  });
+
+  it("renders Linear ticket pills for session rows", async () => {
+    vi.mocked(getWorkspaceSidebar).mockResolvedValue(
+      sidebarWithSessions([
+        sidebarSession(
+          "ticket-session",
+          "Ticketed sidebar work",
+          "Henry",
+          "2026-05-20T12:00:00Z",
+          [linearTicket("FER-19", "Label sessions from PRs")]
+        ),
+      ])
+    );
+
+    renderSidebar();
+
+    const pill = await screen.findByText("FER-19");
+    expect(pill).toHaveAttribute("title", "FER-19: Label sessions from PRs");
+    expect(pill).toHaveClass("opacity-0");
+    expect(pill).toHaveClass("group-hover/nav:opacity-100");
   });
 
   it("filters hidden sidebar sessions", async () => {
