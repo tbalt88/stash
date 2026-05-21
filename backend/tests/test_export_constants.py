@@ -36,18 +36,16 @@ def test_device_scale_factor_is_meaningful():
     assert constants.EXPORT_DEVICE_SCALE_FACTOR >= 2
 
 
-def test_px_to_emu_clamps_within_bounds():
-    convert = pptx._px_to_emu
-    width_emu = int(constants.SLIDE_WIDTH_EMU)
-    assert convert(0, constants.SLIDE_WIDTH_PX, width_emu) == 0
-    assert convert(constants.SLIDE_WIDTH_PX, constants.SLIDE_WIDTH_PX, width_emu) == width_emu
-    # Mid-canvas.
-    mid = convert(960, constants.SLIDE_WIDTH_PX, width_emu)
-    assert width_emu // 2 - 100 < mid < width_emu // 2 + 100
-    # Out-of-bounds high gets clamped to slide width, not extended past.
-    assert convert(9999, constants.SLIDE_WIDTH_PX, width_emu) == width_emu
-    # Out-of-bounds low (negative) gets clamped to 0.
-    assert convert(-50, constants.SLIDE_WIDTH_PX, width_emu) == 0
+def test_pptx_export_injects_canvas_css():
+    """Slides whose HTML omits explicit dimensions still need to fill the
+    1920x1080 canvas, or the screenshot ends up with whitespace below
+    the content (and the resulting PPTX renders the slide as a thin
+    band at the top of the page)."""
+    html = "<!DOCTYPE html><html><body><section class=\"slide\">x</section></body></html>"
+    rendered = pptx._build_single_slide_html(html, 0)
+    assert "section.slide" in rendered
+    assert f"width: {constants.SLIDE_WIDTH_PX}px" in rendered
+    assert f"height: {constants.SLIDE_HEIGHT_PX}px" in rendered
 
 
 def test_no_hardcoded_canvas_dims_in_exporters():
