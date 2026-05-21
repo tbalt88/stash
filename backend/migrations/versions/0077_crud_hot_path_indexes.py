@@ -1,14 +1,19 @@
 """Add indexes for CRUD hot paths.
 
-Revision ID: 0075
-Revises: 0074
+Revision ID: 0077
+Revises: 0076
 Create Date: 2026-05-21
+
+Renumbered from 0075 to resolve a duplicate-head conflict with
+0075_rewrite_legacy_r2_image_urls.py (the original 0075 on main).
+All index creates are IF NOT EXISTS, so this is safe to re-apply
+on environments where the duplicate-numbered original already ran.
 """
 
 from alembic import op
 
-revision = "0075"
-down_revision = "0074"
+revision = "0077"
+down_revision = "0076"
 branch_labels = None
 depends_on = None
 
