@@ -41,7 +41,7 @@ def test_pptx_export_injects_canvas_css():
     1920x1080 canvas, or the screenshot ends up with whitespace below
     the content (and the resulting PPTX renders the slide as a thin
     band at the top of the page)."""
-    html = "<!DOCTYPE html><html><body><section class=\"slide\">x</section></body></html>"
+    html = '<!DOCTYPE html><html><body><section class="slide">x</section></body></html>'
     rendered = pptx._build_single_slide_html(html, 0)
     assert "section.slide" in rendered
     assert f"width: {constants.SLIDE_WIDTH_PX}px" in rendered
