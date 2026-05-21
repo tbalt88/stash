@@ -183,15 +183,29 @@ function StashKindTag({ kind }: { kind: StashItem["kind"] }) {
 
 function HeroFunnel() {
   return (
-    <div className="relative w-full">
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img
-        src="/hero-funnel.png"
-        alt="A blurred fan of customer-feedback sources funnelling into a single, crisp Stash article that synthesizes the recurring asks."
-        width={1086}
-        height={1676}
-        className="block h-auto w-full max-w-[565px]"
-      />
+    <div className="relative w-full max-w-[565px]">
+      <div
+        className="overflow-hidden rounded-[18px] border border-border-subtle bg-background"
+        style={{
+          boxShadow:
+            "rgba(15, 23, 42, 0.04) 0px 1px 2px 0px, rgba(15, 23, 42, 0.10) 0px 24px 48px -24px",
+        }}
+      >
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src="/hero-funnel.png"
+          alt="A blurred fan of customer-feedback sources funnelling into a single, crisp Stash article that synthesizes the recurring asks."
+          width={1086}
+          height={1676}
+          className="block h-auto w-full"
+          style={{
+            WebkitMaskImage:
+              "linear-gradient(to bottom, black 0%, black 86%, transparent 100%)",
+            maskImage:
+              "linear-gradient(to bottom, black 0%, black 86%, transparent 100%)",
+          }}
+        />
+      </div>
     </div>
   );
 }
@@ -217,7 +231,7 @@ function Hero() {
 
           <p className="mt-7 max-w-[540px] text-[18px] leading-[1.55] text-foreground">
             Built for the era where your agents write more than your team does.
-            Files, sessions, and Stashes. A company brain humans and agents
+            Files, sessions, and Stashes. A company brain agents and humans
             both write into.
           </p>
 
