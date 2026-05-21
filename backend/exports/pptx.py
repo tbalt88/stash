@@ -113,7 +113,9 @@ async def _capture_slide(page, slide_index: int, html: str) -> tuple[bytes, list
     try:
         text_blocks = await page.evaluate(_TEXT_HARVEST_JS)
     except Exception:
-        logger.warning("text harvest failed for slide %s; export will lack selectable text", slide_index)
+        logger.warning(
+            "text harvest failed for slide %s; export will lack selectable text", slide_index
+        )
         text_blocks = []
     return png, text_blocks
 
