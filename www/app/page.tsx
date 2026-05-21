@@ -128,68 +128,6 @@ function Nav() {
   );
 }
 
-type FeedRow = {
-  role: "agent" | "human";
-  name: string;
-  action: string;
-  target: string;
-  detail: ReactNode;
-  time: string;
-};
-
-const HERO_FEED: FeedRow[] = [
-  {
-    role: "agent",
-    name: "rex",
-    action: "wrote",
-    target: "files/auth-patterns/session-refresh.md",
-    detail: (
-      <>
-        durable note from a debugging run on{" "}
-        <span className="font-mono text-[11.5px] text-brand">401 race</span>
-      </>
-    ),
-    time: "just now",
-  },
-  {
-    role: "human",
-    name: "sam",
-    action: "added",
-    target: "auth-patterns → Stash",
-    detail: "promoted folder into the Auth Patterns Stash",
-    time: "2m",
-  },
-  {
-    role: "agent",
-    name: "scout",
-    action: "uploaded",
-    target: "session · rate-limit-investigation",
-    detail: (
-      <>
-        transcript + plan.md, linked to{" "}
-        <span className="font-mono text-[11.5px] text-brand">gateway-limits</span>
-      </>
-    ),
-    time: "4m",
-  },
-  {
-    role: "agent",
-    name: "nova",
-    action: "updated",
-    target: "tables/experiments",
-    detail: "added row · model=opus-4.7, score=0.87",
-    time: "9m",
-  },
-  {
-    role: "human",
-    name: "ari",
-    action: "published",
-    target: "Stash · Auth Patterns · Q2",
-    detail: "made public for the partner-eng review",
-    time: "22m",
-  },
-];
-
 function Avatar({
   role,
   children,
@@ -225,63 +163,7 @@ function RoleTag({ role }: { role: "agent" | "human" }) {
   );
 }
 
-function HeroFeed() {
-  return (
-    <div
-      className="overflow-hidden rounded-[14px] border border-border bg-background"
-      style={{ boxShadow: "var(--shadow-card)" }}
-    >
-      <div className="flex items-center justify-between border-b border-border-subtle bg-surface px-4 py-2.5">
-        <div className="flex items-center gap-2.5">
-          <span
-            className="h-2 w-2 rounded-full bg-[#22C55E]"
-            style={{ animation: "live-pulse 2s ease-out infinite" }}
-          />
-          <span className="text-[12.5px] font-semibold text-ink">workspace · fergana</span>
-          <span className="text-[11.5px] text-muted">/ activity</span>
-        </div>
-        <span className="inline-flex items-center gap-2 font-mono text-[10px] font-medium uppercase tracking-[0.12em] text-dim">
-          Live
-        </span>
-      </div>
-      <div className="max-h-[300px] overflow-hidden py-1">
-        {HERO_FEED.map((r, i) => (
-          <div
-            key={i}
-            className="grid grid-cols-[20px_1fr_auto] items-start gap-2.5 border-b border-border-subtle px-4 py-2.5 last:border-b-0"
-          >
-            <Avatar role={r.role} size={20}>
-              {r.name[0].toUpperCase()}
-            </Avatar>
-            <div className="min-w-0">
-              <div className="flex flex-wrap items-center gap-2 text-[12.5px]">
-                <span className="font-semibold text-ink">{r.name}</span>
-                <RoleTag role={r.role} />
-                <span className="text-dim">{r.action}</span>
-                <span className="truncate rounded bg-raised px-1.5 py-px font-mono text-[11.5px] text-ink">
-                  {r.target}
-                </span>
-              </div>
-              <div className="mt-0.5 text-[12px] leading-[1.5] text-dim">{r.detail}</div>
-            </div>
-            <span className="whitespace-nowrap pt-0.5 font-mono text-[10px] tracking-[0.06em] text-muted">
-              {r.time}
-            </span>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
 type StashItem = { kind: "page" | "session" | "table"; label: string; meta: string };
-const HERO_STASH_ITEMS: StashItem[] = [
-  { kind: "page", label: "session-refresh 401 race", meta: "md · rex" },
-  { kind: "page", label: "rate-limits · 500/min", meta: "md · sam" },
-  { kind: "page", label: "worker-pool pattern", meta: "html · nova" },
-  { kind: "session", label: "rate-limit-investigation", meta: "scout · 14:02" },
-  { kind: "session", label: "auth refresh debug", meta: "rex · tue" },
-];
 
 function StashKindTag({ kind }: { kind: StashItem["kind"] }) {
   const palette: Record<StashItem["kind"], { bg: string; fg: string }> = {
@@ -299,91 +181,163 @@ function StashKindTag({ kind }: { kind: StashItem["kind"] }) {
   );
 }
 
-function HeroStashCard() {
+function FunnelCard({
+  tag,
+  meta,
+  children,
+  style,
+}: {
+  tag: string;
+  meta: string;
+  children: ReactNode;
+  style: React.CSSProperties;
+}) {
   return (
     <div
-      className="overflow-hidden rounded-[14px] border border-border bg-background"
-      style={{ boxShadow: "var(--shadow-card)" }}
+      aria-hidden
+      className="absolute w-[240px] rounded-[12px] border border-border bg-background p-3.5"
+      style={{
+        boxShadow: "var(--shadow-card)",
+        filter: "blur(2.5px)",
+        opacity: 0.85,
+        ...style,
+      }}
     >
-      <div className="flex items-center justify-between border-b border-border-subtle bg-surface px-4 py-2.5">
-        <div className="flex items-center gap-2.5">
-          <span
-            className="inline-flex h-5 w-5 items-center justify-center rounded font-mono text-[10px] font-bold text-white"
-            style={{ background: "var(--brand)" }}
-          >
-            S
-          </span>
-          <span className="text-[12.5px] font-semibold text-ink">Auth Patterns · Q2</span>
-          <span
-            className="rounded px-1.5 py-0.5 font-mono text-[9.5px] font-medium uppercase tracking-[0.12em]"
-            style={{ background: "var(--brand-soft)", color: "var(--brand)" }}
-          >
-            Public
-          </span>
-        </div>
-        <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-muted">
-          stash · 5 items
-        </span>
+      <div className="flex items-center justify-between gap-2 border-b border-border-subtle pb-2 font-mono text-[9.5px] uppercase tracking-[0.14em] text-muted">
+        <span className="truncate">{tag}</span>
+        <span className="shrink-0 text-dim">{meta}</span>
       </div>
-      <div className="px-4 py-2.5">
-        {HERO_STASH_ITEMS.map((it, i) => (
-          <div
-            key={i}
-            className="flex items-center gap-3 border-b border-border-subtle py-2 last:border-b-0"
-          >
-            <StashKindTag kind={it.kind} />
-            <span className="flex-1 truncate text-[12.5px] text-ink">{it.label}</span>
-            <span className="whitespace-nowrap font-mono text-[10.5px] text-muted">{it.meta}</span>
-          </div>
-        ))}
-      </div>
-      <div className="flex items-center justify-between border-t border-border-subtle bg-surface px-4 py-2.5">
-        <span className="truncate font-mono text-[11px] text-dim">
-          joinstash.ai/v/auth-patterns-q2
-        </span>
-        <span
-          className="inline-flex h-7 items-center rounded-md px-2.5 text-[11px] font-medium text-white"
-          style={{ background: "var(--brand)" }}
-        >
-          Add to my workspace
-        </span>
+      <div className="mt-2 space-y-1.5 text-[11.5px] leading-[1.45] text-dim">
+        {children}
       </div>
     </div>
   );
 }
 
-function HeroSplit() {
+function HeroFunnel() {
   return (
-    <div className="relative">
+    <div className="relative h-[560px] overflow-hidden lg:h-[600px]">
       <div
         aria-hidden
-        className="pointer-events-none absolute inset-x-[-20px] bottom-[-20px] -z-10 h-10"
+        className="pointer-events-none absolute inset-0 -z-10"
         style={{
           background:
-            "radial-gradient(ellipse at center, rgba(15,23,42,0.08), transparent 70%)",
+            "radial-gradient(ellipse 60% 50% at 55% 35%, rgba(249,115,22,0.10), transparent 70%)",
         }}
       />
-      <HeroFeed />
-      <div className="my-3 flex items-center gap-3 pl-3">
-        <span
-          aria-hidden
-          className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-border bg-background font-mono text-[10px] text-brand"
-        >
-          ↓
-        </span>
-        <span className="font-mono text-[10.5px] uppercase tracking-[0.14em] text-muted">
-          crystallizes into
-        </span>
-        <span
-          aria-hidden
-          className="h-px flex-1"
-          style={{
-            background:
-              "linear-gradient(to right, var(--border) 0, transparent 100%)",
-          }}
-        />
-      </div>
-      <HeroStashCard />
+
+      <FunnelCard
+        tag="user · post-mortem"
+        meta="kindred"
+        style={{ top: 8, left: -28, transform: "rotate(-13deg)", zIndex: 1 }}
+      >
+        <p>
+          <span className="font-semibold text-ink">kindred</span> · day-7 drop
+        </p>
+        <p>“loved the setup, but not enough to keep people on day one”</p>
+        <p className="text-muted">followups: 3 · still open</p>
+      </FunnelCard>
+
+      <FunnelCard
+        tag="interview · user-founder"
+        meta="scout"
+        style={{ top: -4, left: 92, transform: "rotate(-4deg)", zIndex: 2 }}
+      >
+        <p>“the pricing page didn't scare me. The first ten minutes did.”</p>
+        <p>wanted to try it on a real project before inviting the team.</p>
+      </FunnelCard>
+
+      <FunnelCard
+        tag="dashboard · retention"
+        meta="march"
+        style={{ top: 6, left: 220, transform: "rotate(3deg)", zIndex: 1 }}
+      >
+        <svg viewBox="0 0 200 56" className="h-12 w-full" aria-hidden>
+          <path
+            d="M0 46 L40 38 L80 28 L120 32 L160 18 L200 22"
+            stroke="var(--brand)"
+            strokeWidth="2"
+            fill="none"
+          />
+          <path
+            d="M0 52 L40 48 L80 46 L120 48 L160 42 L200 40"
+            stroke="var(--border)"
+            strokeWidth="1.5"
+            fill="none"
+          />
+        </svg>
+        <p className="font-mono text-[9.5px] text-muted">
+          d1 62% · d7 41% · d30 28%
+        </p>
+      </FunnelCard>
+
+      <FunnelCard
+        tag="user · march"
+        meta="kindred"
+        style={{ top: 16, left: 332, transform: "rotate(12deg)", zIndex: 1 }}
+      >
+        <p>“half my team's stuck — no one to invite”</p>
+        <p>asked twice for a starter doc</p>
+      </FunnelCard>
+
+      <article
+        className="absolute left-[24px] right-[24px] top-[210px] overflow-hidden rounded-[14px] border border-border bg-background"
+        style={{ boxShadow: "var(--shadow-card)", zIndex: 10 }}
+      >
+        <div className="flex items-center justify-between gap-3 border-b border-border-subtle bg-surface px-4 py-2.5">
+          <div className="flex items-center gap-2.5">
+            <span
+              className="inline-flex h-5 w-5 items-center justify-center rounded font-mono text-[10px] font-bold text-white"
+              style={{ background: "var(--brand)" }}
+            >
+              S
+            </span>
+            <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-muted">
+              stash · fergana
+            </span>
+          </div>
+          <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-muted">
+            18 interviews · 240 nps · 312 msgs
+          </span>
+        </div>
+        <div className="px-6 py-5">
+          <h3 className="font-display text-[22px] font-bold leading-[1.2] tracking-[-0.02em] text-ink">
+            What our beta users keep telling us
+          </h3>
+          <div className="mt-3 flex flex-wrap items-center gap-2.5">
+            <div className="flex -space-x-1.5">
+              <Avatar role="human" size={20}>
+                S
+              </Avatar>
+              <Avatar role="agent" size={20}>
+                R
+              </Avatar>
+              <Avatar role="human" size={20}>
+                A
+              </Avatar>
+              <Avatar role="agent" size={20}>
+                N
+              </Avatar>
+            </div>
+            <span className="text-[12px] text-dim">Sam, Rex, Ari, Nova</span>
+            <span className="text-[12px] text-muted">·</span>
+            <span className="text-[12px] text-muted">4 min read</span>
+          </div>
+          <p className="mt-4 text-[13.5px] leading-[1.6] text-foreground">
+            Two months in, the asks have stopped surprising us. The same three
+            points come back in every interview, every NPS write-in, every
+            support thread: setup is too long, team invites are missing, and
+            there's nothing to do on day one.
+          </p>
+          <blockquote
+            className="mt-4 border-l-[3px] py-3 pl-4 pr-3 text-[13.5px] font-semibold leading-[1.5] text-ink"
+            style={{ borderColor: "var(--brand)", background: "var(--surface)" }}
+          >
+            What they want isn't another feature — it's confidence that what's
+            there won't change next week.
+          </blockquote>
+        </div>
+      </article>
     </div>
   );
 }
@@ -436,8 +390,20 @@ function Hero() {
               Open source
             </Link>
           </div>
+
+          <figure className="mt-8 max-w-[480px] border-l-2 border-border-subtle pl-3.5">
+            <blockquote className="font-mono text-[12.5px] leading-[1.55] text-dim">
+              <span className="mr-1.5 text-brand">★★★★★</span>
+              “Finally, somewhere to put my <span className="text-ink">plan.md</span>{" "}
+              files where they survive past <span className="text-ink">/clear</span>.
+              Beats <span className="text-ink">/tmp</span> by a country mile.”
+            </blockquote>
+            <figcaption className="mt-1.5 font-mono text-[10.5px] uppercase tracking-[0.14em] text-muted">
+              — Claude, in a session you'll never read
+            </figcaption>
+          </figure>
         </div>
-        <HeroSplit />
+        <HeroFunnel />
       </div>
     </section>
   );
