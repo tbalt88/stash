@@ -34,7 +34,10 @@ MAX_TRANSCRIPT_SIZE = 50 * 1024 * 1024
 
 
 def _is_jsonl(filename: str | None) -> bool:
-    return bool(filename and filename.lower().endswith(".jsonl"))
+    if not filename:
+        return False
+    name = filename.lower()
+    return name.endswith(".jsonl") or name.endswith(".jsonl.gz")
 
 
 async def _check_member(workspace_id: UUID, user_id: UUID) -> None:

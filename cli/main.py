@@ -3953,17 +3953,22 @@ def _onboarding_import_history(detected_agents: list[str]) -> None:
     from rich.progress import Progress
 
     imported = 0
+    errors = 0
+    last_error = ""
     with _client() as c, Progress(console=console) as progress:
         task = progress.add_task("Importing…", total=len(conversations))
         for conv in conversations:
             try:
                 upload_conversation(c, ws, conv, default_stash_id=_default_stash_id())
                 imported += 1
-            except StashError:
-                pass
+            except StashError as e:
+                errors += 1
+                last_error = str(e)
             progress.advance(task)
 
     console.print(f"  [green]��[/green] Imported {imported} conversations")
+    if errors:
+        console.print(f"  [yellow]{errors} failed — {last_error}[/yellow]")
 
 
 def _show_setup_complete_splash() -> None:
