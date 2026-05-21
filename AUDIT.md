@@ -118,12 +118,15 @@ bash -c "$(curl -fsSL https://raw.githubusercontent.com/Fergana-Labs/stash/main/
 ```
 Frontend docs/cli says `pip install stashai`. Frontend docs/quickstart says `pip install stashai && stash login`. Both work, but the install paths are diverging. Decide: is the canonical install `pipx`/`pip install stashai`, or the curl one-liner? Document one prominently, mention the other as fallback.
 
-#### F12a. Database tables still use legacy `notebook_*` prefix
-The product was called "Notebook" before becoming "Stash". The schema still reflects that history: `notebook_pages`, `notebook_folders`, and the `notebooks` table itself (which is now an implementation detail under workspaces — each workspace has a default notebook that everything lives in).
+#### F12a. Legacy "notebook" terminology — mostly already cleaned up
+Earlier draft of this audit claimed the DB tables still used `notebook_*` prefixes. **That's incorrect** — migration `0026_remove_notebooks.py` (already applied) renamed `notebook_folders` → `folders` and `notebook_pages` → `pages`, then dropped the `notebooks` table entirely. The "notebook" references in the source tree that remain after that migration:
 
-User-visible surfaces all say "page" and "folder" with no notebook prefix. The DB layer is the only place the legacy name leaks. Code in `backend/services/files_tree_service.py` and the SQL in migrations still references `notebook_pages` / `notebook_folders`.
+- `backend/migrations/versions/0001_initial_schema.py` and ~8 other migrations — they describe the *old* schema. These are historical artifacts and shouldn't be edited (migrations are append-only and have already run on every deployed instance).
+- `DESIGN.md` — described the product as "chats, notebooks, and memory stores" and had a "Max content width 680px for notebooks/readable content" rule. **Fixed in this PR.**
+- `plugins/claude-plugin/scripts/adapt.py:21` — `"NotebookEdit": "edit"`. This is Claude Code's built-in tool for Jupyter `.ipynb` editing, not our notebook. Leaving as-is.
+- `plans/sharing-demo.md` — an internal plan doc, not user-facing. Leaving.
 
-**Not in this PR** — a rename migration touches every query, model, FK constraint, and index that references those tables. Big surface, separate change. Filed as a follow-up: rename `notebook_pages` → `pages`, `notebook_folders` → `folders`, and consider whether the `notebooks` middle table can be collapsed into a direct `workspace_id` on `folders`/`pages` (the latter would let us delete the `notebooks` table entirely — historically each workspace has exactly one notebook so it's a vestigial join).
+Net: DB is already clean. DESIGN.md fixed. No other current-code references to chase.
 
 #### F12. `CHANGELOG.md` is functionally empty
 Only 2 entries despite many shipped features (folders, tables, integrations, plugins, publish flow, vfs). Acceptable if v0 is the policy starting point — but say so in the file, or backfill.
