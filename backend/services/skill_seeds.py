@@ -9,6 +9,7 @@ we leave it alone (users may have edited it).
 from __future__ import annotations
 
 import logging
+import os
 from uuid import UUID
 
 from ..database import get_pool
@@ -18,6 +19,11 @@ logger = logging.getLogger(__name__)
 
 SLIDES_SKILL_FOLDER = "slides"
 SKILL_MD_NAME = "SKILL.md"
+
+# Env knob so the test suite can create blank workspaces. Production
+# leaves this unset; tests that need the seeded skill flip it off and
+# call `seed_slides_skill` directly.
+DISABLE_ENV_VAR = "STASH_DISABLE_DEFAULT_SKILL_SEEDS"
 
 
 SLIDES_SKILL_MARKDOWN = """---
@@ -131,8 +137,11 @@ async def seed_slides_skill(workspace_id: UUID, creator_id: UUID) -> bool:
 
     Returns True if the SKILL.md was created in this call, False if a
     SKILL.md was already present in any folder named `slides` (we treat
-    that as "already seeded" and leave it alone).
+    that as "already seeded" and leave it alone), or if the env knob
+    `STASH_DISABLE_DEFAULT_SKILL_SEEDS=1` is set (test mode).
     """
+    if os.environ.get(DISABLE_ENV_VAR) == "1":
+        return False
     pool = get_pool()
 
     existing = await pool.fetchval(
