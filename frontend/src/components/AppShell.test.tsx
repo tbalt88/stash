@@ -6,10 +6,11 @@ import {
   waitFor,
   within,
 } from "@testing-library/react";
-import type { ReactNode } from "react";
+import { useMemo, type ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import AppShell from "./AppShell";
 import { BreadcrumbProvider, useBreadcrumbs } from "./BreadcrumbContext";
+import { ShellChromeProvider, useShareAction } from "./ShellChromeContext";
 import { ShareModalProvider } from "../lib/shareModalContext";
 import { getSessionDetail, publishStash } from "../lib/api";
 import {
@@ -339,16 +340,25 @@ describe("AppShell sidebar collapse", () => {
     nav.pathname = "/stashes/shared-stash";
     mockWorkspaceCache();
 
+    function PageWithShareAction() {
+      // Memo the node so each re-render registers the same ReactNode identity;
+      // otherwise useShareAction's effect re-fires and loops the shell render.
+      const shareButton = useMemo(
+        () => <button type="button">Share</button>,
+        [],
+      );
+      useShareAction(shareButton);
+      return <div>Stash content</div>;
+    }
+
     render(
-      <ShareModalProvider>
-        <AppShell
-          user={user}
-          onLogout={vi.fn()}
-          shareAction={<button type="button">Share</button>}
-        >
-          <div>Stash content</div>
-        </AppShell>
-      </ShareModalProvider>,
+      <ShellChromeProvider>
+        <ShareModalProvider>
+          <AppShell user={user} onLogout={vi.fn()}>
+            <PageWithShareAction />
+          </AppShell>
+        </ShareModalProvider>
+      </ShellChromeProvider>,
     );
 
     const share = await screen.findByRole("button", { name: "Share" });

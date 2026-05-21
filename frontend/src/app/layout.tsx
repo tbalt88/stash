@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Instrument_Sans, JetBrains_Mono, Space_Grotesk } from "next/font/google";
 import "./globals.css";
 import { BreadcrumbProvider } from "../components/BreadcrumbContext";
+import { ShellChromeProvider } from "../components/ShellChromeContext";
 import { ShareModalProvider } from "../lib/shareModalContext";
 import StashShareModal from "../components/share/StashShareModal";
 
@@ -43,10 +44,12 @@ export default function RootLayout({
         className={`${instrumentSans.variable} ${jetbrainsMono.variable} ${spaceGrotesk.variable} antialiased min-h-screen`}
       >
         <BreadcrumbProvider>
-          <ShareModalProvider>
-            {children}
-            <StashShareModal />
-          </ShareModalProvider>
+          <ShellChromeProvider>
+            <ShareModalProvider>
+              {children}
+              <StashShareModal />
+            </ShareModalProvider>
+          </ShellChromeProvider>
         </BreadcrumbProvider>
       </body>
     </html>

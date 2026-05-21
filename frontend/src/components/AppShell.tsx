@@ -16,6 +16,7 @@ import CommandPalette from "./CommandPalette";
 import StashInviteCenter from "./StashInviteCenter";
 import { useShareModal } from "../lib/shareModalContext";
 import { type Crumb, useBreadcrumbsValue } from "./BreadcrumbContext";
+import { useShellChromeValue } from "./ShellChromeContext";
 import {
   getCachedWorkspaces,
   readCachedWorkspaces,
@@ -26,8 +27,6 @@ interface AppShellProps {
   user: User;
   onLogout: () => void;
   children: ReactNode;
-  shareAction?: ReactNode;
-  activeWorkspaceId?: string | null;
 }
 
 const SIDEBAR_KEY = "stash_sidebar_collapsed";
@@ -272,11 +271,11 @@ export default function AppShell({
   user,
   onLogout,
   children,
-  shareAction,
-  activeWorkspaceId: preferredWorkspaceId = null,
 }: AppShellProps) {
   const pathname = usePathname();
   const breadcrumbs = useBreadcrumbsValue();
+  const { shareAction, activeWorkspaceId: preferredWorkspaceId } =
+    useShellChromeValue();
   const shareModal = useShareModal();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [activeWorkspaceId, setActiveWorkspaceId] = useState<string | null>(
