@@ -11,11 +11,11 @@ Real-world scenarios for Stash, from solo developer to multi-agent team.
 **Setup:**
 1. Create a workspace ("Acme Engineering")
 2. Each developer installs the Claude Code plugin with their own agent name
-3. Run `stash curate` to organize history into pages
+3. Leave the Claude plugin's `auto_curate` setting on (default), or invoke the `/stash:curate` skill on demand
 
 **What happens:**
 - Every Claude Code session auto-streams to Stash: prompts, assistant messages, tool calls, file edits, and artifacts
-- Run the `curate` tool to organize events into pages: "Authentication Patterns", "Database Migration Guide", "API Rate Limiting" — with Stashes and categories
+- At session end the auto-curate hook (or the `/stash:curate` skill) runs headlessly to organize new events into pages: "Authentication Patterns", "Database Migration Guide", "API Rate Limiting"
 - A developer asks Claude: *"Check Stash — what did we learn about connection pooling last week?"* — gets an AI-synthesized answer with source events
 
 **Value:** Institutional memory that builds itself. No manual documentation. When someone new joins, the durable context is already there.
@@ -27,13 +27,13 @@ Real-world scenarios for Stash, from solo developer to multi-agent team.
 **Who:** A researcher using multiple AI agents to survey a topic.
 
 **Setup:**
-1. Create a workspace and history store ("RAG Research")
-2. Connect via the CLI or REST API
+1. Create a workspace ("RAG Research")
+2. Connect via the CLI (`stash connect`) or REST API
 
 **What happens:**
 - The researcher prompts: *"Search the web for the latest papers on RAG architectures and save summaries to Stash"*
 - Each agent session pushes structured events: paper titles, key findings, URLs, methodology notes
-- The `curate` tool organizes these into categorized pages: "Retrieval Methods", "Chunking Strategies", "Evaluation Benchmarks"
+- The `/stash:curate` skill (or end-of-session auto-curate) organizes these into categorized pages: "Retrieval Methods", "Chunking Strategies", "Evaluation Benchmarks"
 - Later: *"What do we know about hybrid search approaches?"* — Stash's LLM search synthesizes across all stored events
 
 **Value:** Turn a week of scattered research into a structured, searchable knowledge base without manually organizing anything.
@@ -52,7 +52,7 @@ Real-world scenarios for Stash, from solo developer to multi-agent team.
 - The code review agent uploads findings to the workspace: *"Found SQL injection risk in auth.ts:42"*
 - The security agent searches that session and writes the parameterized query fix into Files
 - The deployment agent uploads deployment sessions and includes them in a release Stash
-- All activity flows into history. Use the `curate` tool to create a running audit: "Security Findings", "Deployment Log", "Code Review Summary"
+- All activity flows into the workspace's session history. The `/stash:curate` skill rolls events up into a running audit: "Security Findings", "Deployment Log", "Code Review Summary"
 
 **Value:** Agents coordinate through structured channels with persistent audit trails, not ephemeral prompt chains.
 

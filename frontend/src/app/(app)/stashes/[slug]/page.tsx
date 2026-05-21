@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
 
-import StashPageClient from "./StashPageClient";
+import { SSR_BACKEND_ORIGIN as BACKEND_ORIGIN } from "@/lib/backendOrigin";
 
-const BACKEND_ORIGIN = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3456";
+import StashPageClient from "./StashPageClient";
 
 export async function generateMetadata({
   params,

@@ -403,7 +403,13 @@ def stash_file_text(file_id: str, workspace_id: str = "") -> str:
 
 @mcp.tool()
 def stash_upload_file(file_path: str, workspace_id: str = "") -> str:
-    """Upload a local file to the workspace. Returns a stable app_url for the user."""
+    """Upload a local file to the workspace.
+
+    Markdown (.md/.markdown/.mdx) and HTML (.html/.htm) become editable
+    pages; everything else becomes a binary file. Response shape:
+    `{kind: "file"|"page", id, name, app_url, ...}` — branch on `kind` if
+    you care, otherwise `app_url` is the link to hand back to the user.
+    """
     client, default_ws = _client()
     ws = _require_ws(workspace_id or default_ws)
     return _json(client.upload_ws_file(ws, file_path))
@@ -556,6 +562,27 @@ def stash_list_invites(workspace_id: str = "") -> str:
     return _json(client.list_invite_tokens(ws))
 
 
+@mcp.tool()
+def stash_create_invite(
+    workspace_id: str = "",
+    max_uses: int = 1,
+    ttl_days: int = 7,
+) -> str:
+    """Create an invite token. Returns the shareable URL + token id."""
+    client, default_ws = _client()
+    ws = _require_ws(workspace_id or default_ws)
+    return _json(client.create_invite_token(ws, max_uses=max_uses, ttl_days=ttl_days))
+
+
+@mcp.tool()
+def stash_revoke_invite(token_id: str, workspace_id: str = "") -> str:
+    """Revoke an active invite token by id."""
+    client, default_ws = _client()
+    ws = _require_ws(workspace_id or default_ws)
+    client.revoke_invite_token(ws, token_id)
+    return _json({"revoked": token_id})
+
+
 # ── User ──────────────────────────────────────────────────────────
 
 
@@ -619,6 +646,122 @@ def stash_publish_markdown(
     )
 
 
+# ── Discover (public Stash catalog) ───────────────────────────────
+
+
+@mcp.tool()
+def stash_search_public_stashes(query: str = "", sort: str = "trending") -> str:
+    """Search the public Stash catalog (Discover).
+
+    sort: trending | newest | popular. Pass an empty query to browse by
+    sort order. Returns the catalog entries — fork into a workspace with
+    stash_add_external_stash to follow up.
+    """
+    client, _ = _client()
+    return _json(client.list_discover_stashes(query=query, sort=sort))
+
+
+@mcp.tool()
+def stash_read_public_stash(slug: str) -> str:
+    """Fetch a public Stash by slug as plain text (markdown-formatted
+    transcript + pages). Use this instead of WebFetch for joinstash.ai/v/
+    or any /stashes/<slug> URL."""
+    client, _ = _client()
+    return client.get_stash_text(slug)
+
+
+# ── Sessions: full surface (transcript + soft-delete) ─────────────
+
+
+@mcp.tool()
+def stash_session_transcript(session_id: str, workspace_id: str = "") -> str:
+    """Fetch a full session transcript as JSONL text. Each line is one
+    event from the session in chronological order."""
+    client, default_ws = _client()
+    ws = _require_ws(workspace_id or default_ws)
+    return client.export_transcript_jsonl(ws, session_id)
+
+
+@mcp.tool()
+def stash_delete_session(session_row_id: str, workspace_id: str = "") -> str:
+    """Soft-delete a session. Use stash_restore(kind='session', id=...) to
+    bring it back, or stash_purge(kind='session', ...) to delete forever."""
+    client, default_ws = _client()
+    ws = _require_ws(workspace_id or default_ws)
+    client.delete_session(ws, session_row_id)
+    return _json({"deleted": session_row_id})
+
+
+# ── Pages: full-text search ───────────────────────────────────────
+
+
+@mcp.tool()
+def stash_search_pages(query: str, workspace_id: str = "", limit: int = 20) -> str:
+    """Full-text search across pages in a workspace. Returns ranked page
+    summaries — use stash_read_page to fetch the body of any hit."""
+    client, default_ws = _client()
+    ws = _require_ws(workspace_id or default_ws)
+    return _json(client.search_pages(ws, query, limit=limit))
+
+
+# ── Stash access control ──────────────────────────────────────────
+
+
+_STASH_ACCESS = {"private", "workspace", "public"}
+
+
+@mcp.tool()
+def stash_set_stash_access(
+    stash_id: str,
+    access: str = "workspace",
+    discoverable: bool = False,
+) -> str:
+    """Change a Stash's access level. access: private | workspace | public.
+    `discoverable=True` lists the Stash in the public Discover catalog (only
+    meaningful with access='public')."""
+    if access not in _STASH_ACCESS:
+        raise ValueError(f"access must be one of {sorted(_STASH_ACCESS)}")
+    if discoverable and access != "public":
+        raise ValueError("discoverable=True requires access='public'")
+    client, _ = _client()
+    fields: dict = {
+        "access": access,
+        "public_permission": "read" if access == "public" else "none",
+        "workspace_permission": "read" if access in {"workspace", "public"} else "none",
+        "discoverable": discoverable,
+    }
+    return _json(client.update_stash(stash_id, **fields))
+
+
+# ── Tables: rename + export ───────────────────────────────────────
+
+
+@mcp.tool()
+def stash_update_table(
+    table_id: str,
+    workspace_id: str = "",
+    name: str = "",
+    description: str = "",
+) -> str:
+    """Rename or update a table's metadata. Omit a field to leave it
+    unchanged."""
+    client, default_ws = _client()
+    ws = _require_ws(workspace_id or default_ws)
+    fields = {k: v for k, v in {"name": name, "description": description}.items() if v}
+    if not fields:
+        raise ValueError("pass at least one of name/description")
+    return _json(client.update_table(ws, table_id, **fields))
+
+
+@mcp.tool()
+def stash_export_table(table_id: str, workspace_id: str = "") -> str:
+    """Return all rows of a table as JSON. For large tables prefer
+    paginated stash_query_table calls."""
+    client, default_ws = _client()
+    ws = _require_ws(workspace_id or default_ws)
+    return _json(client.list_table_rows(ws, table_id, limit=10000, offset=0))
+
+
 # ── Trash ─────────────────────────────────────────────────────────
 
 
@@ -626,7 +769,7 @@ _TRASH_KINDS = {"page", "file", "session"}
 
 
 @mcp.tool()
-def list_trash(workspace_id: str = "") -> str:
+def stash_list_trash(workspace_id: str = "") -> str:
     """List soft-deleted pages, files, and sessions. Items can be restored or purged."""
     client, default_ws = _client()
     ws = _require_ws(workspace_id or default_ws)
@@ -634,7 +777,7 @@ def list_trash(workspace_id: str = "") -> str:
 
 
 @mcp.tool()
-def restore_object(kind: str, id: str, workspace_id: str = "") -> str:
+def stash_restore(kind: str, id: str, workspace_id: str = "") -> str:
     """Restore a trashed page/file/session. `kind` is one of: page, file, session."""
     if kind not in _TRASH_KINDS:
         raise ValueError(f"kind must be one of {sorted(_TRASH_KINDS)}")
@@ -650,7 +793,7 @@ def restore_object(kind: str, id: str, workspace_id: str = "") -> str:
 
 
 @mcp.tool()
-def purge_object(kind: str, id: str, workspace_id: str = "") -> str:
+def stash_purge(kind: str, id: str, workspace_id: str = "") -> str:
     """Permanently delete a trashed page/file/session. Not reversible."""
     if kind not in _TRASH_KINDS:
         raise ValueError(f"kind must be one of {sorted(_TRASH_KINDS)}")

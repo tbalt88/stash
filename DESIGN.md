@@ -1,7 +1,7 @@
 # Design System — Stash
 
 ## Product Context
-- **What this is:** Real-time workspace platform where AI agents and humans collaborate as peers — chats, notebooks, and memory stores
+- **What this is:** Real-time workspace platform where AI agents and humans collaborate as peers — sessions, files (folders + pages + binaries), tables, and shareable Stashes
 - **Who it's for:** Developers building with AI agents, technical teams running multi-agent workflows
 - **Space/industry:** AI collaboration tools, developer platforms (peers: Cursor, Linear, CrewAI, Notion)
 - **Project type:** Web app (Next.js 16 + Tailwind 4 frontend, Python/FastAPI backend)
@@ -57,7 +57,7 @@
 
 ## Layout
 - **Approach:** Grid-disciplined — sidebar + content for workspace views, strict alignment
-- **Grid:** Sidebar (220px fixed) + flexible content area. Max content width 680px for notebooks/readable content, full-width for data-dense views (memory stores)
+- **Grid:** Sidebar (220px fixed) + flexible content area. Max content width 680px for pages and other readable content, full-width for data-dense views (tables, session timelines)
 - **Max content width:** 1120px for page container
 - **Border radius:** sm:4px (inputs, tags), md:8px (buttons, cards), lg:12px (containers, mockups), full:9999px (badges, avatars, pills)
 

@@ -84,8 +84,8 @@ so point it at the `stash` CLI for reads mid-conversation — all commands
 support `--json`:
 
 ```
-stash history query --ws <id> --limit 20 --json
-stash history search "<query>" --ws <id> --json
+stash sessions query --ws <id> --limit 20 --json
+stash sessions search "<query>" --ws <id> --json
 stash whoami --json
 stash workspaces list --json
 ```

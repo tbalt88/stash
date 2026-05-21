@@ -44,11 +44,15 @@ cp .env.example .env`}</CodeBlock>
 
       <H3>2. Start everything</H3>
       <CodeBlock>{`docker compose -f docker-compose.prod.yml up -d`}</CodeBlock>
-      <P>This starts four containers:</P>
+      <P>This starts eight containers:</P>
       <div className="rounded-2xl border border-border bg-surface divide-y divide-border my-6">
         {[
           { svc: "postgres", port: "5432", desc: "PostgreSQL 16 with pgvector — stores all workspace data" },
-          { svc: "backend", port: "3456", desc: "FastAPI backend" },
+          { svc: "redis", port: "6379", desc: "Celery broker + cache" },
+          { svc: "backend", port: "3456", desc: "FastAPI backend (REST API)" },
+          { svc: "worker", port: "—", desc: "Celery worker — embeddings, file extraction, summarization" },
+          { svc: "beat", port: "—", desc: "Celery beat — scheduled jobs (session titling, periodic embeds)" },
+          { svc: "collab", port: "3458", desc: "Yjs WebSocket sidecar — live page collaboration" },
           { svc: "frontend", port: "3457", desc: "Next.js UI — dashboard, docs" },
           { svc: "caddy", port: "80/443", desc: "Reverse proxy with automatic HTTPS via Let's Encrypt" },
         ].map((s) => (
@@ -79,6 +83,9 @@ cp .env.example .env`}</CodeBlock>
         { name: "S3_ENDPOINT", type: "string", desc: "S3-compatible endpoint for file uploads (AWS, Cloudflare R2, MinIO). Leave blank to disable." },
         { name: "S3_BUCKET", type: "string", desc: "S3 bucket name." },
         { name: "S3_ACCESS_KEY / S3_SECRET_KEY", type: "string", desc: "S3 credentials." },
+        { name: "INTEGRATIONS_ENCRYPTION_KEY", type: "string", desc: "Fernet key (urlsafe-base64 32 bytes) used to encrypt stored OAuth tokens for GitHub/Drive/Notion. Generate once with `python -c \"import secrets,base64; print(base64.urlsafe_b64encode(secrets.token_bytes(32)).decode())\"`. NEVER rotate — rotating invalidates every stored integration token and forces every user to reconnect." },
+        { name: "ANTHROPIC_API_KEY", type: "string", desc: "Optional. Enables the ask-the-stash chat answer endpoint and automatic session summarization. Without it those features quietly stay disabled — everything else (sessions, pages, files, stashes, search) works without an LLM key." },
+        { name: "ANTHROPIC_MODEL / ANTHROPIC_FAST_MODEL", type: "string", desc: "Override the Claude models used (defaults: claude-sonnet-4-6 / claude-haiku-4-5)." },
       ]} />
 
       <H3>Optional: file storage</H3>
@@ -123,6 +130,25 @@ S3_REGION=us-east-1`}</CodeBlock>
           </div>
         ))}
       </div>
+
+      <H3>3. Point the CLI and plugins at your instance</H3>
+      <P>
+        The CLI and every agent plugin (Claude, Codex, Cursor, Gemini, OpenCode,
+        Openclaw) read the endpoint from <Code>~/.stash/config.json</Code> — set
+        once, inherited by all six plugins. From the machine where your agent
+        runs:
+      </P>
+      <CodeBlock>{`pip install stashai
+stash signin https://stash.your-domain.com    # opens the browser to your instance
+# or, with credentials in hand:
+stash auth https://stash.your-domain.com --api-key <key>`}</CodeBlock>
+      <P>
+        For CI / scripted environments, set <Code>STASH_URL</Code> and{" "}
+        <Code>STASH_API_KEY</Code> — those override the config file. The Claude
+        Code plugin additionally exposes an <Code>api_endpoint</Code> field in
+        its Claude Code plugin settings UI if you prefer not to rely on the
+        shared CLI config.
+      </P>
 
       <H3>Upgrading</H3>
       <CodeBlock>{`git pull

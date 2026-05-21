@@ -84,12 +84,14 @@ stash files text <file_id>`}</CodeBlock>
 
       <H3>Streaming & hooks</H3>
       <P>
-        Install Stash hooks for all supported coding agents on your <Code>$PATH</Code>,
-        then enable or disable streaming per repo:
+        Bind a repo to a workspace, then toggle streaming per repo. Plugin hooks
+        for every supported coding agent are installed by the <Code>stash</Code>{" "}
+        installer, so the CLI only needs to know which workspace this repo belongs
+        to.
       </P>
-      <CodeBlock>{`stash install                           # Install hook plugins
-stash enable                            # Enable streaming for this repo
-stash disable                           # Disable streaming for this repo
+      <CodeBlock>{`stash connect                           # Bind this repo to a workspace
+stash start                             # Resume streaming for this repo
+stash stop                              # Pause streaming for this repo
 stash settings                          # Interactive settings page`}</CodeBlock>
     </>
   );
