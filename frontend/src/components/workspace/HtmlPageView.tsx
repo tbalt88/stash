@@ -495,7 +495,7 @@ function injectResizeBootstrap(
     // one slide at a time. In edit mode we override that so every slide
     // becomes visible and editable; without this the user can only edit the
     // single currently-active slide.
-    var COMMENT_HIGHLIGHT_CSS = "[data-comment-id]{background:rgba(254,240,138,.45);cursor:pointer;}[data-comment-id].is-active{background:rgba(250,204,21,.7);outline:1px solid #ca8a04;}body[contenteditable=\\"true\\"]{outline:2px dashed rgba(59,130,246,.5);outline-offset:-4px;}body[contenteditable=\\"true\\"] *{cursor:text;}body[contenteditable=\\"true\\"] section.slide{display:flex !important;position:relative !important;inset:auto !important;margin-bottom:24px !important;}";
+    var COMMENT_HIGHLIGHT_CSS = "[data-comment-id]{background:rgba(254,240,138,.45);cursor:pointer;}[data-comment-id].is-active{background:rgba(250,204,21,.7);outline:1px solid #ca8a04;}body[contenteditable=\\"true\\"]{outline:2px dashed rgba(59,130,246,.5);outline-offset:-4px;}body[contenteditable=\\"true\\"] *{cursor:text;}body[contenteditable=\\"true\\"] section.slide{position:relative !important;inset:auto !important;margin-bottom:24px !important;}";
     var editable=false;
     var mutateTimer=null;
     function post(o){parent.postMessage(Object.assign({channel:c},o),"*");}
@@ -713,7 +713,13 @@ function injectSlideDeckBootstrap(html: string, channel: string): string {
     // Visual feedback for edit mode: dashed outline on the body, text caret
     // on all descendants, and let slides flow normally so the user can scroll
     // and click between them.
-    var EDIT_CSS = "body[contenteditable=\\"true\\"]{outline:2px dashed rgba(59,130,246,.5);outline-offset:-4px;}body[contenteditable=\\"true\\"] *{cursor:text;}body[contenteditable=\\"true\\"] section.slide{display:flex !important;position:relative !important;inset:auto !important;margin-bottom:24px !important;}";
+    // Edit mode just adds a dashed outline + reflows the slide stack so all
+    // slides are visible at once. Don't override the section's display
+    // property here — clobbering it to display:flex !important rearranges
+    // children that depend on the section's natural block layout (or the
+    // agent's inline flex direction). Visibility is controlled by clearing
+    // the inline style.display in applyIndex().
+    var EDIT_CSS = "body[contenteditable=\\"true\\"]{outline:2px dashed rgba(59,130,246,.5);outline-offset:-4px;}body[contenteditable=\\"true\\"] *{cursor:text;}body[contenteditable=\\"true\\"] section.slide{position:relative !important;inset:auto !important;margin-bottom:24px !important;}";
     (function injectStyle(){
       if(document.getElementById("__stash_slide_css__")) return;
       var s=document.createElement('style');
@@ -729,10 +735,18 @@ function injectSlideDeckBootstrap(html: string, channel: string): string {
       var slides=document.querySelectorAll('body > section.slide');
       if(!slides.length) return;
       currentIdx=Math.max(0, Math.min(slides.length-1, idx|0));
-      // In edit mode, show every slide so the user can edit all of them.
-      // The deck nav still tracks currentIdx for when edit mode is exited.
+      // In edit mode every slide is rendered in a vertical flow so the user
+      // can scroll between them. Clearing the inline display lets each
+      // section fall back to its natural CSS display. Then scroll the
+      // active slide into view so clicking prev/next actually moves the
+      // viewport — without this, the counter updates but nothing visible
+      // happens.
       if(editable){
         for(var k=0;k<slides.length;k++) slides[k].style.display='';
+        var target=slides[currentIdx];
+        if(target && typeof target.scrollIntoView==='function'){
+          target.scrollIntoView({block:'start',behavior:'smooth'});
+        }
         return;
       }
       for(var k=0;k<slides.length;k++){
