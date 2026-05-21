@@ -123,7 +123,7 @@ Run Stash locally with Docker Compose:
 ```bash
 git clone https://github.com/Fergana-Labs/stash.git
 cd stash
-docker compose up -d
+docker compose up -d --build
 curl http://localhost:3456/health
 ```
 
