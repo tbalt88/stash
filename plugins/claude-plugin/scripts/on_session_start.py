@@ -40,10 +40,10 @@ CONTEXT = (
     "Run `stash prompts agent-guidance` any time you want this guidance "
     "reprinted in full.\n\n"
     "Common reads (all support `--json`): "
-    "`stash history search \"<query>\"`, "
-    "`stash history query --limit 20`, "
-    "`stash history agents`, "
-    "`stash pages --all`."
+    "`stash sessions search \"<query>\"`, "
+    "`stash sessions query --limit 20`, "
+    "`stash sessions agents`, "
+    "`stash files pages --all`."
 )
 
 SESSION_CONTEXT = (

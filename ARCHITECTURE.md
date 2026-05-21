@@ -50,8 +50,21 @@ of the current architecture. Privacy is mediated by Stashes.
 - `backend/routers/stashes.py`: Stash CRUD, publish, public rendering, external
   Stash attachment.
 - `backend/routers/workspace_knowledge.py`: workspace home/sidebar payloads.
-- `backend/routers/permissions.py`: Stash URL creation and fail-fast
-  object-level privacy mutation endpoints.
+- `backend/routers/publish.py`: Stash publish flow + public Stash URLs.
+- `backend/routers/discover.py`: public Stash catalog (search, trending,
+  fork-into-workspace).
+- `backend/routers/memory.py`: per-session event push, query, search.
+- `backend/routers/tables.py`: structured table CRUD + row search.
+- `backend/routers/collab.py`: Yjs WebSocket sidecar for live page editing.
+- `backend/routers/integrations/`: GitHub / Google Drive / Notion OAuth +
+  imports.
+- `backend/routers/trash.py`: soft-delete listing + restore/purge.
+
+Object-level privacy is enforced inline in each router that returns a
+resource — there is no separate permissions router. The `workspace_members`
+table gates everything inside a workspace; the `stash_members` table gates
+per-Stash sharing; the `visibility` column on stashes and pages controls
+public exposure.
 
 ## Frontend Shell
 

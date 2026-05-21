@@ -1,7 +1,13 @@
 import type { NextConfig } from "next";
 
+// Rewrites are evaluated by the Next.js node server (server-side). In
+// docker / self-host setups the frontend container reaches the backend
+// via the internal docker network hostname — not the public URL the
+// browser uses.
 const backend =
-  process.env.NEXT_PUBLIC_API_URL || "http://localhost:3456";
+  process.env.BACKEND_INTERNAL_URL ||
+  process.env.NEXT_PUBLIC_API_URL ||
+  "http://localhost:3456";
 
 const acceptsJson = ".*application/json.*";
 const acceptsMarkdown = ".*(text/markdown|text/plain).*";

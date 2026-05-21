@@ -47,8 +47,8 @@ stash disconnect                   # Pause event streaming across every plugin
 ### Files
 ```bash
 stash files tree --ws <workspace_id>                               # Show folders and pages
-stash pages --ws <workspace_id>                              # List workspace pages
-stash pages --all                                            # List shared pages across workspaces
+stash files pages --ws <workspace_id>                              # List workspace pages
+stash files pages --all                                            # List shared pages across workspaces
 stash files create-folder "name" --ws <workspace_id>               # Create a folder
 stash files add-page "title" --ws <ws_id> --content "markdown content"
 stash files read-page <page_id> --ws <ws_id>                       # Read a page
@@ -57,11 +57,11 @@ stash files edit-page <page_id> --ws <ws_id> --content "new content"
 
 ### History (Agent Event Logs)
 ```bash
-stash history agents --ws <workspace_id>                              # List distinct agent names
-stash history push "text" --ws <ws_id> --agent <name> --type <event_type>
-stash history query --ws <ws_id> --limit 20                           # Query events
-stash history search "query" --ws <ws_id>                             # Full-text search
-stash history query --all --limit 20                                  # Cross-workspace events
+stash sessions agents --ws <workspace_id>                              # List distinct agent names
+stash sessions push "text" --ws <ws_id> --agent <name> --type <event_type>
+stash sessions query --ws <ws_id> --limit 20                           # Query events
+stash sessions search "query" --ws <ws_id>                             # Full-text search
+stash sessions query --all --limit 20                                  # Cross-workspace events
 ```
 
 ### Tables

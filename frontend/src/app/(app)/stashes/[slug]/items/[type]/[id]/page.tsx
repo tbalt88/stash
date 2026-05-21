@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
 
-import StashItemClient from "./StashItemClient";
+import { SSR_BACKEND_ORIGIN as BACKEND_ORIGIN } from "@/lib/backendOrigin";
 
-const BACKEND_ORIGIN = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3456";
+import StashItemClient from "./StashItemClient";
 
 async function loadStash(slug: string) {
   const res = await fetch(`${BACKEND_ORIGIN}/api/v1/stashes/${slug}`, {

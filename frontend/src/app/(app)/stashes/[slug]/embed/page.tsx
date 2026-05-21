@@ -2,9 +2,9 @@ import { notFound } from "next/navigation";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
-import HtmlPageView from "../../../../../components/workspace/HtmlPageView";
+import { SSR_BACKEND_ORIGIN as BACKEND_ORIGIN } from "@/lib/backendOrigin";
 
-const BACKEND_ORIGIN = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3456";
+import HtmlPageView from "../../../../../components/workspace/HtmlPageView";
 
 type StashItemInlined = {
   object_type: "folder" | "page" | "table" | "file" | "session";

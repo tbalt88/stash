@@ -118,6 +118,9 @@ services:
       - backend
     environment:
       NEXT_PUBLIC_API_URL: ${PUBLIC_URL}
+      # SSR requests must hit the backend over the docker network, not the
+      # public URL (which would loop through Caddy back into the container).
+      BACKEND_INTERNAL_URL: http://backend:3456
       NEXT_PUBLIC_COLLAB_URL: ${COLLAB_PUBLIC_URL:-}
 
   collab:
