@@ -36,8 +36,8 @@
 ## How it works
 
 - Stash installs a hook for your coding agents that automatically uploads session transcripts to a shared store.
-- It exposes a CLI, MCP server, and app-level virtual filesystem shell that let humans and agents query sessions, browse Stash with bash-shaped commands, write pages, and create Product Stashes.
-- Product Stashes bundle pages and sessions into shareable links. You can publish them publicly, list them in Discover, or fork external Stashes into your workspace.
+- It exposes a CLI, MCP server, and app-level virtual filesystem shell that let humans and agents query sessions with bash-shaped commands.
+- It allows your to easily share bundles of information created by a unit of work (eg one session and all of the artifacts created in that session). Just ask your agent to run `stash upload`.
 
 ## Why shared beats individual
 
@@ -127,37 +127,14 @@ docker compose up -d
 curl http://localhost:3456/health
 ```
 
-The local UI runs at `http://localhost:3457` and the API runs at
-`http://localhost:3456`. Continue once the health check prints
-`{"status":"ok"}`.
-
-Install the CLI, then run the first-run login flow from the repo you want to
-connect. The CLI package is the same for managed and self-hosted Stash;
-`base_url` tells it to use your local API.
+Then install the CLI:
 
 ```bash
 pip install stashai
-
 cd /path/to/the/repo/you/want/to/connect
 stash config base_url http://localhost:3456
 stash login
 ```
-
-`stash login` opens the local UI so you can register or sign in, then walks
-through agent and repo setup. If you are already logged in and only need to
-connect another repo, run `stash connect` from that repo.
-
-### Local seed data
-
-Once PostgreSQL is running, populate a realistic local dataset for UI smoke testing:
-
-```bash
-python scripts/seed_dev_data.py
-```
-
-The seeder creates demo users, one shared workspace, folders/pages, sessions, tables, stashes, and
-sample table/file-collection data when S3 storage is configured. If `S3_*` is not set, file rows are
-skipped with a warning.
 
 ## Privacy
 
@@ -170,7 +147,7 @@ Stash is built for engineering teams working in private repos.
 ## FAQ
 
 **What LLMs does Stash use?**
-When an Anthropic API key is provided, the server calls Claude for ask-the-workspace (quality tier) and session title generation (fast tier). Both are optional — without the key, Stash works but those features are disabled. There is no background page-writing agent.
+When an Anthropic API key is provided, the server calls Claude for ask-the-workspace (quality tier) and session title generation. Both are optional — without the key, Stash works but those features are disabled. There is no background page-writing agent.
 
 **Can I use this without Claude Code?**
 Yes. You can use the CLI with anything, and Stash has native plugins for Cursor, Codex, Opencode, Gemini CLI, and more.
