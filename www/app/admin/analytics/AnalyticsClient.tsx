@@ -204,7 +204,9 @@ export default function AnalyticsClient({
     const next = new URLSearchParams(params.toString());
     if (value === "" || value === "all") next.delete(key);
     else next.set(key, value);
-    router.push(`/admin/analytics?${next.toString()}`);
+    // scroll: false keeps the user where they were after a toggle refetches
+    // server-rendered data — the default would yank them back to the top.
+    router.push(`/admin/analytics?${next.toString()}`, { scroll: false });
   };
 
   return (
