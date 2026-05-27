@@ -254,7 +254,7 @@ function ChevronToggle({ open, onToggle }: { open: boolean; onToggle: () => void
         e.stopPropagation();
         onToggle();
       }}
-      className="-ml-0.5 flex h-4 w-4 items-center justify-center rounded text-muted hover:bg-base/60 hover:text-foreground"
+      className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-muted transition-colors hover:bg-raised hover:text-foreground"
       aria-expanded={open}
       aria-label="Toggle section"
     >
@@ -292,27 +292,26 @@ function PinnedSection({
 }) {
   return (
     <div>
-      <div
-        className={
-          "page-row flex items-center gap-1.5 rounded-md px-2 py-1 " +
-          (headerActive ? "bg-[var(--color-brand-50)]" : "hover:bg-raised")
-        }
-      >
+      {/* Two distinct targets: the chevron only toggles the section (its own
+          hover affordance), the label link only navigates into the list page
+          (its own hover affordance). The row itself has no hover state so the
+          two actions never read as one. */}
+      <div className="flex items-center gap-0.5 px-1">
         <ChevronToggle open={open} onToggle={onToggle} />
         <Link
           href={href}
           className={
-            "flex-1 truncate text-[11px] font-semibold uppercase tracking-wide " +
+            "flex min-w-0 flex-1 items-center gap-1.5 rounded-md px-1.5 py-1 text-[11px] font-semibold uppercase tracking-wide transition-colors " +
             (headerActive
-              ? "text-[var(--color-brand-800)]"
-              : "text-muted hover:text-foreground")
+              ? "bg-[var(--color-brand-50)] text-[var(--color-brand-800)]"
+              : "text-muted hover:bg-raised hover:text-foreground")
           }
         >
-          {label}
+          <span className="min-w-0 flex-1 truncate">{label}</span>
+          {items.length > 0 && (
+            <span className="text-[10px] tabular-nums text-muted">{items.length}</span>
+          )}
         </Link>
-        {items.length > 0 && (
-          <span className="text-[10px] tabular-nums text-muted">{items.length}</span>
-        )}
       </div>
       {open && (
         <div className="ml-3 space-y-0.5 border-l border-border pl-2">
