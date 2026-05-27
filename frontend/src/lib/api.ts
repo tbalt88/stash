@@ -921,6 +921,9 @@ export async function updateFile(
 
 export interface SessionSummary {
   session_id: string;
+  // DB row id (sessions.id). Null when history exists with no sessions row;
+  // delete is keyed by this id.
+  id: string | null;
   title: string;
   linear_tickets: LinearTicketLabel[];
   workspace_id: string | null;
@@ -1006,6 +1009,15 @@ export async function renameSession(
       body: JSON.stringify({ title }),
     }
   );
+}
+
+export async function deleteSession(
+  workspaceId: string,
+  sessionRowId: string
+): Promise<void> {
+  await apiFetch(`/api/v1/workspaces/${workspaceId}/sessions/${sessionRowId}`, {
+    method: "DELETE",
+  });
 }
 
 export async function materializeSession(

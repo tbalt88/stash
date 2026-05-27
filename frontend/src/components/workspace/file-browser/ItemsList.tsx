@@ -3,10 +3,64 @@
 import { useState, type DragEvent } from "react";
 import {
   FB_DRAG_MIME,
+  FB_DRAG_MULTI_MIME,
   type FBDragPayload,
 } from "./WorkspaceFileBrowser";
 import { FileIcon, FolderIcon, PageIcon, PinIcon, TableIcon } from "../../StashIcons";
 import type { GridItem, ItemKind } from "./FolderItemGrid";
+
+// Shared drag setup so single rows/tiles and multi-selections behave the same.
+// When dragging an item that's part of a 2+ selection, carry the whole
+// selection so a folder drop moves everything; otherwise carry just the item.
+export function startItemDrag(
+  e: DragEvent<HTMLElement>,
+  item: { kind: ItemKind; id: string },
+  selected: boolean,
+  selectedDragPayloads: FBDragPayload[],
+) {
+  if (selected && selectedDragPayloads.length > 1) {
+    e.dataTransfer.setData(FB_DRAG_MULTI_MIME, JSON.stringify(selectedDragPayloads));
+  } else {
+    const payload: FBDragPayload = { kind: item.kind, id: item.id };
+    e.dataTransfer.setData(FB_DRAG_MIME, JSON.stringify(payload));
+  }
+  e.dataTransfer.effectAllowed = "move";
+}
+
+// Drop onto a folder: move the multi-selection if present, else the single
+// dragged item. Returns true if it handled a drop.
+export function handleFolderDrop(
+  e: DragEvent<HTMLElement>,
+  folderId: string,
+  onReparent: (payload: FBDragPayload, targetFolderId: string | null) => Promise<void>,
+  onReparentMany: (payloads: FBDragPayload[], targetFolderId: string | null) => Promise<void>,
+) {
+  const multi = e.dataTransfer.getData(FB_DRAG_MULTI_MIME);
+  if (multi) {
+    try {
+      onReparentMany(JSON.parse(multi) as FBDragPayload[], folderId);
+    } catch {
+      /* malformed */
+    }
+    return;
+  }
+  const raw = e.dataTransfer.getData(FB_DRAG_MIME);
+  if (!raw) return;
+  try {
+    const payload = JSON.parse(raw) as FBDragPayload;
+    if (payload.kind === "folder" && payload.id === folderId) return;
+    onReparent(payload, folderId);
+  } catch {
+    /* malformed */
+  }
+}
+
+export function isFbDrag(e: DragEvent<HTMLElement>): boolean {
+  return (
+    e.dataTransfer.types.includes(FB_DRAG_MIME) ||
+    e.dataTransfer.types.includes(FB_DRAG_MULTI_MIME)
+  );
+}
 
 // Tailwind v4 doesn't generate this `grid-cols-[…]` class reliably when
 // minmax() with commas is the first column token, so set the template via
@@ -18,9 +72,13 @@ interface Props {
   items: GridItem[];
   onNavigate: (item: GridItem) => void;
   onReparent: (payload: FBDragPayload, targetFolderId: string | null) => Promise<void>;
+  onReparentMany: (payloads: FBDragPayload[], targetFolderId: string | null) => Promise<void>;
   onDelete: (item: GridItem) => Promise<void>;
   isPinned: (item: GridItem) => boolean;
   onTogglePin: (item: GridItem) => void;
+  selectedIds: Set<string>;
+  onToggleSelect: (item: GridItem) => void;
+  selectedDragPayloads: FBDragPayload[];
 }
 
 // Google-Drive-style list: Name / Modified / Type / actions, rendered as a
@@ -32,9 +90,13 @@ export default function ItemsList({
   items,
   onNavigate,
   onReparent,
+  onReparentMany,
   onDelete,
   isPinned,
   onTogglePin,
+  selectedIds,
+  onToggleSelect,
+  selectedDragPayloads,
 }: Props) {
   return (
     <div className="scroll-thin overflow-hidden rounded-xl border border-border bg-surface">
@@ -54,9 +116,13 @@ export default function ItemsList({
             item={item}
             onNavigate={onNavigate}
             onReparent={onReparent}
+            onReparentMany={onReparentMany}
             onDelete={onDelete}
             pinned={isPinned(item)}
             onTogglePin={onTogglePin}
+            selected={selectedIds.has(item.id)}
+            onToggleSelect={onToggleSelect}
+            selectedDragPayloads={selectedDragPayloads}
           />
         ))}
         {items.length === 0 && (
@@ -73,16 +139,24 @@ function Row({
   item,
   onNavigate,
   onReparent,
+  onReparentMany,
   onDelete,
   pinned,
   onTogglePin,
+  selected,
+  onToggleSelect,
+  selectedDragPayloads,
 }: {
   item: GridItem;
   onNavigate: (item: GridItem) => void;
   onReparent: (payload: FBDragPayload, targetFolderId: string | null) => Promise<void>;
+  onReparentMany: (payloads: FBDragPayload[], targetFolderId: string | null) => Promise<void>;
   onDelete: (item: GridItem) => Promise<void>;
   pinned: boolean;
   onTogglePin: (item: GridItem) => void;
+  selected: boolean;
+  onToggleSelect: (item: GridItem) => void;
+  selectedDragPayloads: FBDragPayload[];
 }) {
   const [over, setOver] = useState(false);
   const isFolder = item.kind === "folder";
@@ -96,14 +170,12 @@ function Row({
         if (e.key === "Enter") onNavigate(item);
       }}
       draggable
-      onDragStart={(e: DragEvent<HTMLDivElement>) => {
-        const payload: FBDragPayload = { kind: item.kind, id: item.id };
-        e.dataTransfer.setData(FB_DRAG_MIME, JSON.stringify(payload));
-        e.dataTransfer.effectAllowed = "move";
-      }}
+      onDragStart={(e: DragEvent<HTMLDivElement>) =>
+        startItemDrag(e, item, selected, selectedDragPayloads)
+      }
       onDragOver={(e) => {
         if (!isFolder) return;
-        if (!e.dataTransfer.types.includes(FB_DRAG_MIME)) return;
+        if (!isFbDrag(e)) return;
         e.preventDefault();
         e.dataTransfer.dropEffect = "move";
         setOver(true);
@@ -111,25 +183,24 @@ function Row({
       onDragLeave={() => setOver(false)}
       onDrop={(e) => {
         if (!isFolder) return;
-        const raw = e.dataTransfer.getData(FB_DRAG_MIME);
         setOver(false);
-        if (!raw) return;
         e.preventDefault();
-        try {
-          const payload = JSON.parse(raw) as FBDragPayload;
-          if (payload.kind === "folder" && payload.id === item.id) return;
-          onReparent(payload, item.id);
-        } catch {
-          /* malformed */
-        }
+        handleFolderDrop(e, item.id, onReparent, onReparentMany);
       }}
       className={
-        "group grid cursor-pointer select-none items-center gap-3 border-b border-border-subtle px-4 py-2 text-[13px] last:border-b-0 hover:bg-[var(--color-brand-50)]/50 " +
+        "group grid cursor-pointer select-none items-center gap-3 border-b border-border-subtle px-4 py-2 text-[13px] last:border-b-0 " +
+        (selected
+          ? "bg-[var(--color-brand-50)] "
+          : "hover:bg-[var(--color-brand-50)]/50 ") +
         (over ? "ring-1 ring-inset ring-[var(--color-brand-300)]" : "")
       }
       style={{ gridTemplateColumns: LIST_GRID_COLS }}
     >
       <div className="flex min-w-0 items-center gap-2.5">
+        <SelectBox
+          selected={selected}
+          onToggle={() => onToggleSelect(item)}
+        />
         <span className={"flex h-4 w-4 flex-shrink-0 items-center justify-center " + tintFor(item)}>
           <KindIcon kind={item.kind} />
         </span>
@@ -176,6 +247,47 @@ function Row({
         </button>
       </div>
     </div>
+  );
+}
+
+export function SelectBox({
+  selected,
+  onToggle,
+}: {
+  selected: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <span
+      role="checkbox"
+      aria-checked={selected}
+      tabIndex={0}
+      onClick={(e) => {
+        // preventDefault matters when the row is an <a> (sessions): without
+        // it the browser still follows the link even though we stop bubbling.
+        e.preventDefault();
+        e.stopPropagation();
+        onToggle();
+      }}
+      onKeyDown={(e) => {
+        if (e.key === " " || e.key === "Enter") {
+          e.preventDefault();
+          e.stopPropagation();
+          onToggle();
+        }
+      }}
+      className={
+        "flex h-4 w-4 flex-shrink-0 cursor-pointer items-center justify-center rounded border transition " +
+        (selected
+          ? "border-[var(--color-brand-600)] bg-[var(--color-brand-600)] text-white opacity-100"
+          : "border-border text-transparent opacity-0 hover:border-[var(--color-brand-400)] group-hover/qa:opacity-100 group-hover:opacity-100")
+      }
+      title={selected ? "Deselect" : "Select"}
+    >
+      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round">
+        <polyline points="20 6 9 17 4 12" />
+      </svg>
+    </span>
   );
 }
 

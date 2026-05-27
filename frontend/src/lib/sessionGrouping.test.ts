@@ -11,6 +11,7 @@ import {
 function session(fields: Partial<SessionSummary> & { session_id: string }): SessionSummary {
   return {
     session_id: fields.session_id,
+    id: fields.id ?? fields.session_id,
     title: fields.title ?? fields.session_id,
     linear_tickets: fields.linear_tickets ?? [],
     workspace_id: "ws-1",

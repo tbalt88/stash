@@ -129,6 +129,7 @@ async def list_my_sessions(
         )
         SELECT
           he.session_id,
+          s.id AS id,
           he.workspace_id,
           w.name AS workspace_name,
           {linear_ticket_service.sql_json_agg('s')} AS linear_tickets,

@@ -7,8 +7,9 @@ import { useBreadcrumbs } from "../../../../../components/BreadcrumbContext";
 import SessionUpload from "../../../../../components/SessionUpload";
 import { SessionsListSkeleton } from "../../../../../components/SkeletonStates";
 import { PinIcon } from "../../../../../components/StashIcons";
+import { SelectBox } from "../../../../../components/workspace/file-browser/ItemsList";
 import { useAuth } from "../../../../../hooks/useAuth";
-import { listMySessions, type SessionSummary } from "../../../../../lib/api";
+import { deleteSession, listMySessions, type SessionSummary } from "../../../../../lib/api";
 import { usePins } from "../../../../../lib/pins";
 import {
   groupSessionsByAgent,
@@ -51,6 +52,16 @@ export default function StashSessionsPage() {
   const [error, setError] = useState("");
   const [view, setView] = useState<ViewKey>("list");
   const [sort, setSort] = useState<SortKey>("recent");
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
+  function toggleSelect(sessionId: string) {
+    setSelectedIds((current) => {
+      const next = new Set(current);
+      if (next.has(sessionId)) next.delete(sessionId);
+      else next.add(sessionId);
+      return next;
+    });
+  }
 
   useBreadcrumbs([{ label: "Sessions" }], `${workspaceId}/sessions`);
 
@@ -98,6 +109,31 @@ export default function StashSessionsPage() {
   const pinnedSessions = (sorted ?? []).filter((s) =>
     pins.pinnedSet.has(s.session_id),
   );
+  const selectedSessions = (sorted ?? []).filter((s) =>
+    selectedIds.has(s.session_id),
+  );
+
+  function clearSelection() {
+    setSelectedIds(new Set());
+  }
+
+  async function bulkDeleteSessions() {
+    const targets = selectedSessions.filter((s) => s.id);
+    if (targets.length === 0) return;
+    const yes = window.confirm(
+      `Delete ${targets.length} session${targets.length === 1 ? "" : "s"}? They move to Trash.`,
+    );
+    if (!yes) return;
+    try {
+      for (const session of targets) {
+        await deleteSession(workspaceId, session.id!);
+      }
+      clearSelection();
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Delete failed");
+    }
+  }
 
   function setViewPersisted(next: ViewKey) {
     setView(next);
@@ -141,6 +177,8 @@ export default function StashSessionsPage() {
               sessions={pinnedSessions}
               isPinned={pins.isPinned}
               onTogglePin={pins.toggle}
+              selectedIds={selectedIds}
+              onToggleSelect={toggleSelect}
             />
           </section>
         )}
@@ -168,9 +206,34 @@ export default function StashSessionsPage() {
             workspaceId={workspaceId}
             isPinned={pins.isPinned}
             onTogglePin={pins.toggle}
+            selectedIds={selectedIds}
+            onToggleSelect={toggleSelect}
           />
         )}
       </div>
+
+      {selectedSessions.length > 0 && (
+        <div className="pointer-events-none fixed inset-x-0 bottom-6 z-50 flex justify-center">
+          <div className="pointer-events-auto flex items-center gap-3 rounded-lg border border-border bg-foreground px-4 py-2 text-[13px] text-background shadow-lg">
+            <span className="font-medium">{selectedSessions.length} selected</span>
+            <button
+              type="button"
+              onClick={() => void bulkDeleteSessions()}
+              className="rounded-md border border-background/40 px-2 py-0.5 text-[12px] font-semibold hover:bg-background/10"
+            >
+              Delete
+            </button>
+            <button
+              type="button"
+              onClick={clearSelection}
+              className="ml-1 text-[18px] leading-none text-background/70 hover:text-background"
+              aria-label="Clear selection"
+            >
+              ×
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -181,12 +244,16 @@ function SessionsView({
   workspaceId,
   isPinned,
   onTogglePin,
+  selectedIds,
+  onToggleSelect,
 }: {
   view: ViewKey;
   sessions: SessionSummary[];
   workspaceId: string;
   isPinned: (sessionId: string) => boolean;
   onTogglePin: (sessionId: string) => void;
+  selectedIds: Set<string>;
+  onToggleSelect: (sessionId: string) => void;
 }) {
   if (sessions.length === 0) {
     return (
@@ -203,6 +270,8 @@ function SessionsView({
         sessions={sessions}
         isPinned={isPinned}
         onTogglePin={onTogglePin}
+        selectedIds={selectedIds}
+        onToggleSelect={onToggleSelect}
       />
     );
   }
@@ -219,6 +288,8 @@ function SessionsView({
             initialOpen={i === 0}
             isPinned={isPinned}
             onTogglePin={onTogglePin}
+            selectedIds={selectedIds}
+            onToggleSelect={onToggleSelect}
           />
         ))}
       </div>
@@ -241,6 +312,8 @@ function SessionsView({
           initialOpen={i === 0}
           isPinned={isPinned}
           onTogglePin={onTogglePin}
+          selectedIds={selectedIds}
+          onToggleSelect={onToggleSelect}
         />
       ))}
     </div>
@@ -253,12 +326,16 @@ function DayGroup({
   initialOpen,
   isPinned,
   onTogglePin,
+  selectedIds,
+  onToggleSelect,
 }: {
   group: SessionDayGroup;
   workspaceId: string;
   initialOpen: boolean;
   isPinned: (sessionId: string) => boolean;
   onTogglePin: (sessionId: string) => void;
+  selectedIds: Set<string>;
+  onToggleSelect: (sessionId: string) => void;
 }) {
   const [open, setOpen] = useState(initialOpen);
   return (
@@ -284,6 +361,8 @@ function DayGroup({
                 sessions={bucket.sessions}
                 isPinned={isPinned}
                 onTogglePin={onTogglePin}
+                selectedIds={selectedIds}
+                onToggleSelect={onToggleSelect}
               />
             </div>
           ))}
@@ -299,12 +378,16 @@ function FlatGroup({
   initialOpen,
   isPinned,
   onTogglePin,
+  selectedIds,
+  onToggleSelect,
 }: {
   group: SessionFlatGroup;
   workspaceId: string;
   initialOpen: boolean;
   isPinned: (sessionId: string) => boolean;
   onTogglePin: (sessionId: string) => void;
+  selectedIds: Set<string>;
+  onToggleSelect: (sessionId: string) => void;
 }) {
   const [open, setOpen] = useState(initialOpen);
   return (
@@ -327,6 +410,8 @@ function FlatGroup({
             sessions={group.sessions}
             isPinned={isPinned}
             onTogglePin={onTogglePin}
+            selectedIds={selectedIds}
+            onToggleSelect={onToggleSelect}
           />
         </div>
       )}
@@ -395,11 +480,15 @@ function SessionsTable({
   sessions,
   isPinned,
   onTogglePin,
+  selectedIds,
+  onToggleSelect,
 }: {
   workspaceId: string;
   sessions: SessionSummary[];
   isPinned: (sessionId: string) => boolean;
   onTogglePin: (sessionId: string) => void;
+  selectedIds: Set<string>;
+  onToggleSelect: (sessionId: string) => void;
 }) {
   if (sessions.length === 0) {
     return (
@@ -428,6 +517,8 @@ function SessionsTable({
           session={session}
           pinned={isPinned(session.session_id)}
           onTogglePin={onTogglePin}
+          selected={selectedIds.has(session.session_id)}
+          onToggleSelect={onToggleSelect}
         />
       ))}
     </div>
@@ -439,11 +530,15 @@ function SessionTableRow({
   session,
   pinned,
   onTogglePin,
+  selected,
+  onToggleSelect,
 }: {
   workspaceId: string;
   session: SessionSummary;
   pinned: boolean;
   onTogglePin: (sessionId: string) => void;
+  selected: boolean;
+  onToggleSelect: (sessionId: string) => void;
 }) {
   const user = requireSessionUserName(session.user_name);
   const agent = session.agent_name || "agent";
@@ -453,9 +548,16 @@ function SessionTableRow({
   return (
     <Link
       href={`/workspaces/${workspaceId}/sessions/${encodeURIComponent(session.session_id)}`}
-      className="group/srow grid min-h-12 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 border-b border-border px-3 py-2 text-[13px] last:border-b-0 hover:bg-[var(--color-brand-50)] md:grid-cols-[minmax(128px,0.68fr)_minmax(240px,1.7fr)_86px_58px_minmax(104px,0.62fr)_94px_88px_28px]"
+      className={
+        "group/srow grid min-h-12 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 border-b border-border px-3 py-2 text-[13px] last:border-b-0 md:grid-cols-[minmax(128px,0.68fr)_minmax(240px,1.7fr)_86px_58px_minmax(104px,0.62fr)_94px_88px_28px] " +
+        (selected ? "bg-[var(--color-brand-50)]" : "hover:bg-[var(--color-brand-50)]")
+      }
     >
       <div className="hidden min-w-0 items-center gap-2 md:flex">
+        <SelectBox
+          selected={selected}
+          onToggle={() => onToggleSelect(session.session_id)}
+        />
         <span
           className={
             "inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[9px] font-semibold " +
@@ -519,7 +621,7 @@ function SessionTableRow({
           "hidden justify-self-end rounded p-1 transition hover:bg-raised md:block " +
           (pinned
             ? "text-[var(--color-brand-600)] hover:text-[var(--color-brand-700)]"
-            : "text-muted opacity-0 hover:text-foreground focus-visible:opacity-100 group-hover/srow:opacity-100")
+            : "text-muted/40 hover:text-foreground")
         }
       >
         <PinIcon className="text-[15px]" />

@@ -435,12 +435,16 @@ export default function AppShell({
           />
         </div>
 
-        <div className="flex min-w-0 flex-1 items-center">
-          <TopSearchButton
-            scope={searchScope}
-            workspace={activeWorkspace}
-            onClick={() => setCmdkOpen(true)}
-          />
+        <div className="flex min-w-0 flex-1 justify-center">
+          {/* Match the command-palette modal width (max-w-4xl) so the bar and
+              the popup it opens read as the same element. */}
+          <div className="w-full max-w-4xl">
+            <TopSearchButton
+              scope={searchScope}
+              workspace={activeWorkspace}
+              onClick={() => setCmdkOpen(true)}
+            />
+          </div>
         </div>
 
         <div className="flex shrink-0 items-center justify-end gap-1">

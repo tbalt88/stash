@@ -40,6 +40,9 @@ interface Props {
 // browser's native file-from-OS drag (which also sets "Files") distinct from
 // our own intra-app reparent drags.
 export const FB_DRAG_MIME = "application/x-stash-fb-item";
+// Set instead of FB_DRAG_MIME when dragging a multi-selection, so folder drop
+// targets know to move every selected item at once.
+export const FB_DRAG_MULTI_MIME = "application/x-stash-fb-items";
 
 export interface FBDragPayload {
   kind: ItemKind;
@@ -59,7 +62,27 @@ export default function WorkspaceFileBrowser({ workspaceId, folderId }: Props) {
   const [rootFiles, setRootFiles] = useState<GridItem[]>([]);
   const [allFiles, setAllFiles] = useState<GridItem[]>([]);
   const [view, setView] = useState<View>("grid");
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const pins = useFilePins(workspaceId);
+
+  // Selection is scoped to the current listing, so reset it when the folder
+  // (or workspace) changes.
+  useEffect(() => {
+    setSelectedIds(new Set());
+  }, [folderId, workspaceId]);
+
+  function toggleSelect(item: GridItem) {
+    setSelectedIds((current) => {
+      const next = new Set(current);
+      if (next.has(item.id)) next.delete(item.id);
+      else next.add(item.id);
+      return next;
+    });
+  }
+
+  function clearSelection() {
+    setSelectedIds(new Set());
+  }
 
   // Restore last-used view from localStorage on mount.
   useEffect(() => {
@@ -253,37 +276,53 @@ export default function WorkspaceFileBrowser({ workspaceId, folderId }: Props) {
     await Promise.all([loadTree(), loadContents()]);
   }
 
-  // Reparent: move a folder/page/file into the target folder (or root when
-  // targetFolderId === null). Skips work when target == current parent.
+  // Move a single folder/page/file into the target folder (or root when
+  // targetFolderId === null). No refresh — callers batch that.
+  async function moveOne(payload: FBDragPayload, targetFolderId: string | null) {
+    if (payload.kind === "folder" && payload.id === targetFolderId) return;
+    if (payload.kind === "folder") {
+      await updateFolder(
+        workspaceId,
+        payload.id,
+        targetFolderId === null
+          ? { move_to_root: true }
+          : { parent_folder_id: targetFolderId }
+      );
+    } else if (payload.kind === "page" || payload.kind === "html") {
+      await updatePage(
+        workspaceId,
+        payload.id,
+        targetFolderId === null
+          ? { move_to_root: true }
+          : { folder_id: targetFolderId }
+      );
+    } else {
+      // table + file both live in the files table at the data layer.
+      await updateFile(
+        workspaceId,
+        payload.id,
+        targetFolderId === null
+          ? { move_to_root: true }
+          : { folder_id: targetFolderId }
+      );
+    }
+  }
+
   async function reparent(payload: FBDragPayload, targetFolderId: string | null) {
     try {
-      if (payload.kind === "folder") {
-        await updateFolder(
-          workspaceId,
-          payload.id,
-          targetFolderId === null
-            ? { move_to_root: true }
-            : { parent_folder_id: targetFolderId }
-        );
-      } else if (payload.kind === "page" || payload.kind === "html") {
-        await updatePage(
-          workspaceId,
-          payload.id,
-          targetFolderId === null
-            ? { move_to_root: true }
-            : { folder_id: targetFolderId }
-        );
-      } else {
-        // table + file both live in the files table at the data layer.
-        await updateFile(
-          workspaceId,
-          payload.id,
-          targetFolderId === null
-            ? { move_to_root: true }
-            : { folder_id: targetFolderId }
-        );
-      }
+      await moveOne(payload, targetFolderId);
       await refreshAll();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Move failed");
+    }
+  }
+
+  // Move every dragged item into the target folder, then refresh once.
+  async function reparentMany(payloads: FBDragPayload[], targetFolderId: string | null) {
+    try {
+      for (const payload of payloads) await moveOne(payload, targetFolderId);
+      await refreshAll();
+      clearSelection();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Move failed");
     }
@@ -365,6 +404,34 @@ export default function WorkspaceFileBrowser({ workspaceId, folderId }: Props) {
     }
   }
 
+  // Bulk delete the current selection after one confirm. Folders are a hard
+  // delete (matching single delete), pages/files go to trash.
+  async function bulkDelete(targets: GridItem[]) {
+    if (targets.length === 0) return;
+    const hasFolder = targets.some((t) => t.kind === "folder");
+    const detail = hasFolder
+      ? " Folders are deleted permanently."
+      : "";
+    const yes = window.confirm(
+      `Delete ${targets.length} item${targets.length === 1 ? "" : "s"}?${detail}`
+    );
+    if (!yes) return;
+    try {
+      for (const item of targets) {
+        if (item.kind === "folder") {
+          await deleteFolder(workspaceId, item.id);
+        } else {
+          const kind = item.kind === "page" || item.kind === "html" ? "page" : "file";
+          await trashItem(workspaceId, kind, item.id);
+        }
+      }
+      await refreshAll();
+      clearSelection();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Delete failed");
+    }
+  }
+
   async function handleUndoDelete() {
     if (!undo) return;
     const { kind, id } = undo;
@@ -405,6 +472,12 @@ export default function WorkspaceFileBrowser({ workspaceId, folderId }: Props) {
     !folderId &&
     view !== "column" &&
     (pinnedItems.length > 0 || recentItems.length > 0);
+
+  const selectedItems = items.filter((item) => selectedIds.has(item.id));
+  const selectedDragPayloads: FBDragPayload[] = selectedItems.map((item) => ({
+    kind: item.kind,
+    id: item.id,
+  }));
 
   return (
     <div className="scroll-thin flex-1 overflow-y-auto">
@@ -473,9 +546,13 @@ export default function WorkspaceFileBrowser({ workspaceId, folderId }: Props) {
               items={items}
               onNavigate={navigateTo}
               onReparent={reparent}
+              onReparentMany={reparentMany}
               onDelete={handleDelete}
               isPinned={(item) => pins.isPinned(item.id)}
               onTogglePin={(item) => pins.toggle(item.id)}
+              selectedIds={selectedIds}
+              onToggleSelect={toggleSelect}
+              selectedDragPayloads={selectedDragPayloads}
             />
           )}
           {view === "grid" && (
@@ -485,7 +562,11 @@ export default function WorkspaceFileBrowser({ workspaceId, folderId }: Props) {
               onSelect={navigateTo}
               onNavigate={navigateTo}
               onReparent={reparent}
+              onReparentMany={reparentMany}
               onDelete={handleDelete}
+              selectedIds={selectedIds}
+              onToggleSelect={toggleSelect}
+              selectedDragPayloads={selectedDragPayloads}
             />
           )}
           {view === "column" && (
@@ -500,6 +581,33 @@ export default function WorkspaceFileBrowser({ workspaceId, folderId }: Props) {
           )}
         </div>
       </div>
+      {selectedItems.length > 0 && (
+        <div className="pointer-events-none fixed inset-x-0 bottom-6 z-50 flex justify-center">
+          <div className="pointer-events-auto flex items-center gap-3 rounded-lg border border-border bg-foreground px-4 py-2 text-[13px] text-background shadow-lg">
+            <span className="font-medium">
+              {selectedItems.length} selected
+            </span>
+            <span className="hidden text-[11.5px] text-background/60 sm:inline">
+              drag onto a folder to move
+            </span>
+            <button
+              type="button"
+              onClick={() => void bulkDelete(selectedItems)}
+              className="rounded-md border border-background/40 px-2 py-0.5 text-[12px] font-semibold hover:bg-background/10"
+            >
+              Delete
+            </button>
+            <button
+              type="button"
+              onClick={clearSelection}
+              className="ml-1 text-[18px] leading-none text-background/70 hover:text-background"
+              aria-label="Clear selection"
+            >
+              ×
+            </button>
+          </div>
+        </div>
+      )}
       {undo && (
         <div className="pointer-events-none fixed inset-x-0 bottom-6 z-50 flex justify-center">
           <div className="pointer-events-auto flex items-center gap-3 rounded-lg border border-border bg-foreground px-4 py-2 text-[13px] text-background shadow-lg">

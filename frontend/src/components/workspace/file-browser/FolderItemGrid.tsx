@@ -2,7 +2,8 @@
 
 import { useState, type DragEvent } from "react";
 import { FileIcon, FolderIcon, PageIcon, TableIcon } from "../../StashIcons";
-import { FB_DRAG_MIME, type FBDragPayload } from "./WorkspaceFileBrowser";
+import { type FBDragPayload } from "./WorkspaceFileBrowser";
+import { SelectBox, handleFolderDrop, isFbDrag, startItemDrag } from "./ItemsList";
 
 export type ItemKind = "folder" | "page" | "html" | "table" | "file";
 
@@ -25,7 +26,11 @@ interface Props {
   onSelect: (item: GridItem) => void;
   onNavigate: (item: GridItem) => void;
   onReparent: (payload: FBDragPayload, targetFolderId: string | null) => Promise<void>;
+  onReparentMany?: (payloads: FBDragPayload[], targetFolderId: string | null) => Promise<void>;
   onDelete?: (item: GridItem) => Promise<void>;
+  selectedIds?: Set<string>;
+  onToggleSelect?: (item: GridItem) => void;
+  selectedDragPayloads?: FBDragPayload[];
 }
 
 export default function FolderItemGrid({
@@ -34,7 +39,11 @@ export default function FolderItemGrid({
   onSelect,
   onNavigate,
   onReparent,
+  onReparentMany,
   onDelete,
+  selectedIds,
+  onToggleSelect,
+  selectedDragPayloads = [],
 }: Props) {
   if (items.length === 0) {
     return (
@@ -47,17 +56,21 @@ export default function FolderItemGrid({
   }
 
   return (
-    <div className="scroll-thin overflow-y-auto bg-base p-4">
+    <div className="scroll-thin overflow-y-auto bg-base">
       <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 xl:grid-cols-3">
         {items.map((item) => (
           <Tile
             key={`${item.kind}-${item.id}`}
             item={item}
             selected={item.id === selectedId}
+            multiSelected={!!selectedIds?.has(item.id)}
             onSelect={() => onSelect(item)}
             onNavigate={() => onNavigate(item)}
             onReparent={onReparent}
+            onReparentMany={onReparentMany}
             onDelete={onDelete}
+            onToggleSelect={onToggleSelect ? () => onToggleSelect(item) : undefined}
+            selectedDragPayloads={selectedDragPayloads}
           />
         ))}
       </div>
@@ -68,17 +81,25 @@ export default function FolderItemGrid({
 function Tile({
   item,
   selected,
+  multiSelected,
   onSelect,
   onNavigate,
   onReparent,
+  onReparentMany,
   onDelete,
+  onToggleSelect,
+  selectedDragPayloads,
 }: {
   item: GridItem;
   selected: boolean;
+  multiSelected: boolean;
   onSelect: () => void;
   onNavigate: () => void;
   onReparent: (payload: FBDragPayload, targetFolderId: string | null) => Promise<void>;
+  onReparentMany?: (payloads: FBDragPayload[], targetFolderId: string | null) => Promise<void>;
   onDelete?: (item: GridItem) => Promise<void>;
+  onToggleSelect?: () => void;
+  selectedDragPayloads: FBDragPayload[];
 }) {
   const [over, setOver] = useState(false);
   const isFolder = item.kind === "folder";
@@ -92,19 +113,17 @@ function Tile({
       onKeyDown={(e) => {
         if (e.key === "Enter") onNavigate();
       }}
-      // Drag source — payload identifies kind + id so the drop handler knows
-      // which API to call.
+      // Drag source — carries the multi-selection when this tile is part of
+      // one, else just this item.
       draggable
-      onDragStart={(e: DragEvent<HTMLDivElement>) => {
-        const payload: FBDragPayload = { kind: item.kind, id: item.id };
-        e.dataTransfer.setData(FB_DRAG_MIME, JSON.stringify(payload));
-        e.dataTransfer.effectAllowed = "move";
-      }}
-      // Folder tiles are also drop targets — drop a sibling onto a folder
-      // tile to move it into that folder.
+      onDragStart={(e: DragEvent<HTMLDivElement>) =>
+        startItemDrag(e, item, multiSelected, selectedDragPayloads)
+      }
+      // Folder tiles are also drop targets — drop a sibling (or a whole
+      // selection) onto a folder tile to move it in.
       onDragOver={(e) => {
         if (!isFolder) return;
-        if (!e.dataTransfer.types.includes(FB_DRAG_MIME)) return;
+        if (!isFbDrag(e)) return;
         e.preventDefault();
         e.dataTransfer.dropEffect = "move";
         setOver(true);
@@ -112,26 +131,23 @@ function Tile({
       onDragLeave={() => setOver(false)}
       onDrop={(e) => {
         if (!isFolder) return;
-        const raw = e.dataTransfer.getData(FB_DRAG_MIME);
         setOver(false);
-        if (!raw) return;
         e.preventDefault();
-        try {
-          const payload = JSON.parse(raw) as FBDragPayload;
-          if (payload.kind === "folder" && payload.id === item.id) return;
-          onReparent(payload, item.id);
-        } catch {
-          /* malformed */
-        }
+        handleFolderDrop(e, item.id, onReparent, onReparentMany ?? (async () => {}));
       }}
       className={
         "group flex items-start gap-3 rounded-lg border bg-base p-3 transition cursor-pointer select-none " +
-        (selected
+        (selected || multiSelected
           ? "border-[var(--color-brand-400)] bg-[var(--color-brand-50)]/40"
           : "border-border hover:border-[var(--color-brand-200)] hover:bg-[var(--color-brand-50)]/30") +
         (over ? " ring-2 ring-[var(--color-brand-300)]" : "")
       }
     >
+      {onToggleSelect && (
+        <span className="mt-0.5">
+          <SelectBox selected={multiSelected} onToggle={onToggleSelect} />
+        </span>
+      )}
       <span className={"mt-0.5 " + tintFor(item)}>
         <KindIcon kind={item.kind} />
       </span>

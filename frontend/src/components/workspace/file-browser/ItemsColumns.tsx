@@ -111,7 +111,7 @@ export default function ItemsColumns({
   }
 
   return (
-    <div className="flex min-h-0 flex-1">
+    <div className="flex min-h-0 flex-1 overflow-hidden rounded-xl border border-border bg-surface">
       <div
         ref={containerRef}
         className="scroll-thin flex min-h-0 flex-1 overflow-x-auto"
@@ -183,7 +183,10 @@ function Column({
         }
       }}
       className={
-        "scroll-thin flex h-full w-[240px] flex-shrink-0 flex-col overflow-y-auto border-r border-border bg-base " +
+        // flex-[grow_shrink_basis]: each column starts at 240px, grows to fill
+        // when the drill is shallow (so a single column doesn't float in empty
+        // space), and never shrinks below 240px so deeper drills scroll instead.
+        "scroll-thin flex h-full min-w-0 flex-[1_0_240px] flex-col overflow-y-auto border-r border-border bg-base " +
         (over ? "bg-[var(--color-brand-50)]/40" : "")
       }
     >
