@@ -29,6 +29,11 @@ ENV NEXT_PUBLIC_AUTH0_ENABLED=$NEXT_PUBLIC_AUTH0_ENABLED
 # to be present at build time.
 ARG BACKEND_INTERNAL_URL
 ENV BACKEND_INTERNAL_URL=$BACKEND_INTERNAL_URL
+# Managed deploys (separate API host) reach the backend via the public URL
+# instead of an internal hostname. next.config.ts's rewrites() reads this at
+# build time, so it has to be a build arg here, not just a runtime env var.
+ARG NEXT_PUBLIC_API_URL
+ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 
 ENV NEXT_TELEMETRY_DISABLED=1
 # Persist Next.js / Turbopack's incremental build cache across builds.
