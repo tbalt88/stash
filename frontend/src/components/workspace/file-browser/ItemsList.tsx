@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type DragEvent } from "react";
+import { useMemo, useState, type DragEvent } from "react";
 import {
   FB_DRAG_MIME,
   FB_DRAG_MULTI_MIME,
@@ -81,11 +81,40 @@ interface Props {
   selectedDragPayloads: FBDragPayload[];
 }
 
+type SortKey = "name" | "modified" | "type";
+type Sort = { key: SortKey; dir: "asc" | "desc" } | null;
+
+const SORT_STORAGE_KEY = "stash_files_sort";
+
+function readSort(): Sort {
+  if (typeof window === "undefined") return null;
+  const raw = window.localStorage.getItem(SORT_STORAGE_KEY);
+  if (!raw) return null;
+  const [key, dir] = raw.split(":");
+  if ((key === "name" || key === "modified" || key === "type") && (dir === "asc" || dir === "desc")) {
+    return { key, dir };
+  }
+  return null;
+}
+
+function timeOf(item: GridItem): number {
+  if (!item.updatedAt) return 0;
+  const t = new Date(item.updatedAt).getTime();
+  return Number.isNaN(t) ? 0 : t;
+}
+
+// Ascending comparators; the caller reverses for descending. Type and modified
+// fall back to name so equal values keep a stable, readable order.
+function compareItems(a: GridItem, b: GridItem, key: SortKey): number {
+  if (key === "modified") return timeOf(a) - timeOf(b) || a.name.localeCompare(b.name);
+  if (key === "type") return typeFor(a).localeCompare(typeFor(b)) || a.name.localeCompare(b.name);
+  return a.name.localeCompare(b.name);
+}
+
 // Google-Drive-style list: Name / Modified / Type / actions, rendered as a
 // floating rounded card rather than a full-bleed table. Hover reveals pin +
-// trash buttons in the action column. Folders + files + pages all live in the
-// same grid; folders surface their child-count in the Type column instead of a
-// modified date.
+// trash buttons in the action column. The Name/Modified/Type headers sort the
+// list (click to sort, click again to flip direction), persisted per browser.
 export default function ItemsList({
   items,
   onNavigate,
@@ -98,19 +127,44 @@ export default function ItemsList({
   onToggleSelect,
   selectedDragPayloads,
 }: Props) {
+  const [sort, setSort] = useState<Sort>(() => readSort());
+
+  function toggleSort(key: SortKey) {
+    setSort((current) => {
+      // First click on a column: name/type ascend, modified shows newest first.
+      const next: Sort =
+        current && current.key === key
+          ? { key, dir: current.dir === "asc" ? "desc" : "asc" }
+          : { key, dir: key === "modified" ? "desc" : "asc" };
+      try {
+        window.localStorage.setItem(SORT_STORAGE_KEY, `${next.key}:${next.dir}`);
+      } catch {
+        /* ignore */
+      }
+      return next;
+    });
+  }
+
+  const sortedItems = useMemo(() => {
+    if (!sort) return items;
+    const arr = [...items].sort((a, b) => compareItems(a, b, sort.key));
+    if (sort.dir === "desc") arr.reverse();
+    return arr;
+  }, [items, sort]);
+
   return (
     <div className="scroll-thin overflow-hidden rounded-xl border border-border bg-surface">
       <div
         className="grid items-center gap-3 border-b border-border bg-base/60 px-4 py-2.5 text-[11px] font-medium uppercase tracking-wide text-muted"
         style={{ gridTemplateColumns: LIST_GRID_COLS }}
       >
-        <span>Name</span>
-        <span>Modified</span>
-        <span>Type</span>
+        <SortHeader label="Name" sortKey="name" sort={sort} onSort={toggleSort} />
+        <SortHeader label="Modified" sortKey="modified" sort={sort} onSort={toggleSort} />
+        <SortHeader label="Type" sortKey="type" sort={sort} onSort={toggleSort} />
         <span />
       </div>
       <div>
-        {items.map((item) => (
+        {sortedItems.map((item) => (
           <Row
             key={`${item.kind}-${item.id}`}
             item={item}
@@ -125,13 +179,42 @@ export default function ItemsList({
             selectedDragPayloads={selectedDragPayloads}
           />
         ))}
-        {items.length === 0 && (
+        {sortedItems.length === 0 && (
           <div className="px-4 py-10 text-center text-[12.5px] text-muted">
             Empty folder.
           </div>
         )}
       </div>
     </div>
+  );
+}
+
+function SortHeader({
+  label,
+  sortKey,
+  sort,
+  onSort,
+}: {
+  label: string;
+  sortKey: SortKey;
+  sort: Sort;
+  onSort: (key: SortKey) => void;
+}) {
+  const active = sort?.key === sortKey;
+  return (
+    <button
+      type="button"
+      onClick={() => onSort(sortKey)}
+      className={
+        "flex items-center gap-1 text-left uppercase tracking-wide transition-colors hover:text-foreground " +
+        (active ? "text-foreground" : "")
+      }
+    >
+      {label}
+      <span className={"text-[9px] " + (active ? "opacity-100" : "opacity-0")}>
+        {active && sort?.dir === "desc" ? "▼" : "▲"}
+      </span>
+    </button>
   );
 }
 
@@ -309,10 +392,10 @@ export function tintFor(item: GridItem): string {
 }
 
 export function typeFor(item: GridItem): string {
-  if (item.kind === "folder") return item.subtitle;
+  if (item.kind === "folder") return "Folder";
   if (item.kind === "table") return "Table";
-  if (item.kind === "html") return "HTML page";
-  if (item.kind === "page") return "Page";
+  if (item.kind === "html") return "HTML";
+  if (item.kind === "page") return "Markdown";
   if (item.contentType?.includes("pdf")) return "PDF";
   if (item.contentType?.includes("csv")) return "CSV";
   if (item.contentType?.startsWith("image/")) {
