@@ -6,8 +6,15 @@ import { type FormEvent, useCallback, useEffect, useMemo, useState } from "react
 import { StashesGridSkeleton } from "../../../../../components/SkeletonStates";
 import { PinIcon, StashIcon } from "../../../../../components/StashIcons";
 import StashCard from "../../../../../components/stash/StashCard";
+import { SelectBox } from "../../../../../components/workspace/file-browser/ItemsList";
 import { useShareModal } from "../../../../../lib/shareModalContext";
-import { addExternalStash, ApiError, listStashes, type WorkspaceStash } from "../../../../../lib/api";
+import {
+  addExternalStash,
+  ApiError,
+  deleteStash,
+  listStashes,
+  type WorkspaceStash,
+} from "../../../../../lib/api";
 import { usePins } from "../../../../../lib/pins";
 import { stashSlugFromInput } from "../../../../../lib/stashLinks";
 
@@ -43,6 +50,20 @@ export default function WorkspaceStashesPage() {
   const [filter, setFilter] = useState<Filter>("all");
   const [view, setView] = useState<ViewKey>("grid");
   const [error, setError] = useState("");
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
+  function toggleSelect(id: string) {
+    setSelectedIds((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function clearSelection() {
+    setSelectedIds(new Set());
+  }
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -114,6 +135,25 @@ export default function WorkspaceStashesPage() {
         .slice(0, 6),
     [stashes, pins.pinnedSet]
   );
+
+  const selectedStashes = (stashes ?? []).filter((s) => selectedIds.has(s.id));
+
+  async function bulkDeleteStashes() {
+    if (selectedStashes.length === 0) return;
+    const yes = window.confirm(
+      `Delete ${selectedStashes.length} Stash${selectedStashes.length === 1 ? "" : "es"}? This can't be undone.`,
+    );
+    if (!yes) return;
+    try {
+      for (const stash of selectedStashes) {
+        await deleteStash(stash.id);
+      }
+      clearSelection();
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Delete failed");
+    }
+  }
 
   if (stashes === null) {
     return <StashesGridSkeleton />;
@@ -204,6 +244,8 @@ export default function WorkspaceStashesPage() {
               view={view}
               isPinned={(s) => pins.pinnedSet.has(s.id)}
               onTogglePin={(s) => pins.toggle(s.id)}
+              selectedIds={selectedIds}
+              onToggleSelect={toggleSelect}
             />
             <StashGroup
               title="Forked Stashes"
@@ -212,6 +254,8 @@ export default function WorkspaceStashesPage() {
               view={view}
               isPinned={(s) => pins.pinnedSet.has(s.id)}
               onTogglePin={(s) => pins.toggle(s.id)}
+              selectedIds={selectedIds}
+              onToggleSelect={toggleSelect}
             />
           </>
         ) : (
@@ -221,9 +265,34 @@ export default function WorkspaceStashesPage() {
             view={view}
             isPinned={(s) => pins.pinnedSet.has(s.id)}
             onTogglePin={(s) => pins.toggle(s.id)}
+            selectedIds={selectedIds}
+            onToggleSelect={toggleSelect}
           />
         )}
       </div>
+
+      {selectedStashes.length > 0 && (
+        <div className="pointer-events-none fixed inset-x-0 bottom-6 z-50 flex justify-center">
+          <div className="pointer-events-auto flex items-center gap-3 rounded-lg border border-border bg-foreground px-4 py-2 text-[13px] text-background shadow-lg">
+            <span className="font-medium">{selectedStashes.length} selected</span>
+            <button
+              type="button"
+              onClick={() => void bulkDeleteStashes()}
+              className="rounded-md border border-background/40 px-2 py-0.5 text-[12px] font-semibold hover:bg-background/10"
+            >
+              Delete
+            </button>
+            <button
+              type="button"
+              onClick={clearSelection}
+              className="ml-1 text-[18px] leading-none text-background/70 hover:text-background"
+              aria-label="Clear selection"
+            >
+              ×
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -332,6 +401,8 @@ function StashGroup({
   view,
   isPinned,
   onTogglePin,
+  selectedIds,
+  onToggleSelect,
 }: {
   title: string;
   stashes: WorkspaceStash[];
@@ -339,6 +410,8 @@ function StashGroup({
   view: ViewKey;
   isPinned: (stash: WorkspaceStash) => boolean;
   onTogglePin: (stash: WorkspaceStash) => void;
+  selectedIds: Set<string>;
+  onToggleSelect: (id: string) => void;
 }) {
   return (
     <section className="mt-5">
@@ -354,6 +427,8 @@ function StashGroup({
         view={view}
         isPinned={isPinned}
         onTogglePin={onTogglePin}
+        selectedIds={selectedIds}
+        onToggleSelect={onToggleSelect}
         embedded
       />
     </section>
@@ -366,6 +441,8 @@ function StashCollection({
   view,
   isPinned,
   onTogglePin,
+  selectedIds,
+  onToggleSelect,
   embedded,
 }: {
   stashes: WorkspaceStash[];
@@ -373,6 +450,8 @@ function StashCollection({
   view: ViewKey;
   isPinned: (stash: WorkspaceStash) => boolean;
   onTogglePin: (stash: WorkspaceStash) => void;
+  selectedIds: Set<string>;
+  onToggleSelect: (id: string) => void;
   embedded?: boolean;
 }) {
   if (view === "list") {
@@ -389,6 +468,8 @@ function StashCollection({
             stash={stash}
             pinned={isPinned(stash)}
             onTogglePin={onTogglePin}
+            selected={selectedIds.has(stash.id)}
+            onToggleSelect={onToggleSelect}
           />
         ))}
       </div>
@@ -407,6 +488,15 @@ function StashCollection({
           key={stash.id}
           stash={stash}
           cover={COVERS[(startIndex + i) % COVERS.length]}
+          selected={selectedIds.has(stash.id)}
+          badge={
+            <span className="absolute left-2.5 top-2.5 z-10">
+              <SelectBox
+                selected={selectedIds.has(stash.id)}
+                onToggle={() => onToggleSelect(stash.id)}
+              />
+            </span>
+          }
           cornerAction={
             <StashPinButton
               pinned={isPinned(stash)}
@@ -424,10 +514,14 @@ function StashListRow({
   stash,
   pinned,
   onTogglePin,
+  selected,
+  onToggleSelect,
 }: {
   stash: WorkspaceStash;
   pinned: boolean;
   onTogglePin: (stash: WorkspaceStash) => void;
+  selected: boolean;
+  onToggleSelect: (id: string) => void;
 }) {
   const itemCount = stash.items?.length ?? 0;
   const author = stash.owner_display_name || stash.owner_name || "";
@@ -436,8 +530,12 @@ function StashListRow({
   return (
     <Link
       href={`/stashes/${stash.slug}`}
-      className="group grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-3 border-b border-border-subtle px-4 py-3 last:border-b-0 hover:bg-[var(--color-brand-50)]/50"
+      className={
+        "group grid grid-cols-[auto_minmax(0,1fr)_auto_auto] items-center gap-3 border-b border-border-subtle px-4 py-3 last:border-b-0 " +
+        (selected ? "bg-[var(--color-brand-50)]" : "hover:bg-[var(--color-brand-50)]/50")
+      }
     >
+      <SelectBox selected={selected} onToggle={() => onToggleSelect(stash.id)} />
       <div className="min-w-0">
         <div className="flex min-w-0 items-center gap-2">
           {dotColor && (

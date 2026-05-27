@@ -31,6 +31,8 @@ interface StashCardProps {
   cornerAction?: ReactNode;
   /** Custom footer; if omitted, defaults to `/{slug}` + relative-time. */
   footer?: ReactNode;
+  /** Highlights the card when it's part of a multi-selection. */
+  selected?: boolean;
 }
 
 const VIS_COLOR: Record<string, string> = {
@@ -45,6 +47,7 @@ export default function StashCard({
   badge,
   cornerAction,
   footer,
+  selected,
 }: StashCardProps) {
   const itemCount = stash.item_count ?? stash.items?.length ?? 0;
   const visibility = stash.access;
@@ -54,7 +57,12 @@ export default function StashCard({
   return (
     <Link
       href={`/stashes/${stash.slug}`}
-      className="card group flex min-h-[200px] flex-col overflow-hidden transition hover:border-[var(--color-brand-300)]"
+      className={
+        "card group flex min-h-[200px] flex-col overflow-hidden transition " +
+        (selected
+          ? "ring-2 ring-[var(--color-brand-400)]"
+          : "hover:border-[var(--color-brand-300)]")
+      }
     >
       <div
         className={`${cover} relative h-[84px]`}
