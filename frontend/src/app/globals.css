@@ -264,6 +264,31 @@ details > summary::-webkit-details-marker {
   margin-bottom: 0;
 }
 
+/* Page editor rhythm. The editor is `prose prose-sm`, whose default ~1.14em
+   paragraph margins read as double-spacing while typing. Tighten the vertical
+   margins to match the read-only `.markdown-content` renderer so editing looks
+   like the rendered result. (.ProseMirror.file-page-body out-specifies the
+   prose-sm `:where(p)` rules.) */
+.ProseMirror.file-page-body p {
+  margin: 0.3em 0;
+}
+.ProseMirror.file-page-body ul,
+.ProseMirror.file-page-body ol {
+  margin: 0.35em 0;
+}
+.ProseMirror.file-page-body li {
+  margin: 0.15em 0;
+}
+.ProseMirror.file-page-body blockquote {
+  margin: 0.5em 0;
+}
+.ProseMirror.file-page-body > :first-child {
+  margin-top: 0;
+}
+.ProseMirror.file-page-body > :last-child {
+  margin-bottom: 0;
+}
+
 /* ---------------------------------------------------------------
  * Markdown typography — `@tailwindcss/typography` (the `prose` class)
  * is our base. Add `prose` to any container that holds rendered
