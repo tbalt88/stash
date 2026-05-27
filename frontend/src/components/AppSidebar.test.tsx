@@ -98,7 +98,7 @@ describe("AppSidebar workspace nav", () => {
     expect(navLink("Trash").getAttribute("href")).toBe("/workspaces/ws-1/trash");
   });
 
-  it("does not render inline expandable trees for the sections", async () => {
+  it("does not render native <details> trees for the sections", async () => {
     const { container } = render(<AppSidebar user={user} />);
 
     await waitFor(() => expect(navLink("Files")).toBeTruthy());
@@ -106,13 +106,13 @@ describe("AppSidebar workspace nav", () => {
     expect(container.querySelector("details")).toBeNull();
   });
 
-  it("marks Files active when viewing a file route", async () => {
+  it("marks the Files section active when viewing a file route", async () => {
     nav.pathname = "/workspaces/ws-1/folders/folder-1";
     render(<AppSidebar user={user} />);
 
     await waitFor(() => expect(navLink("Files")).toBeTruthy());
 
-    expect(navLink("Files").className).toContain("color-brand-50");
-    expect(navLink("Sessions").className).not.toContain("color-brand-50");
+    expect(navLink("Files").className).toContain("color-brand-800");
+    expect(navLink("Sessions").className).not.toContain("color-brand-800");
   });
 });

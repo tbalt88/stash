@@ -25,24 +25,43 @@ function writePinMap(storageKey: string, map: PinMap) {
   window.localStorage.setItem(storageKey, JSON.stringify(map));
 }
 
+// Same-tab change signal: the `storage` event only fires in other tabs, so we
+// broadcast our own event on every toggle. This keeps the sidebar's pinned
+// dropdowns in sync with pins toggled from the Files/Sessions/Stashes pages.
+const PINS_EVENT = "stash-pins-change";
+
 export function usePins(storageKey: string, workspaceId: string) {
   const [ids, setIds] = useState<string[]>([]);
 
-  useEffect(() => {
+  const reread = useCallback(() => {
     setIds(readPinMap(storageKey)[workspaceId] ?? []);
   }, [storageKey, workspaceId]);
 
+  useEffect(() => {
+    reread();
+    const onChange = (e: Event) => {
+      const detail = (e as CustomEvent<{ storageKey: string }>).detail;
+      if (!detail || detail.storageKey === storageKey) reread();
+    };
+    window.addEventListener(PINS_EVENT, onChange);
+    window.addEventListener("storage", reread);
+    return () => {
+      window.removeEventListener(PINS_EVENT, onChange);
+      window.removeEventListener("storage", reread);
+    };
+  }, [reread, storageKey]);
+
   const toggle = useCallback(
     (id: string) => {
-      setIds((current) => {
-        const next = current.includes(id)
-          ? current.filter((value) => value !== id)
-          : [...current, id];
-        const map = readPinMap(storageKey);
-        map[workspaceId] = next;
-        writePinMap(storageKey, map);
-        return next;
-      });
+      const map = readPinMap(storageKey);
+      const current = map[workspaceId] ?? [];
+      const next = current.includes(id)
+        ? current.filter((value) => value !== id)
+        : [...current, id];
+      map[workspaceId] = next;
+      writePinMap(storageKey, map);
+      setIds(next);
+      window.dispatchEvent(new CustomEvent(PINS_EVENT, { detail: { storageKey } }));
     },
     [storageKey, workspaceId],
   );

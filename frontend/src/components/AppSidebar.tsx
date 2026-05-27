@@ -1,7 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useRef, useState, type MouseEvent } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type MouseEvent,
+  type ReactNode,
+} from "react";
 import { usePathname } from "next/navigation";
 import {
   getCachedWorkspaceSidebar,
@@ -10,17 +17,21 @@ import {
   readCachedWorkspaces,
   subscribeToSidebarRefresh,
 } from "../lib/stashNavigationCache";
-import type { WorkspaceSidebar } from "../lib/api";
+import type { WorkspaceSidebar, WorkspaceSidebarSession } from "../lib/api";
 import type { User, Workspace } from "../lib/types";
+import { usePins } from "../lib/pins";
 import {
   ActivityIcon,
   DiscoverIcon,
+  FileIcon,
   FolderIcon,
   HelpIcon,
+  PageIcon,
   PersonIcon,
   SessionsIcon,
   SettingsIcon,
   StashIcon,
+  TableIcon,
   TrashIcon,
   WorkspaceIcon,
 } from "./StashIcons";
@@ -38,6 +49,25 @@ interface WorkspaceNode extends Workspace {
 }
 
 const LAST_WORKSPACE_KEY = "stash_sidebar_last_workspace";
+const OPEN_SECTIONS_KEY = "stash_sidebar_open_sections";
+
+function readOpenSections(): Record<string, boolean> {
+  if (typeof window === "undefined") return {};
+  const raw = window.localStorage.getItem(OPEN_SECTIONS_KEY);
+  if (!raw) return {};
+  try {
+    const parsed = JSON.parse(raw);
+    return typeof parsed === "object" && parsed !== null ? parsed : {};
+  } catch {
+    window.localStorage.removeItem(OPEN_SECTIONS_KEY);
+    return {};
+  }
+}
+
+function writeOpenSections(map: Record<string, boolean>) {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(OPEN_SECTIONS_KEY, JSON.stringify(map));
+}
 
 function NavRow({
   href,
@@ -90,51 +120,219 @@ function DisabledNavRow({
   );
 }
 
-// The workspace's content lives on dedicated list pages now (Stashes,
-// Sessions, Files). The sidebar links straight into those pages instead of
-// expanding inline trees, keeping navigation flat and the list pages the one
-// place to browse.
-function WorkspaceNav({
-  workspace,
-  pathname,
-}: {
-  workspace: WorkspaceNode;
-  pathname: string;
-}) {
-  const base = `/workspaces/${workspace.id}`;
-  const stashesActive =
-    pathname.startsWith(`${base}/stashes`) || pathname.startsWith("/stashes/");
-  const sessionsActive = pathname.startsWith(`${base}/sessions`);
-  const filesActive = !!pathname.match(
-    new RegExp(`^/workspaces/${workspace.id}/(files|folders|p|f)(?:/|$)`),
-  );
+// Each pinned dropdown row resolves to a concrete destination.
+interface PinnedRow {
+  key: string;
+  href: string;
+  label: string;
+  icon: ReactNode;
+  active: boolean;
+}
 
+function fileIconClass(contentType: string | undefined): string {
+  if (contentType?.includes("pdf")) return "text-rose-500";
+  if (contentType?.includes("csv")) return "text-emerald-600";
+  if (contentType?.includes("html")) return "text-amber-600";
+  return "text-muted";
+}
+
+function cleanSessionTitle(title: string): string {
+  return title
+    .replace(/^\s*title:\s*/i, "")
+    .replace(/^\s{0,3}#{1,6}\s*/, "")
+    .replace(/\*\*/g, "")
+    .replace(/`/g, "")
+    .trim();
+}
+
+function sessionLabelForSidebar(session: WorkspaceSidebarSession): string {
+  const raw = (session.title || session.session_id).trim();
+  return cleanSessionTitle(raw) || session.session_id;
+}
+
+function resolveFilePins(
+  ids: string[],
+  spine: WorkspaceSidebar | null,
+  workspaceId: string,
+  pathname: string,
+): PinnedRow[] {
+  if (!spine) return [];
+  const folders = new Map(spine.files.folders.map((f) => [f.id, f]));
+  const pages = new Map(spine.files.pages.map((p) => [p.id, p]));
+  const files = new Map(spine.files.files.map((f) => [f.id, f]));
+  const rows: PinnedRow[] = [];
+  for (const id of ids) {
+    const folder = folders.get(id);
+    if (folder) {
+      const href = `/workspaces/${workspaceId}/folders/${id}`;
+      rows.push({ key: id, href, label: folder.name, icon: <FolderIcon />, active: pathname === href });
+      continue;
+    }
+    const page = pages.get(id);
+    if (page) {
+      const href = `/workspaces/${workspaceId}/p/${id}`;
+      rows.push({
+        key: id,
+        href,
+        label: page.name,
+        icon: <span className="text-muted"><PageIcon /></span>,
+        active: pathname === href,
+      });
+      continue;
+    }
+    const file = files.get(id);
+    if (file) {
+      const csv = !!(file.content_type?.includes("csv") && file.linked_table_id);
+      const href = csv
+        ? `/tables/${file.linked_table_id}?workspaceId=${workspaceId}`
+        : `/workspaces/${workspaceId}/f/${id}`;
+      rows.push({
+        key: id,
+        href,
+        label: file.name,
+        icon: <span className={fileIconClass(file.content_type)}>{csv ? <TableIcon /> : <FileIcon />}</span>,
+        active: pathname.includes(`/f/${id}`),
+      });
+    }
+  }
+  return rows;
+}
+
+function resolveSessionPins(
+  ids: string[],
+  spine: WorkspaceSidebar | null,
+  workspaceId: string,
+  pathname: string,
+): PinnedRow[] {
+  if (!spine) return [];
+  const bySessionId = new Map(spine.sessions.map((s) => [s.session_id, s]));
+  const rows: PinnedRow[] = [];
+  for (const id of ids) {
+    const session = bySessionId.get(id);
+    if (!session) continue;
+    const href = `/workspaces/${workspaceId}/sessions/${encodeURIComponent(id)}`;
+    rows.push({
+      key: id,
+      href,
+      label: sessionLabelForSidebar(session),
+      icon: <span className="text-muted"><SessionsIcon /></span>,
+      active: pathname === href,
+    });
+  }
+  return rows;
+}
+
+function resolveStashPins(
+  ids: string[],
+  spine: WorkspaceSidebar | null,
+  pathname: string,
+): PinnedRow[] {
+  if (!spine?.stashes) return [];
+  const byId = new Map(spine.stashes.map((s) => [s.id, s]));
+  const rows: PinnedRow[] = [];
+  for (const id of ids) {
+    const stash = byId.get(id);
+    if (!stash) continue;
+    const href = `/stashes/${stash.slug}`;
+    rows.push({
+      key: id,
+      href,
+      label: stash.title,
+      icon: <span className="text-muted"><StashIcon /></span>,
+      active: pathname === href || pathname.startsWith(`${href}/`),
+    });
+  }
+  return rows;
+}
+
+function ChevronToggle({ open, onToggle }: { open: boolean; onToggle: () => void }) {
   return (
-    <div className="space-y-0.5">
-      <NavRow
-        href={`${base}/stashes`}
-        icon={<StashIcon />}
-        label="Stashes"
-        active={stashesActive}
-      />
-      <NavRow
-        href={`${base}/sessions`}
-        icon={<SessionsIcon />}
-        label="Sessions"
-        active={sessionsActive}
-      />
-      <NavRow
-        href={`${base}/files`}
-        icon={<FolderIcon />}
-        label="Files"
-        active={filesActive}
-      />
-      <NavRow
-        href={`${base}/trash`}
-        icon={<TrashIcon />}
-        label="Trash"
-        active={pathname === `${base}/trash`}
-      />
+    <button
+      type="button"
+      onClick={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        onToggle();
+      }}
+      className="-ml-0.5 flex h-4 w-4 items-center justify-center rounded text-muted hover:bg-base/60 hover:text-foreground"
+      aria-expanded={open}
+      aria-label="Toggle section"
+    >
+      <svg
+        className={"h-3 w-3" + (open ? " rotate-90" : "")}
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <polyline points="9 18 15 12 9 6" />
+      </svg>
+    </button>
+  );
+}
+
+// A collapsible section whose header links to the list page and whose body
+// shows only the items the user has pinned for that type.
+function PinnedSection({
+  label,
+  href,
+  headerActive,
+  items,
+  open,
+  onToggle,
+}: {
+  label: string;
+  href: string;
+  headerActive: boolean;
+  items: PinnedRow[];
+  open: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <div>
+      <div
+        className={
+          "page-row flex items-center gap-1.5 rounded-md px-2 py-1 " +
+          (headerActive ? "bg-[var(--color-brand-50)]" : "hover:bg-raised")
+        }
+      >
+        <ChevronToggle open={open} onToggle={onToggle} />
+        <Link
+          href={href}
+          className={
+            "flex-1 truncate text-[11px] font-semibold uppercase tracking-wide " +
+            (headerActive
+              ? "text-[var(--color-brand-800)]"
+              : "text-muted hover:text-foreground")
+          }
+        >
+          {label}
+        </Link>
+        {items.length > 0 && (
+          <span className="text-[10px] tabular-nums text-muted">{items.length}</span>
+        )}
+      </div>
+      {open && (
+        <div className="ml-3 space-y-0.5 border-l border-border pl-2">
+          {items.length === 0 ? (
+            <div className="px-2 py-1 text-[11px] italic text-muted">
+              No pinned {label.toLowerCase()}
+            </div>
+          ) : (
+            items.map((row) => (
+              <NavRow
+                key={row.key}
+                href={row.href}
+                icon={row.icon}
+                label={row.label}
+                active={row.active}
+              />
+            ))
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -326,11 +524,45 @@ export default function AppSidebar({
     activeWorkspaceId ?? routeWorkspaceId ?? lastWorkspaceId;
   const [mine, setMine] = useState<Workspace[]>(cachedWorkspaces?.mine ?? []);
   const [shared, setShared] = useState<Workspace[]>(cachedWorkspaces?.shared ?? []);
-  // Sidebar spine is only used now to resolve the active stash's slug so the
-  // footer Settings link can point at stash settings when viewing a stash.
+  // Sidebar spine resolves pinned ids to names/routes for the dropdowns, and
+  // the active stash's slug for the footer Settings link.
   const [spines, setSpines] = useState<Record<string, WorkspaceSidebar>>(() =>
     readCachedSidebars()
   );
+
+  // The sidebar always renders a single workspace context. Priority:
+  // (1) the workspace in the current URL, (2) the first owned workspace,
+  // (3) the first shared workspace. Switching via the WorkspaceSwitcher
+  // navigates to /workspaces/{id} which then drives this back through the URL.
+  const activeWorkspace: WorkspaceNode | null =
+    (currentWorkspaceId &&
+      (mine.find((w) => w.id === currentWorkspaceId) ??
+        (shared.find((w) => w.id === currentWorkspaceId)
+          ? { ...shared.find((w) => w.id === currentWorkspaceId)!, shared: true }
+          : null))) ||
+    mine[0] ||
+    (shared[0] ? { ...shared[0], shared: true } : null);
+  const activeWorkspaceKey = activeWorkspace?.id ?? "";
+
+  const stashPins = usePins("stash_stashes_pins", activeWorkspaceKey);
+  const sessionPins = usePins("stash_sessions_pins", activeWorkspaceKey);
+  const filePins = usePins("stash_files_pins", activeWorkspaceKey);
+  const [openSections, setOpenSections] = useState<Record<string, boolean>>(() =>
+    readOpenSections()
+  );
+
+  function toggleSection(section: string) {
+    setOpenSections((current) => {
+      const key = `${activeWorkspaceKey}:${section}`;
+      const next = { ...current, [key]: !(current[key] ?? true) };
+      writeOpenSections(next);
+      return next;
+    });
+  }
+
+  function sectionOpen(section: string): boolean {
+    return openSections[`${activeWorkspaceKey}:${section}`] ?? true;
+  }
 
   useEffect(() => {
     if (!routeWorkspaceId) return;
@@ -351,15 +583,14 @@ export default function AppSidebar({
       .catch(() => {});
   }, [userId]);
 
-  const onStashRoute = pathname.startsWith("/stashes/");
-
+  // Load the active workspace's spine so the pinned dropdowns can resolve.
   useEffect(() => {
-    if (!onStashRoute || !currentWorkspaceId) return;
-    if (spines[currentWorkspaceId]) return;
-    getCachedWorkspaceSidebar(currentWorkspaceId)
-      .then((sp) => setSpines((all) => ({ ...all, [currentWorkspaceId]: sp })))
+    if (!activeWorkspaceKey) return;
+    if (spines[activeWorkspaceKey]) return;
+    getCachedWorkspaceSidebar(activeWorkspaceKey)
+      .then((sp) => setSpines((all) => ({ ...all, [activeWorkspaceKey]: sp })))
       .catch(() => {});
-  }, [onStashRoute, currentWorkspaceId, spines]);
+  }, [activeWorkspaceKey, spines]);
 
   useEffect(() => {
     return subscribeToSidebarRefresh((workspaceId, sidebar) => {
@@ -367,18 +598,20 @@ export default function AppSidebar({
     });
   }, []);
 
-  // The sidebar always renders a single workspace context. Priority:
-  // (1) the workspace in the current URL, (2) the first owned workspace,
-  // (3) the first shared workspace. Switching via the WorkspaceSwitcher
-  // navigates to /workspaces/{id} which then drives this back through the URL.
-  const activeWorkspace: WorkspaceNode | null =
-    (currentWorkspaceId &&
-      (mine.find((w) => w.id === currentWorkspaceId) ??
-        (shared.find((w) => w.id === currentWorkspaceId)
-          ? { ...shared.find((w) => w.id === currentWorkspaceId)!, shared: true }
-          : null))) ||
-    mine[0] ||
-    (shared[0] ? { ...shared[0], shared: true } : null);
+  const spine = activeWorkspace ? spines[activeWorkspace.id] ?? null : null;
+  const stashRows = useMemo(
+    () => resolveStashPins(stashPins.pinnedIds, spine, pathname),
+    [stashPins.pinnedIds, spine, pathname],
+  );
+  const sessionRows = useMemo(
+    () => resolveSessionPins(sessionPins.pinnedIds, spine, activeWorkspaceKey, pathname),
+    [sessionPins.pinnedIds, spine, activeWorkspaceKey, pathname],
+  );
+  const fileRows = useMemo(
+    () => resolveFilePins(filePins.pinnedIds, spine, activeWorkspaceKey, pathname),
+    [filePins.pinnedIds, spine, activeWorkspaceKey, pathname],
+  );
+
   const activeStashSlug = pathname.match(/^\/stashes\/([^/?#]+)/)?.[1] ?? null;
   const activeStash =
     activeWorkspace && activeStashSlug
@@ -438,13 +671,46 @@ export default function AppSidebar({
         />
       </nav>
 
-      <nav className="mt-4 px-2 text-[13px]">
+      <nav className="mt-4 space-y-0.5 px-2 text-[13px]">
         {activeWorkspace ? (
           <>
-            <div className="px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-muted">
-              Workspace
-            </div>
-            <WorkspaceNav workspace={activeWorkspace} pathname={pathname} />
+            <PinnedSection
+              label="Stashes"
+              href={`/workspaces/${activeWorkspace.id}/stashes`}
+              headerActive={
+                pathname.startsWith(`/workspaces/${activeWorkspace.id}/stashes`) ||
+                pathname.startsWith("/stashes/")
+              }
+              items={stashRows}
+              open={sectionOpen("stashes")}
+              onToggle={() => toggleSection("stashes")}
+            />
+            <PinnedSection
+              label="Sessions"
+              href={`/workspaces/${activeWorkspace.id}/sessions`}
+              headerActive={pathname.startsWith(`/workspaces/${activeWorkspace.id}/sessions`)}
+              items={sessionRows}
+              open={sectionOpen("sessions")}
+              onToggle={() => toggleSection("sessions")}
+            />
+            <PinnedSection
+              label="Files"
+              href={`/workspaces/${activeWorkspace.id}/files`}
+              headerActive={
+                !!pathname.match(
+                  new RegExp(`^/workspaces/${activeWorkspace.id}/(files|folders|p|f)(?:/|$)`),
+                )
+              }
+              items={fileRows}
+              open={sectionOpen("files")}
+              onToggle={() => toggleSection("files")}
+            />
+            <NavRow
+              href={`/workspaces/${activeWorkspace.id}/trash`}
+              icon={<TrashIcon />}
+              label="Trash"
+              active={pathname === `/workspaces/${activeWorkspace.id}/trash`}
+            />
           </>
         ) : (
           <div className="px-3 py-1.5 text-[12px] italic text-muted">
