@@ -6,9 +6,10 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useBreadcrumbs } from "../../../../../components/BreadcrumbContext";
 import SessionUpload from "../../../../../components/SessionUpload";
 import { SessionsListSkeleton } from "../../../../../components/SkeletonStates";
-import { SettingsIcon } from "../../../../../components/StashIcons";
+import { PinIcon } from "../../../../../components/StashIcons";
 import { useAuth } from "../../../../../hooks/useAuth";
 import { listMySessions, type SessionSummary } from "../../../../../lib/api";
+import { usePins } from "../../../../../lib/pins";
 import {
   groupSessionsByAgent,
   groupSessionsByDayAndUser,
@@ -44,6 +45,7 @@ export default function StashSessionsPage() {
   const router = useRouter();
   const workspaceId = params.workspaceId as string;
   const { user, loading } = useAuth();
+  const pins = usePins("stash_sessions_pins", workspaceId);
 
   const [sessions, setSessions] = useState<SessionSummary[] | null>(null);
   const [error, setError] = useState("");
@@ -93,6 +95,9 @@ export default function StashSessionsPage() {
   if (sorted === null) return <SessionsListSkeleton />;
 
   const total = sessions?.length ?? 0;
+  const pinnedSessions = (sorted ?? []).filter((s) =>
+    pins.pinnedSet.has(s.session_id),
+  );
 
   function setViewPersisted(next: ViewKey) {
     setView(next);
@@ -125,6 +130,21 @@ export default function StashSessionsPage() {
           <SessionUpload workspaceId={workspaceId} onUploaded={load} />
         </div>
 
+        {pinnedSessions.length > 0 && (
+          <section className="mb-5">
+            <h2 className="m-0 mb-2 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted">
+              <PinIcon className="text-[13px]" />
+              Pinned
+            </h2>
+            <SessionsTable
+              workspaceId={workspaceId}
+              sessions={pinnedSessions}
+              isPinned={pins.isPinned}
+              onTogglePin={pins.toggle}
+            />
+          </section>
+        )}
+
         {/* Toolbar: View · Sort. Drives the rendering below. */}
         <div className="mb-3 flex flex-wrap items-center gap-3 border-b border-border pb-2.5">
           <SegmentedControl
@@ -146,6 +166,8 @@ export default function StashSessionsPage() {
             view={view}
             sessions={sorted}
             workspaceId={workspaceId}
+            isPinned={pins.isPinned}
+            onTogglePin={pins.toggle}
           />
         )}
       </div>
@@ -157,10 +179,14 @@ function SessionsView({
   view,
   sessions,
   workspaceId,
+  isPinned,
+  onTogglePin,
 }: {
   view: ViewKey;
   sessions: SessionSummary[];
   workspaceId: string;
+  isPinned: (sessionId: string) => boolean;
+  onTogglePin: (sessionId: string) => void;
 }) {
   if (sessions.length === 0) {
     return (
@@ -171,7 +197,14 @@ function SessionsView({
   }
 
   if (view === "list") {
-    return <SessionsTable workspaceId={workspaceId} sessions={sessions} />;
+    return (
+      <SessionsTable
+        workspaceId={workspaceId}
+        sessions={sessions}
+        isPinned={isPinned}
+        onTogglePin={onTogglePin}
+      />
+    );
   }
 
   if (view === "day") {
@@ -184,6 +217,8 @@ function SessionsView({
             group={group}
             workspaceId={workspaceId}
             initialOpen={i === 0}
+            isPinned={isPinned}
+            onTogglePin={onTogglePin}
           />
         ))}
       </div>
@@ -204,6 +239,8 @@ function SessionsView({
           group={group}
           workspaceId={workspaceId}
           initialOpen={i === 0}
+          isPinned={isPinned}
+          onTogglePin={onTogglePin}
         />
       ))}
     </div>
@@ -214,10 +251,14 @@ function DayGroup({
   group,
   workspaceId,
   initialOpen,
+  isPinned,
+  onTogglePin,
 }: {
   group: SessionDayGroup;
   workspaceId: string;
   initialOpen: boolean;
+  isPinned: (sessionId: string) => boolean;
+  onTogglePin: (sessionId: string) => void;
 }) {
   const [open, setOpen] = useState(initialOpen);
   return (
@@ -238,7 +279,12 @@ function DayGroup({
           {group.users.map((bucket) => (
             <div key={bucket.user}>
               <div className="mb-1 px-2 text-[11px] font-medium text-muted">{bucket.user}</div>
-              <SessionsTable workspaceId={workspaceId} sessions={bucket.sessions} />
+              <SessionsTable
+                workspaceId={workspaceId}
+                sessions={bucket.sessions}
+                isPinned={isPinned}
+                onTogglePin={onTogglePin}
+              />
             </div>
           ))}
         </div>
@@ -251,10 +297,14 @@ function FlatGroup({
   group,
   workspaceId,
   initialOpen,
+  isPinned,
+  onTogglePin,
 }: {
   group: SessionFlatGroup;
   workspaceId: string;
   initialOpen: boolean;
+  isPinned: (sessionId: string) => boolean;
+  onTogglePin: (sessionId: string) => void;
 }) {
   const [open, setOpen] = useState(initialOpen);
   return (
@@ -272,7 +322,12 @@ function FlatGroup({
       </button>
       {open && (
         <div className="mt-1.5">
-          <SessionsTable workspaceId={workspaceId} sessions={group.sessions} />
+          <SessionsTable
+            workspaceId={workspaceId}
+            sessions={group.sessions}
+            isPinned={isPinned}
+            onTogglePin={onTogglePin}
+          />
         </div>
       )}
     </section>
@@ -338,9 +393,13 @@ function Chev({ open }: { open: boolean }) {
 function SessionsTable({
   workspaceId,
   sessions,
+  isPinned,
+  onTogglePin,
 }: {
   workspaceId: string;
   sessions: SessionSummary[];
+  isPinned: (sessionId: string) => boolean;
+  onTogglePin: (sessionId: string) => void;
 }) {
   if (sessions.length === 0) {
     return (
@@ -367,6 +426,8 @@ function SessionsTable({
           key={session.session_id}
           workspaceId={workspaceId}
           session={session}
+          pinned={isPinned(session.session_id)}
+          onTogglePin={onTogglePin}
         />
       ))}
     </div>
@@ -376,9 +437,13 @@ function SessionsTable({
 function SessionTableRow({
   workspaceId,
   session,
+  pinned,
+  onTogglePin,
 }: {
   workspaceId: string;
   session: SessionSummary;
+  pinned: boolean;
+  onTogglePin: (sessionId: string) => void;
 }) {
   const user = requireSessionUserName(session.user_name);
   const agent = session.agent_name || "agent";
@@ -388,7 +453,7 @@ function SessionTableRow({
   return (
     <Link
       href={`/workspaces/${workspaceId}/sessions/${encodeURIComponent(session.session_id)}`}
-      className="grid min-h-12 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 border-b border-border px-3 py-2 text-[13px] last:border-b-0 hover:bg-[var(--color-brand-50)] md:grid-cols-[minmax(128px,0.68fr)_minmax(240px,1.7fr)_86px_58px_minmax(104px,0.62fr)_94px_88px_28px]"
+      className="group/srow grid min-h-12 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 border-b border-border px-3 py-2 text-[13px] last:border-b-0 hover:bg-[var(--color-brand-50)] md:grid-cols-[minmax(128px,0.68fr)_minmax(240px,1.7fr)_86px_58px_minmax(104px,0.62fr)_94px_88px_28px]"
     >
       <div className="hidden min-w-0 items-center gap-2 md:flex">
         <span
@@ -432,8 +497,32 @@ function SessionTableRow({
       <span className="justify-self-end whitespace-nowrap text-[12px] text-muted">
         {formatRelative(session.last_event_at)}
       </span>
-      <span className="hidden justify-self-end text-muted md:block">
-        <SettingsIcon />
+      <span
+        role="button"
+        tabIndex={0}
+        aria-label={pinned ? "Unpin session" : "Pin session"}
+        aria-pressed={pinned}
+        title={pinned ? "Unpin" : "Pin"}
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          onTogglePin(session.session_id);
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            e.stopPropagation();
+            onTogglePin(session.session_id);
+          }
+        }}
+        className={
+          "hidden justify-self-end rounded p-1 transition hover:bg-raised md:block " +
+          (pinned
+            ? "text-[var(--color-brand-600)] hover:text-[var(--color-brand-700)]"
+            : "text-muted opacity-0 hover:text-foreground focus-visible:opacity-100 group-hover/srow:opacity-100")
+        }
+      >
+        <PinIcon className="text-[15px]" />
       </span>
     </Link>
   );
