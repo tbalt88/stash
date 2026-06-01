@@ -127,6 +127,30 @@ async def _reconcile_files() -> int:
     return len(ids)
 
 
+async def _reconcile_source_documents() -> int:
+    # Connected-source documents (GitHub/Drive/Notion/Slack/Granola) get
+    # embedded after each sync flips embed_stale TRUE on changed rows.
+    pool = get_pool()
+    rows = await pool.fetch(
+        "SELECT id, content FROM source_documents "
+        "WHERE embed_stale AND deleted_at IS NULL "
+        "AND content IS NOT NULL AND content <> '' LIMIT $1",
+        BATCH_SIZE,
+    )
+    if not rows:
+        return 0
+    ids = [r["id"] for r in rows]
+    texts = [r["content"] for r in rows]
+    vecs = await embedding_service.embed_batch(texts)
+    if not vecs:
+        return 0
+    await pool.executemany(
+        "UPDATE source_documents SET embedding = $1, embed_stale = FALSE WHERE id = $2",
+        list(zip(vecs, ids)),
+    )
+    return len(ids)
+
+
 async def _reconcile() -> int:
     if not embedding_service.is_configured():
         return 0
@@ -136,6 +160,7 @@ async def _reconcile() -> int:
         _reconcile_table_rows,
         _reconcile_history_events,
         _reconcile_files,
+        _reconcile_source_documents,
     ):
         done += await fn()
     if done:

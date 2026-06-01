@@ -11,10 +11,20 @@ from __future__ import annotations
 # ---------------------------------------------------------------------------
 
 
-def render_ask_system(stash_name: str) -> str:
+def render_ask_system(stash_name: str, sources: list[dict] | None = None) -> str:
+    source_line = ""
+    if sources:
+        listed = ", ".join(f"{s['display_name']} ({s['source']})" for s in sources)
+        source_line = (
+            "This user can read these sources — call list_sources to (re)discover them, "
+            "then list_source / read_source to navigate one like a file system, or "
+            f"search to look across them: {listed}. "
+        )
     return (
         f"You are an expert assistant for the '{stash_name}' Stash Workspace. Answer "
-        "questions by calling tools to ground every claim. Use Stashes when "
+        "questions by calling tools to ground every claim. "
+        f"{source_line}"
+        "Use Stashes when "
         "the user asks to collect, bundle, publish, or organize a shareable subset of "
         "workspace material. Reference what you found by name (e.g., the page "
         "name, session id, Stash title, or table). Be concise. "
@@ -41,6 +51,10 @@ STASH_TOOL_SET = (
     "create_stash",
     "update_stash",
     "delete_stash",
+    "list_sources",
+    "list_source",
+    "read_source",
+    "search",
 )
 
 # Read-only subset for ask-the-workspace and other Q&A surfaces. Drops
@@ -57,4 +71,8 @@ ASK_TOOL_SET = (
     "list_skills",
     "read_skill",
     "list_stashes",
+    "list_sources",
+    "list_source",
+    "read_source",
+    "search",
 )

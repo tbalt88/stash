@@ -533,6 +533,31 @@ async def search_workspace_events(
     return [dict(r) for r in rows]
 
 
+async def recent_workspace_events(
+    workspace_id: UUID,
+    user_id: UUID,
+    days: int = 7,
+    limit: int = 20,
+) -> list[dict]:
+    """Most recent readable events in a window — the temporal counterpart to
+    full-text search, for "what was I working on lately" questions."""
+    pool = get_pool()
+    limit = min(limit, 100)
+    rows = await pool.fetch(
+        "SELECT id, agent_name, event_type, session_id, tool_name, content, created_at "
+        "FROM history_events "
+        "WHERE workspace_id = $1 "
+        f"AND {readable_session_event_condition('history_events', 4)} "
+        "AND created_at >= now() - ($2 || ' days')::interval "
+        "ORDER BY created_at DESC LIMIT $3",
+        workspace_id,
+        str(days),
+        limit,
+        user_id,
+    )
+    return [dict(r) for r in rows]
+
+
 async def search_personal_events(
     user_id: UUID,
     query: str,

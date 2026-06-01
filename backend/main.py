@@ -30,6 +30,7 @@ from .routers import (
     publish,
     sessions,
     skill,
+    sources,
     stash_invites,
     stashes,
     tables,
@@ -115,6 +116,7 @@ app.include_router(publish.router)
 app.include_router(tasks.router)
 app.include_router(integrations_router)
 app.include_router(imports.router)
+app.include_router(sources.router)
 app.include_router(exports.router)
 app.include_router(demo.router)
 

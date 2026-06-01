@@ -37,6 +37,7 @@ from . import (
     permission_service,
     prompts,
     skill_service,
+    source_service,
     stash_service,
     table_service,
 )
@@ -502,6 +503,202 @@ async def _delete_stash(args: dict) -> dict:
     return _text_result(json.dumps({"deleted": deleted, "stash_id": str(stash_id)}))
 
 
+# --- Source-aware tools ----------------------------------------------------
+#
+# One surface over every source: the two native sources (files, session
+# transcripts — workspace-scoped) and the user's own connected sources
+# (GitHub/Drive/Notion/Slack/Granola — user-scoped). Connected-source access
+# always goes through source_service.get_owned_source, which is the single
+# user-scoping guard.
+
+
+async def _resolve_connected_source(handle: str) -> dict | None:
+    """A non-native handle is a workspace_sources id — resolved only if the
+    current user owns it. Returns None for unknown/not-owned (callers surface
+    a not-found, never another user's source)."""
+    try:
+        source_id = UUID(handle)
+    except ValueError:
+        return None
+    return await source_service.get_owned_source(source_id, _current_user())
+
+
+@tool(
+    "list_sources",
+    "List every source this user can read: native 'files' and 'sessions', plus "
+    "their connected sources (GitHub, Drive, Notion, Slack, Granola). Use the "
+    "returned `source` handle with list_source / read_source / search.",
+    {"type": "object", "properties": {}},
+)
+async def _list_sources(args: dict) -> dict:
+    sources = await source_service.list_sources(_current_workspace(), _current_user())
+    return _text_result(json.dumps(sources))
+
+
+@tool(
+    "list_source",
+    "List entries in a source like a file system. `source` is a handle from "
+    "list_sources ('files', 'sessions', or a connected-source id); `path` is an "
+    "optional path prefix for connected sources.",
+    {
+        "type": "object",
+        "properties": {
+            "source": {"type": "string"},
+            "path": {"type": "string", "default": ""},
+        },
+        "required": ["source"],
+    },
+)
+async def _list_source(args: dict) -> dict:
+    source = args.get("source", "")
+    workspace_id = _current_workspace()
+    user_id = _current_user()
+
+    if source == source_service.NATIVE_FILES:
+        pages = await files_tree_service.list_workspace_pages(workspace_id, user_id)
+        out = [{"id": str(p["id"]), "name": p["name"], "kind": "page"} for p in pages]
+        return _text_result(json.dumps(out))
+
+    if source == source_service.NATIVE_SESSIONS:
+        sessions = await memory_service.list_workspace_sessions(workspace_id, user_id)
+        out = [
+            {"id": s["session_id"], "name": s.get("agent_name") or "session", "kind": "session"}
+            for s in sessions
+        ]
+        return _text_result(json.dumps(out))
+
+    if await _resolve_connected_source(source) is None:
+        return _text_result(json.dumps({"error": "source not found"}))
+    entries = await source_service.list_documents(UUID(source), prefix=args.get("path") or "")
+    return _text_result(json.dumps(entries))
+
+
+@tool(
+    "read_source",
+    "Read one document from a source. `ref` is a page id (files), a session id "
+    "(sessions), or a document path (connected sources).",
+    {
+        "type": "object",
+        "properties": {
+            "source": {"type": "string"},
+            "ref": {"type": "string"},
+        },
+        "required": ["source", "ref"],
+    },
+)
+async def _read_source(args: dict) -> dict:
+    source = args.get("source", "")
+    ref = args.get("ref", "")
+    workspace_id = _current_workspace()
+    user_id = _current_user()
+
+    if source == source_service.NATIVE_FILES:
+        page = await files_tree_service.get_page(UUID(ref), workspace_id, user_id)
+        if not page:
+            return _text_result(json.dumps({"error": "not found"}))
+        return _text_result(
+            json.dumps(
+                {
+                    "name": page["name"],
+                    "content": page.get("content_markdown") or page.get("content_html") or "",
+                }
+            )
+        )
+
+    if source == source_service.NATIVE_SESSIONS:
+        events = await memory_service.read_session_events(workspace_id, ref, user_id)
+        transcript = "\n".join(
+            f"[{e.get('event_type')}] {(e.get('content') or '')[:2000]}" for e in events
+        )
+        return _text_result(json.dumps({"session": ref, "transcript": transcript[:8000]}))
+
+    if await _resolve_connected_source(source) is None:
+        return _text_result(json.dumps({"error": "source not found"}))
+    doc = await source_service.read_document(UUID(source), ref)
+    if not doc:
+        return _text_result(json.dumps({"error": "not found"}))
+    return _text_result(json.dumps(doc))
+
+
+@tool(
+    "search",
+    "Search across sources. Omit `source` to search everything the user can see "
+    "(native files + sessions + their connected sources), or pass a source handle "
+    "to scope to one.",
+    {
+        "type": "object",
+        "properties": {
+            "query": {"type": "string"},
+            "source": {"type": "string"},
+            "limit": {"type": "integer", "default": 20},
+        },
+        "required": ["query"],
+    },
+)
+async def _search(args: dict) -> dict:
+    query = args.get("query", "")
+    source = args.get("source")
+    limit = int(args.get("limit", 20))
+    workspace_id = _current_workspace()
+    user_id = _current_user()
+
+    results: list[dict] = []
+
+    if source in (None, source_service.NATIVE_SESSIONS):
+        events = await memory_service.search_workspace_events(
+            workspace_id, user_id, query, limit=limit
+        )
+        results += [
+            {
+                "source": source_service.NATIVE_SESSIONS,
+                "ref": e.get("session_id"),
+                "snippet": (e.get("content") or "")[:300],
+            }
+            for e in events
+        ]
+
+    if source in (None, source_service.NATIVE_FILES):
+        pages = await files_tree_service.search_pages_fts(
+            workspace_id, query, limit=limit, user_id=user_id
+        )
+        results += [
+            {
+                "source": source_service.NATIVE_FILES,
+                "ref": str(p["id"]),
+                "name": p["name"],
+                "snippet": (p.get("search_text") or p.get("content_markdown") or "")[:300],
+            }
+            for p in pages
+        ]
+
+    # Connected sources: all of the user's own when unscoped, else the one named.
+    connected_id: UUID | None = None
+    if source not in (None, source_service.NATIVE_FILES, source_service.NATIVE_SESSIONS):
+        if await _resolve_connected_source(source) is None:
+            return _text_result(json.dumps({"error": "source not found"}))
+        connected_id = UUID(source)
+    if source is None or connected_id is not None:
+        docs = await source_service.search_documents(
+            workspace_id=workspace_id,
+            user_id=user_id,
+            query=query,
+            source_id=connected_id,
+            limit=limit,
+        )
+        results += [
+            {
+                "source": d["source_id"],
+                "source_name": d["source_name"],
+                "ref": d["path"],
+                "name": d["name"],
+                "snippet": d["snippet"],
+            }
+            for d in docs
+        ]
+
+    return _text_result(json.dumps(results))
+
+
 _TOOLS_BY_NAME = {
     "search_history": _search_history,
     "read_page": _read_page,
@@ -515,6 +712,10 @@ _TOOLS_BY_NAME = {
     "create_stash": _create_stash,
     "update_stash": _update_stash,
     "delete_stash": _delete_stash,
+    "list_sources": _list_sources,
+    "list_source": _list_source,
+    "read_source": _read_source,
+    "search": _search,
 }
 
 

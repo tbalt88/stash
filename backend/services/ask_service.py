@@ -11,7 +11,7 @@ from __future__ import annotations
 from collections.abc import AsyncIterator
 from uuid import UUID
 
-from . import llm, prompts, tool_loop
+from . import llm, prompts, source_service, tool_loop
 
 
 async def stream_ask(
@@ -25,7 +25,8 @@ async def stream_ask(
     Single-turn today: one user prompt in, one streamed response out.
     When multi-turn follow-ups land, plumb history through here as
     additional turns on the messages list inside tool_loop."""
-    system = prompts.render_ask_system(workspace_name)
+    sources = await source_service.list_sources(workspace_id, user_id)
+    system = prompts.render_ask_system(workspace_name, sources)
     async for chunk in tool_loop.stream_tool_loop(
         tier=llm.ModelTier.QUALITY,
         system=system,
