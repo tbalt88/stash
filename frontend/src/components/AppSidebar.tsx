@@ -17,7 +17,12 @@ import {
   readCachedWorkspaces,
   subscribeToSidebarRefresh,
 } from "../lib/stashNavigationCache";
-import type { WorkspaceSidebar, WorkspaceSidebarSession } from "../lib/api";
+import {
+  listWorkspaceSources,
+  type WorkspaceSidebar,
+  type WorkspaceSidebarSession,
+  type WorkspaceSource,
+} from "../lib/api";
 import type { User, Workspace } from "../lib/types";
 import { usePins } from "../lib/pins";
 import {
@@ -528,6 +533,9 @@ export default function AppSidebar({
   const [spines, setSpines] = useState<Record<string, WorkspaceSidebar>>(() =>
     readCachedSidebars()
   );
+  // Connected sources (GitHub/Drive/Notion/Slack/Granola) for the active
+  // workspace, keyed by workspace id. User-scoped — only the viewer's own.
+  const [sourceMap, setSourceMap] = useState<Record<string, WorkspaceSource[]>>({});
 
   // The sidebar always renders a single workspace context. Priority:
   // (1) the workspace in the current URL, (2) the first owned workspace,
@@ -597,6 +605,14 @@ export default function AppSidebar({
     });
   }, []);
 
+  // Load the active workspace's connected sources for the Sources section.
+  useEffect(() => {
+    if (!activeWorkspaceKey) return;
+    listWorkspaceSources(activeWorkspaceKey)
+      .then((sources) => setSourceMap((all) => ({ ...all, [activeWorkspaceKey]: sources })))
+      .catch(() => {});
+  }, [activeWorkspaceKey]);
+
   const spine = activeWorkspace ? spines[activeWorkspace.id] ?? null : null;
   const stashRows = useMemo(
     () => resolveStashPins(stashPins.pinnedIds, spine, pathname),
@@ -610,6 +626,17 @@ export default function AppSidebar({
     () => resolveFilePins(filePins.pinnedIds, spine, activeWorkspaceKey, pathname),
     [filePins.pinnedIds, spine, activeWorkspaceKey, pathname],
   );
+  const sourceRows = useMemo<PinnedRow[]>(() => {
+    if (!activeWorkspaceKey) return [];
+    const sources = sourceMap[activeWorkspaceKey] ?? [];
+    return sources.map((s) => ({
+      key: s.source,
+      href: `/workspaces/${activeWorkspaceKey}/settings`,
+      label: s.display_name,
+      icon: <span className="inline-block h-1.5 w-1.5 rounded-full bg-foreground/40" />,
+      active: false,
+    }));
+  }, [activeWorkspaceKey, sourceMap]);
 
   const activeStashSlug = pathname.match(/^\/stashes\/([^/?#]+)/)?.[1] ?? null;
   const activeStash =
@@ -703,6 +730,14 @@ export default function AppSidebar({
               items={fileRows}
               open={sectionOpen("files")}
               onToggle={() => toggleSection("files")}
+            />
+            <PinnedSection
+              label="Sources"
+              href="/settings/integrations"
+              headerActive={pathname.startsWith("/settings/integrations")}
+              items={sourceRows}
+              open={sectionOpen("sources")}
+              onToggle={() => toggleSection("sources")}
             />
             <NavRow
               href={`/workspaces/${activeWorkspace.id}/trash`}

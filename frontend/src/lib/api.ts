@@ -210,6 +210,26 @@ export async function getWorkspace(workspaceId: string): Promise<Workspace> {
   return apiFetch(`/api/v1/workspaces/${workspaceId}`);
 }
 
+export interface WorkspaceSource {
+  source: string; // native handle ("files"/"sessions") or connected-source id
+  type: string; // 'native_files' | 'native_sessions' | 'github_repo' | ...
+  capability: string; // 'navigable' | 'searchable'
+  display_name: string;
+}
+
+const NATIVE_SOURCE_TYPES = new Set(["native_files", "native_sessions"]);
+
+export async function listWorkspaceSources(
+  workspaceId: string,
+): Promise<WorkspaceSource[]> {
+  const data = await apiFetch<{ sources: WorkspaceSource[] }>(
+    `/api/v1/workspaces/${workspaceId}/sources`,
+  );
+  // The sidebar's Sources section shows only connected sources; the native
+  // file system and session transcripts already have their own sections.
+  return data.sources.filter((s) => !NATIVE_SOURCE_TYPES.has(s.type));
+}
+
 export async function joinWorkspace(inviteCode: string): Promise<Workspace> {
   return apiFetch(`/api/v1/workspaces/join/${inviteCode}`, { method: "POST" });
 }
