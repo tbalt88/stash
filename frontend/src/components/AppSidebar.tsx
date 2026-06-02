@@ -251,16 +251,14 @@ export default function AppSidebar({
     activeWorkspace && activeCartridgeSlug
       ? spines[activeWorkspace.id]?.cartridges?.find((stash) => stash.slug === activeCartridgeSlug)
       : null;
+  // Workspace settings now live on the unified /settings page; only Cartridges
+  // keep their own settings route.
   const settingsHref = activeCartridge
     ? `/cartridges/${activeCartridge.slug}/settings`
-    : activeWorkspace
-      ? `/workspaces/${activeWorkspace.id}/settings`
-      : "";
+    : "/settings";
   const settingsActive = activeCartridge
     ? pathname === `/cartridges/${activeCartridge.slug}/settings`
-    : activeWorkspace
-      ? pathname === `/workspaces/${activeWorkspace.id}/settings`
-      : false;
+    : pathname === "/settings";
 
   return (
     <>
