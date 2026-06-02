@@ -22,7 +22,14 @@ import {
   type NotionPageSummary,
 } from "@/lib/integrations";
 
-import { GitHubIcon, GoogleDriveIcon, NotionIcon, ObsidianIcon } from "./BrandIcons";
+import {
+  GitHubIcon,
+  GoogleDriveIcon,
+  GranolaIcon,
+  NotionIcon,
+  ObsidianIcon,
+  SlackIcon,
+} from "./BrandIcons";
 import ObsidianVaultDropZone from "./ObsidianVaultDropZone";
 
 type ConnectorKind = "github" | "drive" | "notion" | "auto" | "key";
@@ -43,10 +50,6 @@ type Props = {
   onSourceCountChange?: (count: number) => void;
   onObsidianUploaded?: () => void;
 };
-
-const DOT = (color: string) => (
-  <span className="inline-block h-4 w-4 rounded-full" style={{ background: color }} />
-);
 
 const CONNECTORS: Connector[] = [
   {
@@ -77,7 +80,7 @@ const CONNECTORS: Connector[] = [
     provider: "slack",
     label: "Slack",
     sourceType: "slack",
-    icon: DOT("#4a154b"),
+    icon: <SlackIcon />,
     kind: "auto",
     blurb: "Channel history, kept in sync.",
   },
@@ -85,7 +88,7 @@ const CONNECTORS: Connector[] = [
     provider: "granola",
     label: "Granola",
     sourceType: "granola",
-    icon: DOT("#e0700f"),
+    icon: <GranolaIcon />,
     kind: "key",
     blurb: "Meeting notes and transcripts.",
   },
