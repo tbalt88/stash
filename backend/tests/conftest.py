@@ -98,6 +98,8 @@ async def pool(_db_pool):
 _TRUNCATE_TABLES = [
     "webhook_deliveries",
     "webhooks",
+    "shares",
+    "session_folders",
     "source_documents",
     "workspace_sources",
     "documents",
