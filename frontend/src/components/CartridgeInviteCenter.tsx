@@ -69,7 +69,7 @@ export default function CartridgeInviteCenter() {
 
   function view(invite: CartridgeInvite) {
     setOpen(false);
-    router.push(`/cartridges/${invite.stash_slug}`);
+    router.push(`/cartridges/${invite.cartridge_slug}`);
   }
 
   async function dismiss(invite: CartridgeInvite) {
@@ -151,13 +151,13 @@ export default function CartridgeInviteCenter() {
                     <div key={invite.id} className="rounded-lg border border-border-subtle bg-surface p-3">
                       <div className="min-w-0">
                         <h3 className="truncate text-[13px] font-semibold text-foreground">
-                          {invite.stash_title}
+                          {invite.cartridge_title}
                         </h3>
                         <p className="mt-1 line-clamp-2 text-[12px] leading-relaxed text-muted">
-                          {invite.stash_description || "No description."}
+                          {invite.cartridge_description || "No description."}
                         </p>
                         <p className="mt-2 text-[11px] text-muted">
-                          {inviter} has given you view access to their Stash.
+                          {inviter} has given you view access to their cartridge.
                         </p>
                         <p className="mt-1 text-[11px] text-muted">
                           From {invite.source_workspace_name}
@@ -179,7 +179,7 @@ export default function CartridgeInviteCenter() {
                           onClick={() => view(invite)}
                           className="rounded-md bg-[var(--color-brand-600)] px-2.5 py-1.5 text-[12px] font-medium text-white hover:bg-[var(--color-brand-700)] disabled:opacity-50"
                         >
-                          View Stash
+                          View Cartridge
                         </button>
                       </div>
                     </div>

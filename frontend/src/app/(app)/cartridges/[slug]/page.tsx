@@ -12,9 +12,9 @@ export async function generateMetadata({
   const { slug } = await params;
   const data = await loadPublicCartridge(slug);
   if (!data) return { title: "Stash · Stash" };
-  const title = `${data.stash.title} · Stash`;
+  const title = `${data.cartridge.title} · Stash`;
   const description =
-    data.stash.description ||
+    data.cartridge.description ||
     `A cartridge of ${data.items.length} item${data.items.length === 1 ? "" : "s"} from ${data.workspace_name}.`;
   return {
     title,

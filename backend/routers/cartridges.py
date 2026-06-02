@@ -111,10 +111,10 @@ async def publish_cartridge(
         raise HTTPException(status_code=400, detail=str(e))
     base = settings.PUBLIC_URL.rstrip("/")
     return {
-        "stash": CartridgeResponse(**stash),
+        "cartridge": CartridgeResponse(**stash),
         "url": f"{base}/cartridges/{stash['slug']}",
         "cartridge_id": stash["id"],
-        "stash_slug": stash["slug"],
+        "cartridge_slug": stash["slug"],
     }
 
 
@@ -207,7 +207,7 @@ async def update_cartridge(
     current_user: dict = Depends(get_current_user),
 ):
     if not await cartridge_service.user_can_manage(cartridge_id, current_user["id"]):
-        raise HTTPException(status_code=403, detail="Not allowed to manage this stash")
+        raise HTTPException(status_code=403, detail="Not allowed to manage this cartridge")
     try:
         stash = await cartridge_service.update_cartridge(
             cartridge_id,
@@ -227,7 +227,7 @@ async def delete_cartridge(
     current_user: dict = Depends(get_current_user),
 ):
     if not await cartridge_service.user_can_manage(cartridge_id, current_user["id"]):
-        raise HTTPException(status_code=403, detail="Not allowed to manage this stash")
+        raise HTTPException(status_code=403, detail="Not allowed to manage this cartridge")
     deleted = await cartridge_service.delete_cartridge(cartridge_id, current_user["id"])
     if not deleted:
         raise HTTPException(status_code=404, detail="Stash not found")
@@ -238,7 +238,7 @@ async def _require_can_manage_cartridge(cartridge_id: UUID, user_id: UUID) -> No
     if not stash:
         raise HTTPException(status_code=404, detail="Stash not found")
     if not await cartridge_service.user_can_admin(cartridge_id, user_id):
-        raise HTTPException(status_code=403, detail="Not allowed to manage this stash")
+        raise HTTPException(status_code=403, detail="Not allowed to manage this cartridge")
 
 
 @public_router.get("/{cartridge_id}/members", response_model=CartridgeMembersResponse)
@@ -341,7 +341,7 @@ async def get_public_cartridge(
         current_user and await cartridge_service.user_can_write(stash["id"], current_user["id"])
     )
     return CartridgePublicResponse(
-        stash=CartridgeResponse(**stash),
+        cartridge=CartridgeResponse(**stash),
         workspace_name=workspace_name,
         items=items,
         can_write=can_write,
@@ -388,7 +388,7 @@ async def get_public_cartridge_item(
         current_user and await cartridge_service.user_can_write(stash["id"], current_user["id"])
     )
     return {
-        "stash": CartridgeResponse(**stash),
+        "cartridge": CartridgeResponse(**stash),
         "workspace_name": workspace_name,
         "item": item,
         "can_write": can_write,

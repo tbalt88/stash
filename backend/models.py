@@ -100,6 +100,7 @@ class WorkspaceResponse(BaseModel):
     cover_image_url: str | None = None
     icon_url: str | None = None
     color_gradient: str | None = None
+    is_primary: bool = False
 
 
 class WorkspaceListResponse(BaseModel):
@@ -204,7 +205,7 @@ class CartridgeItemInlined(BaseModel):
 
 
 class CartridgePublicResponse(BaseModel):
-    stash: CartridgeResponse
+    cartridge: CartridgeResponse
     workspace_name: str
     items: list[CartridgeItemInlined]
     can_write: bool = False
@@ -217,9 +218,9 @@ class AddExternalCartridgeRequest(BaseModel):
 class CartridgeInviteResponse(BaseModel):
     id: UUID
     cartridge_id: UUID
-    stash_slug: str
-    stash_title: str
-    stash_description: str
+    cartridge_slug: str
+    cartridge_title: str
+    cartridge_description: str
     source_workspace_id: UUID
     source_workspace_name: str
     invited_by_user_id: UUID
@@ -661,7 +662,7 @@ class PublishResponse(BaseModel):
     public_permission: CartridgeGeneralPermission
     url: str
     cartridge_id: UUID | None = None
-    stash_slug: str | None = None
+    cartridge_slug: str | None = None
 
 
 # --- Files ---

@@ -78,7 +78,7 @@ export default function CartridgePageView() {
   const [folderChain, setFolderChain] = useState<FolderBreadcrumb[]>([]);
   const [containingStashes, setContainingStashes] = useState<WorkspaceCartridge[]>([]);
   const [stashFallback, setCartridgeFallback] = useState<
-    { stash: WorkspaceCartridge; item: PublicCartridgeItem } | null
+    { cartridge: WorkspaceCartridge; item: PublicCartridgeItem } | null
   >(null);
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("saved");
   const [error, setError] = useState("");
@@ -142,7 +142,7 @@ export default function CartridgePageView() {
         setError("This page isn't part of the linked Stash.");
         return false;
       }
-      setCartridgeFallback({ stash: data.stash, item });
+      setCartridgeFallback({ cartridge: data.cartridge, item });
       setError("");
       return true;
     } catch (e) {
@@ -347,7 +347,7 @@ export default function CartridgePageView() {
     return (
       <CartridgeFallbackPageView
         stashSlug={stashSlug ?? ""}
-        stashTitle={stashFallback.stash.title}
+        stashTitle={stashFallback.cartridge.title}
         item={stashFallback.item}
       />
     );

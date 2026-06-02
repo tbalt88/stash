@@ -21,10 +21,10 @@ vi.mock("../lib/api", () => ({
 
 const invite = {
   id: "invite-1",
-  stash_id: "stash-1",
-  stash_slug: "partner-stash",
-  stash_title: "Partner Stash",
-  stash_description: "Shared launch context",
+  cartridge_id: "stash-1",
+  cartridge_slug: "partner-stash",
+  cartridge_title: "Partner Stash",
+  cartridge_description: "Shared launch context",
   source_workspace_id: "source-workspace",
   source_workspace_name: "Source Workspace",
   invited_by_user_id: "user-1",
@@ -52,10 +52,10 @@ describe("CartridgeInviteCenter", () => {
 
     await screen.findByText("Partner Stash");
     expect(
-      screen.getByText("Henry has given you view access to their Stash.")
+      screen.getByText("Henry has given you view access to their cartridge.")
     ).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "View Stash" }));
+    fireEvent.click(screen.getByRole("button", { name: "View Cartridge" }));
 
     expect(nav.push).toHaveBeenCalledWith("/cartridges/partner-stash");
   });

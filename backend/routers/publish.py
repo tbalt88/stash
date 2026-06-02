@@ -75,5 +75,5 @@ async def publish(
         public_permission=stash["public_permission"],
         url=f"{base}/cartridges/{stash['slug']}",
         cartridge_id=stash["id"],
-        stash_slug=stash["slug"],
+        cartridge_slug=stash["slug"],
     )

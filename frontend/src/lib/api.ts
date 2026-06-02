@@ -13,7 +13,6 @@ import {
   TableRow,
   TableWithWorkspace,
   Workspace,
-  WorkspaceMember,
   ActivityTimeline,
   KnowledgeDensity,
   EmbeddingProjection,
@@ -240,6 +239,24 @@ export async function addWorkspaceSource(
   });
 }
 
+export async function syncWorkspaceSource(
+  workspaceId: string,
+  sourceId: string,
+): Promise<{ task_id: string }> {
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/sources/${sourceId}/sync`, {
+    method: "POST",
+  });
+}
+
+export async function deleteWorkspaceSource(
+  workspaceId: string,
+  sourceId: string,
+): Promise<void> {
+  await apiFetch(`/api/v1/workspaces/${workspaceId}/sources/${sourceId}`, {
+    method: "DELETE",
+  });
+}
+
 export async function joinWorkspace(inviteCode: string): Promise<Workspace> {
   return apiFetch(`/api/v1/workspaces/join/${inviteCode}`, { method: "POST" });
 }
@@ -263,10 +280,6 @@ export async function leaveWorkspace(workspaceId: string): Promise<void> {
   await apiFetch(`/api/v1/workspaces/${workspaceId}/leave`, { method: "POST" });
 }
 
-export async function getWorkspaceMembers(workspaceId: string): Promise<WorkspaceMember[]> {
-  return apiFetch(`/api/v1/workspaces/${workspaceId}/members`);
-}
-
 export async function updateWorkspace(
   workspaceId: string,
   data: {
@@ -285,21 +298,6 @@ export async function updateWorkspace(
 
 export async function deleteWorkspace(workspaceId: string): Promise<void> {
   await apiFetch(`/api/v1/workspaces/${workspaceId}`, { method: "DELETE" });
-}
-
-export async function kickWorkspaceMember(workspaceId: string, userId: string): Promise<void> {
-  await apiFetch(`/api/v1/workspaces/${workspaceId}/kick/${userId}`, { method: "POST" });
-}
-
-export async function setWorkspaceMemberRole(
-  workspaceId: string,
-  userId: string,
-  role: "owner" | "editor" | "viewer"
-): Promise<void> {
-  await apiFetch(`/api/v1/workspaces/${workspaceId}/members/${userId}`, {
-    method: "PATCH",
-    body: JSON.stringify({ role }),
-  });
 }
 
 // --- Discover (public catalog, no auth required) ---
@@ -1173,16 +1171,16 @@ export interface CreatedCartridge {
   items: CartridgeItemSpec[];
   is_external: boolean;
   added_to_workspace_id: string | null;
-  forked_from_stash_id: string | null;
+  forked_from_cartridge_id: string | null;
   created_at: string;
   updated_at: string;
 }
 
 export interface PublishedCartridgeResult {
-  stash: CreatedCartridge;
+  cartridge: CreatedCartridge;
   url: string;
-  stash_id: string;
-  stash_slug: string;
+  cartridge_id: string;
+  cartridge_slug: string;
 }
 
 export async function createCartridge(
@@ -1196,7 +1194,7 @@ export async function createCartridge(
     discoverable?: boolean;
   } = {}
 ): Promise<CreatedCartridge> {
-  const stash = await apiFetch<CreatedCartridge>(
+  const cartridge = await apiFetch<CreatedCartridge>(
     `/api/v1/workspaces/${workspaceId}/cartridges`,
     {
       method: "POST",
@@ -1222,7 +1220,7 @@ export async function createCartridge(
     public: (opts.public_permission ?? "none") !== "none",
     kind: "manual",
   });
-  return stash;
+  return cartridge;
 }
 
 export async function publishCartridge(
@@ -1285,7 +1283,7 @@ export interface WorkspaceCartridge {
   items: CartridgeItemSpec[];
   is_external: boolean;
   added_to_workspace_id: string | null;
-  forked_from_stash_id: string | null;
+  forked_from_cartridge_id: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -1310,7 +1308,7 @@ export interface PublicCartridgeItem {
 }
 
 export interface PublicCartridgeDetail {
-  stash: WorkspaceCartridge;
+  cartridge: WorkspaceCartridge;
   workspace_name: string;
   items: PublicCartridgeItem[];
   can_write: boolean;
@@ -1428,10 +1426,10 @@ export async function removeExternalCartridge(
 
 export interface CartridgeInvite {
   id: string;
-  stash_id: string;
-  stash_slug: string;
-  stash_title: string;
-  stash_description: string;
+  cartridge_id: string;
+  cartridge_slug: string;
+  cartridge_title: string;
+  cartridge_description: string;
   source_workspace_id: string;
   source_workspace_name: string;
   invited_by_user_id: string;
@@ -1731,7 +1729,7 @@ export interface WorkspaceSidebarCartridge {
   public_permission: CartridgeGeneralPermission;
   discoverable: boolean;
   is_external: boolean;
-  forked_from_stash_id: string | null;
+  forked_from_cartridge_id: string | null;
   item_count: number;
   items?: CartridgeItemSpec[];
   updated_at: string;

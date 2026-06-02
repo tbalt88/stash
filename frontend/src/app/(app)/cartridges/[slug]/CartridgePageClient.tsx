@@ -81,16 +81,16 @@ export default function CartridgePageClient({ slug }: { slug: string }) {
   useBreadcrumbs(
     [
       { label: "Cartridges", href: "/cartridges" },
-      { label: data?.stash.title ?? "Stash" },
+      { label: data?.cartridge.title ?? "Stash" },
     ],
-    `stash/${data?.stash.id ?? "loading"}`,
+    `stash/${data?.cartridge.id ?? "loading"}`,
   );
-  useActiveWorkspaceId(data?.stash.workspace_id ?? null);
+  useActiveWorkspaceId(data?.cartridge.workspace_id ?? null);
 
   // Memo so the registered ReactNode is stable across renders — otherwise the
   // shell-chrome context would loop (AppShell re-renders → CartridgePageClient
   // re-renders → new node identity → setShareAction → AppShell re-renders).
-  const stash = data?.stash ?? null;
+  const stash = data?.cartridge ?? null;
   const canWrite = data?.can_write ?? false;
   const shareAction = useMemo(
     () =>
@@ -147,7 +147,7 @@ function CartridgePageBody({
   data: PublicCartridgeDetail;
   onRefresh: () => Promise<void>;
 }) {
-  const { stash, workspace_name, items, can_write } = data;
+  const { cartridge: stash, workspace_name, items, can_write } = data;
   const groups = groupCartridgeItems(items);
   const primary = primaryItemForCartridge(data);
   const displayedItemCount = primary ? 1 : items.length;

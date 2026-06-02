@@ -56,9 +56,9 @@ async def list_pending_invites(user_id: UUID) -> list[dict]:
         """
         SELECT si.id,
                si.cartridge_id,
-               s.slug AS stash_slug,
-               s.title AS stash_title,
-               s.description AS stash_description,
+               s.slug AS cartridge_slug,
+               s.title AS cartridge_title,
+               s.description AS cartridge_description,
                s.workspace_id AS source_workspace_id,
                w.name AS source_workspace_name,
                si.invited_by_user_id,

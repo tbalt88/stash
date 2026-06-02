@@ -32,7 +32,7 @@ export default function CartridgeSettingsPageClient({ slug }: { slug: string }) 
   const [message, setMessage] = useState("");
   const [title, setTitle] = useState("");
 
-  const stash = data?.stash ?? null;
+  const stash = data?.cartridge ?? null;
 
   useBreadcrumbs(
     [
@@ -148,7 +148,7 @@ export default function CartridgeSettingsPageClient({ slug }: { slug: string }) 
       const updated = await updateCartridge(stash.id, {
         title: trimmedTitle,
       });
-      setData((current) => (current ? { ...current, stash: updated } : current));
+      setData((current) => (current ? { ...current, cartridge: updated } : current));
       resetStashNavigationCache();
       setMessage("Saved.");
     } catch (e) {
@@ -166,7 +166,7 @@ export default function CartridgeSettingsPageClient({ slug }: { slug: string }) 
     try {
       const uploaded = await uploadFile(stash.workspace_id, file);
       const updated = await updateCartridge(stash.id, { [field]: uploaded.url });
-      setData((current) => (current ? { ...current, stash: updated } : current));
+      setData((current) => (current ? { ...current, cartridge: updated } : current));
       resetStashNavigationCache();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not upload image");
@@ -182,7 +182,7 @@ export default function CartridgeSettingsPageClient({ slug }: { slug: string }) 
     setError("");
     try {
       const updated = await updateCartridge(stash.id, { [field]: null });
-      setData((current) => (current ? { ...current, stash: updated } : current));
+      setData((current) => (current ? { ...current, cartridge: updated } : current));
       resetStashNavigationCache();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not clear image");

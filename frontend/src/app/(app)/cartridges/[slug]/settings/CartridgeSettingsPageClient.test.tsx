@@ -77,10 +77,10 @@ vi.mock("../../../../../lib/api", () => ({
 }));
 
 function stashDetail(
-  stash: Partial<PublicCartridgeDetail["stash"]> = {},
+  cartridge: Partial<PublicCartridgeDetail["cartridge"]> = {},
 ): PublicCartridgeDetail {
   return {
-    stash: {
+    cartridge: {
       id: "stash-1",
       workspace_id: "workspace-1",
       slug: "shared-stash",
@@ -99,10 +99,10 @@ function stashDetail(
       items: [],
       is_external: false,
       added_to_workspace_id: null,
-      forked_from_stash_id: null,
+      forked_from_cartridge_id: null,
       created_at: "2026-05-11T00:00:00Z",
       updated_at: "2026-05-11T00:00:00Z",
-      ...stash,
+      ...cartridge,
     },
     workspace_name: "Demo Workspace",
     items: [],
@@ -115,7 +115,7 @@ describe("CartridgeSettingsPageClient", () => {
     vi.clearAllMocks();
     vi.mocked(getPublicCartridge).mockResolvedValue(stashDetail());
     vi.mocked(updateCartridge).mockImplementation(async (_stashId, updates) => ({
-      ...stashDetail().stash,
+      ...stashDetail().cartridge,
       ...updates,
     }));
   });

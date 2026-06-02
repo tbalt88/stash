@@ -32,7 +32,7 @@ export default function FolderDetailPage() {
     { label: "Folder" },
   ]);
   const [stashFallback, setCartridgeFallback] = useState<
-    { stash: WorkspaceCartridge; item: PublicCartridgeItem } | null
+    { cartridge: WorkspaceCartridge; item: PublicCartridgeItem } | null
   >(null);
   const [error, setError] = useState("");
 
@@ -47,7 +47,7 @@ export default function FolderDetailPage() {
         setError("This folder isn't part of the linked Stash.");
         return false;
       }
-      setCartridgeFallback({ stash: data.stash, item });
+      setCartridgeFallback({ cartridge: data.cartridge, item });
       setError("");
       return true;
     } catch (e) {
@@ -105,7 +105,7 @@ export default function FolderDetailPage() {
     return (
       <CartridgeFallbackFolderView
         stashSlug={stashSlug ?? ""}
-        stashTitle={stashFallback.stash.title}
+        stashTitle={stashFallback.cartridge.title}
         item={stashFallback.item}
       />
     );

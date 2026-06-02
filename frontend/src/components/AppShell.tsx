@@ -374,7 +374,7 @@ export default function AppShell({
           : await publishSessionCartridge(target);
       track("web.session_shared", {
         workspace_id: target.workspaceId,
-        stash_id: result.stash_id,
+        cartridge_id: result.cartridge_id,
       });
       await navigator.clipboard.writeText(result.url);
       setShareStatus("copied");

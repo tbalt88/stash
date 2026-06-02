@@ -232,7 +232,7 @@ function SearchPageInner() {
         const detail = await getPublicCartridge(selectedCartridgeSlug);
         if (includeStashes) {
           nextResults.push(
-            ...searchStashes([{ ...detail.stash, workspace_name: detail.workspace_name }], q)
+            ...searchStashes([{ ...detail.cartridge, workspace_name: detail.workspace_name }], q)
           );
         }
         nextResults.push(
@@ -389,7 +389,7 @@ function SearchPageInner() {
                     { value: "", label: "All Cartridges" },
                     ...searchedStashes.map((stash) => ({
                       value: stash.id,
-                      label: stash.title + (stash.forked_from_stash_id ? " (Fork)" : ""),
+                      label: stash.title + (stash.forked_from_cartridge_id ? " (Fork)" : ""),
                     })),
                   ]}
                   onChange={(next) => {
@@ -642,7 +642,7 @@ function searchStashes(cartridges: SearchableCartridge[], query: string): Search
       href: `/cartridges/${stash.slug}`,
       sourceName: stash.workspace_name,
       detail:
-        (stash.forked_from_stash_id ? "Forked Stash" : "Stash") +
+        (stash.forked_from_cartridge_id ? "Forked Stash" : "Stash") +
         ` / ${stash.description || `${stash.items.length} items`}`,
       updatedAt: stash.updated_at,
       relevance,
@@ -812,15 +812,15 @@ function searchPublicFolder(
       id: `${item.object_id}:${page.id}`,
       kind: "Page" as const,
       title: page.name,
-      href: `/cartridges/${detail.stash.slug}#item-${index}`,
-      sourceName: detail.stash.title,
+      href: `/cartridges/${detail.cartridge.slug}#item-${index}`,
+      sourceName: detail.cartridge.title,
       detail: pageSnippet(page.content_markdown, page.content_html),
-      updatedAt: page.updated_at || detail.stash.updated_at,
+      updatedAt: page.updated_at || detail.cartridge.updated_at,
       relevance: scoreValues(query, [
         { value: page.name, weight: 8 },
         { value: page.content_markdown, weight: 2 },
         { value: stripHtml(page.content_html ?? ""), weight: 2 },
-        { value: detail.stash.title, weight: 1 },
+        { value: detail.cartridge.title, weight: 1 },
       ]),
     }));
 }
@@ -849,15 +849,15 @@ function searchPublicPage(
       id: item.object_id,
       kind: "Page" as const,
       title: page.name,
-      href: `/cartridges/${detail.stash.slug}#item-${index}`,
-      sourceName: detail.stash.title,
+      href: `/cartridges/${detail.cartridge.slug}#item-${index}`,
+      sourceName: detail.cartridge.title,
       detail: pageSnippet(page.content_markdown, page.content_html),
-      updatedAt: page.updated_at || detail.stash.updated_at,
+      updatedAt: page.updated_at || detail.cartridge.updated_at,
       relevance: scoreValues(query, [
         { value: page.name, weight: 8 },
         { value: page.content_markdown, weight: 2 },
         { value: stripHtml(page.content_html ?? ""), weight: 2 },
-        { value: detail.stash.title, weight: 1 },
+        { value: detail.cartridge.title, weight: 1 },
       ]),
     },
   ];
@@ -899,15 +899,15 @@ function searchPublicSession(
       id: session.id || item.object_id,
       kind: "Session" as const,
       title: sessionTitle(session),
-      href: `/cartridges/${detail.stash.slug}#item-${index}`,
-      sourceName: detail.stash.title,
+      href: `/cartridges/${detail.cartridge.slug}#item-${index}`,
+      sourceName: detail.cartridge.title,
       detail: sessionSnippet(session),
-      updatedAt: session.finished_at || session.started_at || detail.stash.updated_at,
+      updatedAt: session.finished_at || session.started_at || detail.cartridge.updated_at,
       relevance: scoreValues(query, [
         { value: session.session_id, weight: 5 },
         { value: session.agent_name, weight: 2 },
         { value: eventText, weight: 3 },
-        { value: detail.stash.title, weight: 1 },
+        { value: detail.cartridge.title, weight: 1 },
       ]),
     },
   ];

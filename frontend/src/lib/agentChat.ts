@@ -8,7 +8,7 @@ export type ChatRole = "user" | "assistant";
 export type ChatMessage = { role: ChatRole; content: string; citations?: Citation[] };
 
 // Tools whose calls are worth showing in the "Grounded on" strip.
-const READ_TOOLS = new Set([
+export const READ_TOOLS = new Set([
   "read_page",
   "grep_pages",
   "read_file",

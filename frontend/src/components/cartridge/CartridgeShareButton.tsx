@@ -91,7 +91,7 @@ export default function CartridgeShareButton({
   canWrite,
   onChanged,
 }: {
-  stash: PublicCartridgeDetail["stash"];
+  stash: PublicCartridgeDetail["cartridge"];
   canWrite: boolean;
   onChanged: () => Promise<void>;
 }) {
@@ -190,7 +190,7 @@ export default function CartridgeShareButton({
     try {
       if (publicPermission === "none") {
         if (!canWrite) {
-          throw new Error("Only Stash editors can create public agent links.");
+          throw new Error("Only cartridge editors can create public agent links.");
         }
         const updated = await updateCartridge(stash.id, {
           workspace_permission:
@@ -315,7 +315,7 @@ export default function CartridgeShareButton({
   }
 
   async function deleteMember(userId: string) {
-    if (!confirm("Remove this member from the Stash?")) return;
+    if (!confirm("Remove this member from the cartridge?")) return;
 
     setMemberBusy(true);
     setMemberMessage("");
@@ -525,7 +525,7 @@ export default function CartridgeShareButton({
 
                 {!membersLoading && !canManageMembers && (
                   <div className="mt-2 rounded-md border border-border bg-surface px-2 py-1.5 text-[12px] text-muted">
-                    Only Stash admins can manage members.
+                    Only cartridge admins can manage members.
                   </div>
                 )}
               </div>

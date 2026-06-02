@@ -129,7 +129,7 @@ export default function SessionViewerPage() {
   const [turns, setTurns] = useState<MessageTurn[]>([]);
   const [containingStashes, setContainingStashes] = useState<WorkspaceCartridge[]>([]);
   const [stashFallback, setCartridgeFallback] = useState<
-    { stash: WorkspaceCartridge; item: PublicCartridgeItem } | null
+    { cartridge: WorkspaceCartridge; item: PublicCartridgeItem } | null
   >(null);
   const [error, setError] = useState("");
 
@@ -151,7 +151,7 @@ export default function SessionViewerPage() {
         setError("This session isn't part of the linked Stash.");
         return false;
       }
-      setCartridgeFallback({ stash: data.stash, item });
+      setCartridgeFallback({ cartridge: data.cartridge, item });
       setError("");
       return true;
     } catch (e) {
@@ -201,7 +201,7 @@ export default function SessionViewerPage() {
     return (
       <CartridgeFallbackSessionView
         stashSlug={stashSlug ?? ""}
-        stashTitle={stashFallback.stash.title}
+        stashTitle={stashFallback.cartridge.title}
         item={stashFallback.item}
       />
     );

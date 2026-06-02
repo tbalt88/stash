@@ -15,7 +15,7 @@ type CartridgeItemInlined = {
 };
 
 type PublicCartridge = {
-  stash: { id: string; slug: string; title: string };
+  cartridge: { id: string; slug: string; title: string };
   items: CartridgeItemInlined[];
 };
 
@@ -24,7 +24,7 @@ async function loadCartridge(slug: string): Promise<PublicCartridge | null> {
     cache: "no-store",
   });
   if (res.status === 404) return null;
-  if (!res.ok) throw new Error(`stash fetch failed: ${res.status}`);
+  if (!res.ok) throw new Error(`cartridge fetch failed: ${res.status}`);
   return res.json();
 }
 
@@ -38,7 +38,7 @@ export default async function CartridgeEmbed({
   if (!data) notFound();
   return (
     <main className="px-4 py-4">
-      <h1 className="mb-3 font-display text-[18px] font-bold text-ink">{data.stash.title}</h1>
+      <h1 className="mb-3 font-display text-[18px] font-bold text-ink">{data.cartridge.title}</h1>
       <div className="space-y-6">
         {data.items.map((it, i) => (
           <ItemBody key={`${it.object_type}-${it.object_id}-${i}`} item={it} />

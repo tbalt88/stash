@@ -150,7 +150,7 @@ function TableEditorPageInner() {
         // backend serializes columns + the first 500 rows when the stash
         // is readable; that's the source of truth in stash mode.
         const stash = await getPublicCartridge(stashSlug);
-        setCartridgeTitle(stash.stash.title);
+        setCartridgeTitle(stash.cartridge.title);
         const item = stash.items.find(
           (it) => it.object_type === "table" && it.object_id === tableId
         );
@@ -165,7 +165,7 @@ function TableEditorPageInner() {
         };
         const synth: Table = {
           id: tableId,
-          workspace_id: stash.stash.workspace_id,
+          workspace_id: stash.cartridge.workspace_id,
           name: item.label || "Table",
           description: inline.description ?? "",
           columns: (inline.columns ?? []).map((c) => ({ ...c })),
@@ -173,7 +173,7 @@ function TableEditorPageInner() {
           created_at: "",
           updated_at: "",
         } as unknown as Table;
-        setResolvedWorkspaceId(stash.stash.workspace_id);
+        setResolvedWorkspaceId(stash.cartridge.workspace_id);
         setTable(synth);
         const synthRows: TableRow[] = (inline.rows ?? []).map((r, i) => ({
           id: `stash-${i}`,

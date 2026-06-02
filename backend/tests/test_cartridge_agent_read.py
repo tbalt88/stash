@@ -62,7 +62,7 @@ async def test_public_cartridge_text_is_agent_homepage(client: AsyncClient):
         headers=_auth(api_key),
     )
     assert published.status_code == 201
-    slug = published.json()["stash"]["slug"]
+    slug = published.json()["cartridge"]["slug"]
 
     resp = await client.get(f"/api/v1/cartridges/{slug}?format=text")
     assert resp.status_code == 200
@@ -109,7 +109,7 @@ async def test_public_cartridge_item_text_strips_html_page_content(client: Async
     body = published.json()
 
     resp = await client.get(
-        f"/api/v1/cartridges/{body['stash_slug']}/items/page/{body['page_id']}?format=text"
+        f"/api/v1/cartridges/{body['cartridge_slug']}/items/page/{body['page_id']}?format=text"
     )
     assert resp.status_code == 200
     assert "Hello Agent" in resp.text
@@ -119,10 +119,10 @@ async def test_public_cartridge_item_text_strips_html_page_content(client: Async
     assert (
         'bash -c "$(curl -fsSL https://joinstash.ai/install)" -- signin --no-browser'
     ) in resp.text
-    assert f"stash read http://localhost:3457/cartridges/{body['stash_slug']}" in resp.text
+    assert f"stash read http://localhost:3457/cartridges/{body['cartridge_slug']}" in resp.text
 
     json_resp = await client.get(
-        f"/api/v1/cartridges/{body['stash_slug']}/items/page/{body['page_id']}"
+        f"/api/v1/cartridges/{body['cartridge_slug']}/items/page/{body['page_id']}"
     )
     assert json_resp.status_code == 200
     assert json_resp.json()["item"]["inline"]["page"]["content_type"] == "html"

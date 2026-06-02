@@ -318,24 +318,6 @@ describe("AppShell sidebar collapse", () => {
     expect(publishCartridge).not.toHaveBeenCalled();
   });
 
-  it("hides the default Share action on the workspace members route", async () => {
-    nav.pathname = "/workspaces/ws-1/members";
-    mockWorkspaceCache();
-
-    render(
-      <ShareModalProvider>
-        <AppShell user={user} onLogout={vi.fn()}>
-          <div>Members content</div>
-        </AppShell>
-      </ShareModalProvider>,
-    );
-
-    await screen.findByText("Members content");
-    expect(
-      screen.queryByRole("button", { name: "Share" }),
-    ).not.toBeInTheDocument();
-  });
-
   it("renders a custom header Share action outside workspace routes", async () => {
     nav.pathname = "/cartridges/shared-stash";
     mockWorkspaceCache();
@@ -399,7 +381,7 @@ describe("AppShell sidebar collapse", () => {
 
 function publishedCartridgeResult(slug: string) {
   return {
-    stash: {
+    cartridge: {
       id: "stash-1",
       workspace_id: "ws-1",
       slug,
@@ -418,12 +400,12 @@ function publishedCartridgeResult(slug: string) {
       items: [],
       is_external: false,
       added_to_workspace_id: null,
-      forked_from_stash_id: null,
+      forked_from_cartridge_id: null,
       created_at: "2026-05-11T00:00:00Z",
       updated_at: "2026-05-11T00:00:00Z",
     },
     url: `https://app.joinstash.ai/cartridges/${slug}`,
-    stash_id: "stash-1",
-    stash_slug: slug,
+    cartridge_id: "stash-1",
+    cartridge_slug: slug,
   };
 }

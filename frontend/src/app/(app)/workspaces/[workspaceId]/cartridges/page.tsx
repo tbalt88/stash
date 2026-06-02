@@ -115,11 +115,11 @@ export default function WorkspaceStashesPage() {
   }, [cartridges, filter]);
 
   const native = useMemo(
-    () => filtered.filter((s) => !s.forked_from_stash_id),
+    () => filtered.filter((s) => !s.forked_from_cartridge_id),
     [filtered]
   );
   const forked = useMemo(
-    () => filtered.filter((s) => !!s.forked_from_stash_id),
+    () => filtered.filter((s) => !!s.forked_from_cartridge_id),
     [filtered]
   );
 

@@ -70,7 +70,7 @@ async def test_cartridge_invite_grants_view_access_before_adding(client: AsyncCl
     assert invites.status_code == 200
     [invite] = invites.json()["invites"]
     assert invite["cartridge_id"] == stash["id"]
-    assert invite["stash_title"] == "Partner Stash"
+    assert invite["cartridge_title"] == "Partner Stash"
     assert invite["source_workspace_id"] == source_workspace["id"]
     assert invite["permission"] == "read"
 

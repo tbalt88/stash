@@ -72,7 +72,7 @@ describe("CartridgeShareModal session sharing", () => {
       items: [],
       is_external: false,
       added_to_workspace_id: null,
-      forked_from_stash_id: null,
+      forked_from_cartridge_id: null,
       created_at: "2026-05-14T12:00:00Z",
       updated_at: "2026-05-14T12:00:00Z",
     });

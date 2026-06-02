@@ -91,7 +91,7 @@ function FileViewerPageInner() {
     if (!stashSlug) return false;
     try {
       const stash = await getPublicCartridge(stashSlug);
-      setCartridgeTitle(stash.stash.title);
+      setCartridgeTitle(stash.cartridge.title);
       const item = stash.items.find(
         (it) => it.object_type === "file" && it.object_id === fileId
       );
@@ -108,13 +108,13 @@ function FileViewerPageInner() {
       };
       const synth: FileInfo = {
         id: fileId,
-        workspace_id: stash.stash.workspace_id,
+        workspace_id: stash.cartridge.workspace_id,
         folder_id: null,
         name: inline.name ?? item.label,
         content_type: inline.content_type ?? "",
         size_bytes: inline.size_bytes ?? 0,
         url: inline.url ?? "",
-        app_url: `/workspaces/${stash.stash.workspace_id}/f/${fileId}?stash=${stashSlug}`,
+        app_url: `/workspaces/${stash.cartridge.workspace_id}/f/${fileId}?stash=${stashSlug}`,
         uploaded_by: "",
         created_at: inline.created_at ?? "",
       };

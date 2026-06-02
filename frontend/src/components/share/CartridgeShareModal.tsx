@@ -293,24 +293,24 @@ export default function CartridgeShareModal() {
         });
       }
       const finalTitle = title.trim() || defaultTitle;
-      const stash =
+      const cartridge =
         publicPermission !== "none"
           ? (await publishCartridge(workspaceId, finalTitle, items, {
               workspace_permission: workspacePermission,
               public_permission: publicPermission,
               discoverable: shareToDiscover,
-            })).stash
+            })).cartridge
           : await createCartridge(workspaceId, finalTitle, items, {
               workspace_permission: workspacePermission,
               public_permission: publicPermission,
             });
-      if (stash.access === "public") {
-        await navigator.clipboard.writeText(absoluteUrl(`/cartridges/${stash.slug}`)).catch(() => {});
+      if (cartridge.access === "public") {
+        await navigator.clipboard.writeText(absoluteUrl(`/cartridges/${cartridge.slug}`)).catch(() => {});
       }
       setSelected(EMPTY_SELECTED);
       setTitle("");
       setShareToDiscover(false);
-      // Re-fetch the workspace sidebar so the new Stash shows up without
+      // Re-fetch the workspace sidebar so the new cartridge shows up without
       // requiring a page reload. refreshWorkspaceSidebar hits the API,
       // updates the cache, and notifies AppSidebar's subscriber.
       refreshWorkspaceSidebar(workspaceId).catch(() => {});

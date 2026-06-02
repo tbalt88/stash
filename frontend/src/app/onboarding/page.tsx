@@ -6,39 +6,15 @@ import { useRouter, useSearchParams } from "next/navigation";
 import Header from "../../components/Header";
 import { useAuth } from "../../hooks/useAuth";
 import { track } from "../../lib/analytics";
-import { addWorkspaceSource, getToken, listMyWorkspaces } from "../../lib/api";
-import {
-  listIntegrations,
-  startConnect,
-  type IntegrationProvider,
-} from "../../lib/integrations";
+import { getToken, listMyWorkspaces } from "../../lib/api";
 import { seedWelcomePage } from "../../lib/onboarding/seedWelcome";
-import ObsidianVaultDropZone from "../../components/integrations/ObsidianVaultDropZone";
+import SourceConnectorList from "../../components/integrations/SourceConnectorList";
 
 import MemoryAskStep from "./paths/memory/MemoryAskStep";
 
 // The linear flow: explain Stash, connect a source, then ask the agent a real
 // question over your data, then launch into the workspace.
 const STEP_NAMES = ["intro", "connect", "ask"] as const;
-
-// Providers shown in the connect step. Slack/Granola resolve their source's
-// external_ref (workspace/team id) from the connected token, so we auto-add the
-// source on connect; the tree sources (GitHub/Drive/Notion) need the user to
-// pick a repo/folder/page, which they do from settings after onboarding.
-const PROVIDERS: {
-  key: IntegrationProvider;
-  label: string;
-  sourceType: string;
-  autoAdd: boolean;
-  // Granola is key-based (no OAuth) — its key is pasted in Settings.
-  keyBased?: boolean;
-}[] = [
-  { key: "github", label: "GitHub", sourceType: "github_repo", autoAdd: false },
-  { key: "google", label: "Google Drive", sourceType: "google_drive", autoAdd: false },
-  { key: "notion", label: "Notion", sourceType: "notion", autoAdd: false },
-  { key: "slack", label: "Slack", sourceType: "slack", autoAdd: true },
-  { key: "granola", label: "Granola", sourceType: "granola", autoAdd: true, keyBased: true },
-];
 
 function useStashToken(): string | null {
   return useSyncExternalStore(
@@ -69,7 +45,7 @@ function OnboardingInner() {
   const { user, loading, logout } = useAuth();
   const apiKey = useStashToken();
   const [workspaceId, setWorkspaceId] = useState<string | null>(null);
-  const [connectedCount, setConnectedCount] = useState(0);
+  const [sourceCount, setSourceCount] = useState(0);
   const [obsidianAdded, setObsidianAdded] = useState(false);
   const [answered, setAnswered] = useState(false);
 
@@ -87,7 +63,8 @@ function OnboardingInner() {
     if (!apiKey) return;
     listMyWorkspaces()
       .then(({ workspaces }) => {
-        if (workspaces.length > 0) setWorkspaceId(workspaces[0].id);
+        const primary = workspaces.find((workspace) => workspace.is_primary) ?? workspaces[0];
+        if (primary) setWorkspaceId(primary.id);
       })
       .catch(() => {});
   }, [apiKey]);
@@ -149,7 +126,7 @@ function OnboardingInner() {
 
   const continueLabel = isIntro ? "Get started" : isAsk ? "Launch workspace" : "Continue";
   // On the ask step, only let them launch once the agent has actually replied.
-  const canContinue = isIntro || (isAsk ? answered : connectedCount > 0 || obsidianAdded);
+  const canContinue = isIntro || (isAsk ? answered : sourceCount > 0 || obsidianAdded);
   const onContinue = () => {
     if (isAsk) return void finishAndExit();
     goToStep(stepIdx + 1);
@@ -165,7 +142,7 @@ function OnboardingInner() {
           {isConnect && (
             <ConnectStep
               workspaceId={workspaceId}
-              onConnectedCount={setConnectedCount}
+              onSourceCountChange={setSourceCount}
               onObsidianAdded={() => setObsidianAdded(true)}
             />
           )}
@@ -234,50 +211,13 @@ function IntroPoint({ title, children }: { title: string; children: React.ReactN
 
 function ConnectStep({
   workspaceId,
-  onConnectedCount,
+  onSourceCountChange,
   onObsidianAdded,
 }: {
   workspaceId: string | null;
-  onConnectedCount: (n: number) => void;
+  onSourceCountChange: (n: number) => void;
   onObsidianAdded: () => void;
 }) {
-  const searchParams = useSearchParams();
-  const [statuses, setStatuses] = useState<Record<string, boolean>>({});
-
-  const refresh = useCallback(async () => {
-    try {
-      const { providers } = await listIntegrations();
-      const map: Record<string, boolean> = {};
-      for (const p of providers) map[p.provider] = p.connected;
-      setStatuses(map);
-      onConnectedCount(Object.values(map).filter(Boolean).length);
-    } catch {
-      // Leave statuses as-is; the user can retry connecting.
-    }
-  }, [onConnectedCount]);
-
-  useEffect(() => {
-    void refresh();
-  }, [refresh]);
-
-  // Coming back from an OAuth callback (?connected=<provider>): refresh, and
-  // for Slack/Granola add the workspace source now that the token exists.
-  useEffect(() => {
-    const connected = searchParams.get("connected");
-    if (!connected || !workspaceId) return;
-    const def = PROVIDERS.find((p) => p.key === connected);
-    void (async () => {
-      await refresh();
-      if (def?.autoAdd) {
-        try {
-          await addWorkspaceSource(workspaceId, { source_type: def.sourceType });
-        } catch {
-          // Source may already exist (idempotent) — ignore.
-        }
-      }
-    })();
-  }, [searchParams, workspaceId, refresh]);
-
   return (
     <div className="space-y-6">
       <div className="space-y-2">
@@ -289,54 +229,12 @@ function ConnectStep({
           and search across everything you connect.
         </p>
       </div>
-      <div className="space-y-2">
-        {PROVIDERS.map((p) => {
-          const connected = statuses[p.key];
-          return (
-            <div
-              key={p.key}
-              className="flex items-center justify-between rounded-lg border border-border bg-surface px-4 py-3"
-            >
-              <span className="text-[14px] text-foreground">{p.label}</span>
-              {connected ? (
-                <span className="text-[12px] font-medium text-success">Connected ✓</span>
-              ) : p.keyBased ? (
-                <a
-                  href="/settings/integrations"
-                  className="rounded-md border border-border px-3 py-1.5 text-[12px] text-foreground hover:bg-raised hover:border-brand"
-                >
-                  Add API key
-                </a>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => void startConnect(p.key, "/onboarding")}
-                  className="rounded-md border border-border px-3 py-1.5 text-[12px] text-foreground hover:bg-raised hover:border-brand"
-                >
-                  Connect
-                </button>
-              )}
-            </div>
-          );
-        })}
-      </div>
-
-      {/* Obsidian is an upload, not a sync connector — the vault's markdown
-          lands in Files. Counts as "added something" so you can continue. */}
-      <div className="rounded-lg border border-border bg-surface px-4 py-3">
-        <div className="flex items-center justify-between">
-          <span className="text-[14px] text-foreground">Obsidian vault</span>
-          <span className="text-[11.5px] text-muted">Upload — lands in Files</span>
-        </div>
-        {workspaceId && (
-          <div className="mt-3">
-            <ObsidianVaultDropZone
-              workspaceId={workspaceId}
-              onUploaded={onObsidianAdded}
-            />
-          </div>
-        )}
-      </div>
+      <SourceConnectorList
+        workspaceId={workspaceId}
+        returnTo="/onboarding?step=2"
+        onSourceCountChange={onSourceCountChange}
+        onObsidianUploaded={onObsidianAdded}
+      />
     </div>
   );
 }
