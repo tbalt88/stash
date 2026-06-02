@@ -37,6 +37,16 @@ async def _register(client: AsyncClient, name: str | None = None) -> tuple[str, 
     return body["api_key"], body
 
 
+async def _register_with_email(client: AsyncClient, email: str) -> tuple[str, dict]:
+    resp = await client.post(
+        "/api/v1/users/register",
+        json={"name": unique_name(), "password": "securepassword1", "email": email},
+    )
+    assert resp.status_code == 201
+    body = resp.json()
+    return body["api_key"], body
+
+
 def _auth(api_key: str) -> dict:
     return {"Authorization": f"Bearer {api_key}"}
 
@@ -357,3 +367,54 @@ async def test_share_by_email_grants_page_read_over_http(client: AsyncClient, po
     # The share grants the non-member read access; the stranger is still denied.
     assert (await client.get(page_url, headers=_auth(grantee_key))).status_code == 200
     assert (await client.get(page_url, headers=_auth(stranger_key))).status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_share_by_email_pending_invite_converts_on_signup(client: AsyncClient):
+    """Sharing to an email with no account yet records a pending invite that
+    becomes a real share when that person signs up with the email."""
+    owner_key, _ = await _register(client)
+    ws = (await client.get("/api/v1/workspaces/mine", headers=_auth(owner_key))).json()[
+        "workspaces"
+    ][0]["id"]
+    page_id = (
+        await client.post(
+            f"/api/v1/workspaces/{ws}/pages/new",
+            json={"name": "Spec", "content": "secret spec"},
+            headers=_auth(owner_key),
+        )
+    ).json()["id"]
+
+    # Share to an email that has no user — recorded as pending, not 404.
+    share = await client.post(
+        "/api/v1/share",
+        json={
+            "object_type": "page",
+            "object_id": page_id,
+            "email": "newcomer@example.com",
+            "permission": "read",
+        },
+        headers=_auth(owner_key),
+    )
+    assert share.status_code == 200
+    assert share.json()["pending"] is True
+
+    # The owner sees it listed as a pending invite.
+    listing = await client.get(
+        f"/api/v1/share?object_type=page&object_id={page_id}", headers=_auth(owner_key)
+    )
+    pending = [s for s in listing.json()["shares"] if s["pending"]]
+    assert [s["email"] for s in pending] == ["newcomer@example.com"]
+
+    # The newcomer signs up with that email → invite converts → they can read.
+    newcomer_key, _ = await _register_with_email(client, "newcomer@example.com")
+    page_url = f"/api/v1/workspaces/{ws}/pages/{page_id}"
+    assert (await client.get(page_url, headers=_auth(newcomer_key))).status_code == 200
+
+    # The pending invite is gone; it's now a real (non-pending) share.
+    after = await client.get(
+        f"/api/v1/share?object_type=page&object_id={page_id}", headers=_auth(owner_key)
+    )
+    rows = after.json()["shares"]
+    assert all(not s["pending"] for s in rows)
+    assert any(s["email"] == "newcomer@example.com" for s in rows)

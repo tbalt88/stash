@@ -99,6 +99,7 @@ _TRUNCATE_TABLES = [
     "webhook_deliveries",
     "webhooks",
     "shares",
+    "share_invites",
     "session_folders",
     "github_documents",
     "slack_messages",

@@ -12,6 +12,9 @@ class UserRegisterRequest(BaseModel):
     display_name: str | None = Field(None, min_length=1, max_length=128)
     description: str = Field("", max_length=500)
     password: str | None = Field(None, min_length=8, max_length=128)
+    # Optional: lets others share with this account by email and converts any
+    # pending share invites addressed to it.
+    email: str | None = Field(None, max_length=320)
 
 
 class UserRegisterResponse(BaseModel):
