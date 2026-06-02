@@ -49,7 +49,7 @@ async def test_create_workspace(client: AsyncClient):
 @pytest.mark.asyncio
 async def test_create_workspace_requires_auth(client: AsyncClient):
     resp = await client.post("/api/v1/workspaces", json={"name": "X"})
-    assert resp.status_code == 403
+    assert resp.status_code == 401
 
 
 # --- Listing ---
