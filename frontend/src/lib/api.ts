@@ -963,6 +963,42 @@ export interface SessionSummary {
   event_count: number;
   started_at: string;
   last_event_at: string;
+  session_folder_id: string | null;
+  session_folder_name: string | null;
+}
+
+export interface SessionFolder {
+  id: string;
+  name: string;
+  session_count: number;
+}
+
+export async function listSessionFolders(workspaceId: string): Promise<SessionFolder[]> {
+  const data = await apiFetch<{ folders: SessionFolder[] }>(
+    `/api/v1/workspaces/${workspaceId}/session-folders`,
+  );
+  return data.folders;
+}
+
+export async function createSessionFolder(
+  workspaceId: string,
+  name: string,
+): Promise<SessionFolder> {
+  return apiFetch<SessionFolder>(`/api/v1/workspaces/${workspaceId}/session-folders`, {
+    method: "POST",
+    body: JSON.stringify({ name }),
+  });
+}
+
+export async function assignSessionFolder(
+  workspaceId: string,
+  sessionRowId: string,
+  folderId: string | null,
+): Promise<void> {
+  await apiFetch(`/api/v1/workspaces/${workspaceId}/session-folders/assign`, {
+    method: "POST",
+    body: JSON.stringify({ session_row_id: sessionRowId, folder_id: folderId }),
+  });
 }
 
 export interface LinearTicketLabel {

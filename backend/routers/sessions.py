@@ -130,6 +130,8 @@ async def list_my_sessions(
         SELECT
           he.session_id,
           s.id AS id,
+          s.session_folder_id,
+          sf.name AS session_folder_name,
           he.workspace_id,
           w.name AS workspace_name,
           {linear_ticket_service.sql_json_agg('s')} AS linear_tickets,
@@ -148,8 +150,10 @@ async def list_my_sessions(
         LEFT JOIN sessions s ON s.workspace_id IS NOT DISTINCT FROM he.workspace_id
           AND s.session_id = he.session_id
           AND s.deleted_at IS NULL
+        LEFT JOIN session_folders sf ON sf.id = s.session_folder_id
         WHERE {' AND '.join(where)}
-        GROUP BY he.session_id, he.workspace_id, w.name, s.id, title_sources.title_source
+        GROUP BY he.session_id, he.workspace_id, w.name, s.id, s.session_folder_id,
+          sf.name, title_sources.title_source
         ORDER BY last_event_at DESC, user_name ASC, session_id ASC
         LIMIT {int(limit)}
         """,
