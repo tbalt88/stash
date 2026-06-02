@@ -1,14 +1,20 @@
 "use client";
 
 import { useParams } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
-import MemoryAskStep from "../../../../onboarding/paths/memory/MemoryAskStep";
+import ChatPanel from "../../../../../components/agents/ChatPanel";
 
 // Agents: the primary way to use Stash is through your own agent. The first tab
-// (unclosable) explains how to connect the CLI / MCP / API; extra tabs are quick
-// chats over your sources.
-type ChatTab = { id: number; title: string };
+// (unclosable) explains how to connect the CLI / MCP / API; extra tabs are
+// multi-turn chats over your sources. Each chat is a stored Session, so its
+// session_id + the open tabs persist across reloads.
+type ChatTab = { id: number; sessionId: string | null; title: string };
+type PersistedTabs = { chats: ChatTab[]; nextId: number; active: "connect" | number };
+
+function tabsKey(workspaceId: string): string {
+  return `stash_agent_tabs:${workspaceId}`;
+}
 
 export default function AgentsPage() {
   const params = useParams();
@@ -17,10 +23,43 @@ export default function AgentsPage() {
   const [chats, setChats] = useState<ChatTab[]>([]);
   const [nextId, setNextId] = useState(1);
   const [active, setActive] = useState<"connect" | number>("connect");
+  const restored = useRef(false);
+
+  // Restore open tabs (+ their session ids) for this workspace.
+  useEffect(() => {
+    if (restored.current) return;
+    restored.current = true;
+    try {
+      const raw = window.localStorage.getItem(tabsKey(workspaceId));
+      if (raw) {
+        const p = JSON.parse(raw) as PersistedTabs;
+        if (Array.isArray(p.chats)) {
+          setChats(p.chats);
+          setNextId(p.nextId ?? p.chats.length + 1);
+          setActive(p.active ?? "connect");
+        }
+      }
+    } catch {
+      /* ignore malformed cache */
+    }
+  }, [workspaceId]);
+
+  // Persist whenever tabs change (after the initial restore).
+  useEffect(() => {
+    if (!restored.current) return;
+    try {
+      window.localStorage.setItem(
+        tabsKey(workspaceId),
+        JSON.stringify({ chats, nextId, active } satisfies PersistedTabs),
+      );
+    } catch {
+      /* storage unavailable */
+    }
+  }, [workspaceId, chats, nextId, active]);
 
   function newChat() {
     const id = nextId;
-    setChats((c) => [...c, { id, title: `Chat ${id}` }]);
+    setChats((c) => [...c, { id, sessionId: null, title: `Chat ${id}` }]);
     setNextId((n) => n + 1);
     setActive(id);
   }
@@ -28,6 +67,10 @@ export default function AgentsPage() {
   function closeChat(id: number) {
     setChats((c) => c.filter((t) => t.id !== id));
     setActive((a) => (a === id ? "connect" : a));
+  }
+
+  function setChatSession(id: number, sessionId: string) {
+    setChats((c) => c.map((t) => (t.id === id ? { ...t, sessionId } : t)));
   }
 
   return (
@@ -72,11 +115,20 @@ export default function AgentsPage() {
         </div>
 
         <div className="pt-5">
-          {active === "connect" ? (
+          {/* All panels stay mounted (toggled with `hidden`) so a chat keeps
+              its transcript, scroll, and in-flight stream when you switch tabs. */}
+          <div className={active === "connect" ? "" : "hidden"}>
             <ConnectGuide />
-          ) : (
-            <MemoryAskStep workspaceId={workspaceId} />
-          )}
+          </div>
+          {chats.map((t) => (
+            <div key={t.id} className={active === t.id ? "" : "hidden"}>
+              <ChatPanel
+                workspaceId={workspaceId}
+                sessionId={t.sessionId}
+                onSessionId={(id) => setChatSession(t.id, id)}
+              />
+            </div>
+          ))}
         </div>
       </div>
     </div>
