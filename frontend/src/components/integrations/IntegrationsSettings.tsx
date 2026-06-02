@@ -2,9 +2,11 @@
 
 import { useCallback, useEffect, useState } from "react";
 
+import { listMyWorkspaces } from "@/lib/api";
 import { IntegrationStatus, listIntegrations } from "@/lib/integrations";
 
 import IntegrationCard from "./IntegrationCard";
+import ObsidianVaultDropZone from "./ObsidianVaultDropZone";
 
 type Props = {
   /** When true, render without the outer section chrome — for embedding
@@ -77,6 +79,8 @@ export default function IntegrationsSettings({ embedded = false }: Props) {
           ))}
         </div>
       )}
+
+      <ObsidianVaultCard />
     </>
   );
 
@@ -92,6 +96,48 @@ export default function IntegrationsSettings({ embedded = false }: Props) {
       <main className="flex-1 px-4 py-10">
         <div className="w-full max-w-2xl mx-auto space-y-4">{body}</div>
       </main>
+    </div>
+  );
+}
+
+// Obsidian isn't an OAuth connector — there's nothing to sync. It's a one-shot
+// vault upload: markdown becomes pages in Files, other files land in Files,
+// folders preserved. That's the whole integration.
+function ObsidianVaultCard() {
+  const [workspaceId, setWorkspaceId] = useState<string | null>(null);
+  const [uploadedCount, setUploadedCount] = useState(0);
+
+  useEffect(() => {
+    listMyWorkspaces()
+      .then(({ workspaces }) => {
+        if (workspaces.length > 0) setWorkspaceId(workspaces[0].id);
+      })
+      .catch(() => {});
+  }, []);
+
+  return (
+    <div className="rounded-lg border border-border bg-surface px-4 py-3 space-y-3">
+      <div>
+        <h3 className="text-[14px] font-medium text-foreground">Obsidian vault</h3>
+        <p className="text-xs text-muted mt-0.5">
+          Upload a vault — markdown becomes pages in Files, folders are
+          preserved, and <code>.obsidian/</code> is skipped. There&rsquo;s
+          nothing to keep in sync; re-upload anytime.
+        </p>
+      </div>
+      {workspaceId ? (
+        <ObsidianVaultDropZone
+          workspaceId={workspaceId}
+          onUploaded={(n) => setUploadedCount((c) => c + n)}
+        />
+      ) : (
+        <div className="text-xs text-muted">Loading…</div>
+      )}
+      {uploadedCount > 0 && (
+        <p className="text-[11.5px] text-brand">
+          Added {uploadedCount} file{uploadedCount === 1 ? "" : "s"} to Files.
+        </p>
+      )}
     </div>
   );
 }
