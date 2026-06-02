@@ -13,12 +13,13 @@ import {
   type IntegrationProvider,
 } from "../../lib/integrations";
 import { seedWelcomePage } from "../../lib/onboarding/seedWelcome";
+import ObsidianVaultDropZone from "../../components/integrations/ObsidianVaultDropZone";
 
 import MemoryAskStep from "./paths/memory/MemoryAskStep";
 
-// The linear flow: connect a source, then ask the agent a real question over
-// your data, then launch into the workspace. No intent picker, no paths.
-const STEP_NAMES = ["connect", "ask"] as const;
+// The linear flow: explain Stash, connect a source, then ask the agent a real
+// question over your data, then launch into the workspace.
+const STEP_NAMES = ["intro", "connect", "ask"] as const;
 
 // Providers shown in the connect step. Slack/Granola resolve their source's
 // external_ref (workspace/team id) from the connected token, so we auto-add the
@@ -29,12 +30,14 @@ const PROVIDERS: {
   label: string;
   sourceType: string;
   autoAdd: boolean;
+  // Granola is key-based (no OAuth) — its key is pasted in Settings.
+  keyBased?: boolean;
 }[] = [
   { key: "github", label: "GitHub", sourceType: "github_repo", autoAdd: false },
   { key: "google", label: "Google Drive", sourceType: "google_drive", autoAdd: false },
   { key: "notion", label: "Notion", sourceType: "notion", autoAdd: false },
   { key: "slack", label: "Slack", sourceType: "slack", autoAdd: true },
-  { key: "granola", label: "Granola", sourceType: "granola", autoAdd: true },
+  { key: "granola", label: "Granola", sourceType: "granola", autoAdd: true, keyBased: true },
 ];
 
 function useStashToken(): string | null {
@@ -67,6 +70,7 @@ function OnboardingInner() {
   const apiKey = useStashToken();
   const [workspaceId, setWorkspaceId] = useState<string | null>(null);
   const [connectedCount, setConnectedCount] = useState(0);
+  const [obsidianAdded, setObsidianAdded] = useState(false);
 
   const stepIdx = useMemo(() => {
     const raw = searchParams.get("step");
@@ -137,7 +141,17 @@ function OnboardingInner() {
     );
   }
 
-  const isAsk = stepIdx >= 1;
+  // 0 = intro, 1 = connect, 2 = ask.
+  const isIntro = stepIdx <= 0;
+  const isConnect = stepIdx === 1;
+  const isAsk = stepIdx >= 2;
+
+  const continueLabel = isIntro ? "Get started" : isAsk ? "Launch workspace" : "Continue";
+  const canContinue = isIntro || isAsk || connectedCount > 0 || obsidianAdded;
+  const onContinue = () => {
+    if (isAsk) return void finishAndExit();
+    goToStep(stepIdx + 1);
+  };
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -145,19 +159,20 @@ function OnboardingInner() {
       <main className="flex-1 px-4 py-10">
         <div className="mx-auto w-full max-w-2xl space-y-8">
           <ProgressBar stepIdx={stepIdx} />
-          {isAsk ? (
-            <AskStep workspaceId={workspaceId} />
-          ) : (
+          {isIntro && <IntroStep />}
+          {isConnect && (
             <ConnectStep
               workspaceId={workspaceId}
               onConnectedCount={setConnectedCount}
+              onObsidianAdded={() => setObsidianAdded(true)}
             />
           )}
+          {isAsk && <AskStep workspaceId={workspaceId} />}
           <StepControls
-            onContinue={() => (isAsk ? void finishAndExit() : goToStep(1))}
+            onContinue={onContinue}
             onSkip={skip}
-            continueLabel={isAsk ? "Launch workspace" : "Continue"}
-            canContinue={isAsk || connectedCount > 0}
+            continueLabel={continueLabel}
+            canContinue={canContinue}
           />
         </div>
       </main>
@@ -165,12 +180,61 @@ function OnboardingInner() {
   );
 }
 
+function IntroStep() {
+  return (
+    <div className="space-y-5">
+      <div className="space-y-2">
+        <h1 className="font-display text-[28px] leading-[1.1] font-bold tracking-tight text-foreground">
+          Welcome to Stash
+        </h1>
+        <p className="text-sm text-dim max-w-lg">
+          Stash gives your agents one place to reach everything they need — in the
+          format they&rsquo;re fluent in.
+        </p>
+      </div>
+      <ul className="space-y-3">
+        <IntroPoint title="Connect any data source">
+          GitHub, Google Drive, Notion, Slack, Granola, an Obsidian vault. Your
+          agent navigates each like a file system and searches across all of them.
+        </IntroPoint>
+        <IntroPoint title="A workspace built for agents">
+          Pages in HTML and markdown, files, and your agent session transcripts —
+          stored the way agents read and write, not buried in a UI.
+        </IntroPoint>
+        <IntroPoint title="Share when you need to">
+          Bundle anything into a Cartridge or share a folder with a teammate by
+          email — so people and their agents can work from the same context.
+        </IntroPoint>
+      </ul>
+      <div className="rounded-lg border border-border bg-surface px-4 py-3 text-[13px] text-muted">
+        Two quick steps: <span className="text-foreground">connect a source</span>,
+        then <span className="text-foreground">ask your agent a question</span> over
+        it. You can skip and do this later anytime.
+      </div>
+    </div>
+  );
+}
+
+function IntroPoint({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <li className="flex gap-3">
+      <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-brand" />
+      <div>
+        <div className="text-[14px] font-medium text-foreground">{title}</div>
+        <div className="text-[13px] text-dim">{children}</div>
+      </div>
+    </li>
+  );
+}
+
 function ConnectStep({
   workspaceId,
   onConnectedCount,
+  onObsidianAdded,
 }: {
   workspaceId: string | null;
   onConnectedCount: (n: number) => void;
+  onObsidianAdded: () => void;
 }) {
   const searchParams = useSearchParams();
   const [statuses, setStatuses] = useState<Record<string, boolean>>({});
@@ -231,6 +295,13 @@ function ConnectStep({
               <span className="text-[14px] text-foreground">{p.label}</span>
               {connected ? (
                 <span className="text-[12px] font-medium text-success">Connected ✓</span>
+              ) : p.keyBased ? (
+                <a
+                  href="/settings/integrations"
+                  className="rounded-md border border-border px-3 py-1.5 text-[12px] text-foreground hover:bg-raised hover:border-brand"
+                >
+                  Add API key
+                </a>
               ) : (
                 <button
                   type="button"
@@ -243,6 +314,23 @@ function ConnectStep({
             </div>
           );
         })}
+      </div>
+
+      {/* Obsidian is an upload, not a sync connector — the vault's markdown
+          lands in Files. Counts as "added something" so you can continue. */}
+      <div className="rounded-lg border border-border bg-surface px-4 py-3">
+        <div className="flex items-center justify-between">
+          <span className="text-[14px] text-foreground">Obsidian vault</span>
+          <span className="text-[11.5px] text-muted">Upload — lands in Files</span>
+        </div>
+        {workspaceId && (
+          <div className="mt-3">
+            <ObsidianVaultDropZone
+              workspaceId={workspaceId}
+              onUploaded={onObsidianAdded}
+            />
+          </div>
+        )}
       </div>
     </div>
   );
@@ -266,7 +354,7 @@ function AskStep({ workspaceId }: { workspaceId: string | null }) {
 }
 
 function ProgressBar({ stepIdx }: { stepIdx: number }) {
-  const labels = ["Connect", "Ask"];
+  const labels = ["Welcome", "Connect", "Ask"];
   return (
     <div className="flex items-center gap-2">
       {labels.map((label, i) => {

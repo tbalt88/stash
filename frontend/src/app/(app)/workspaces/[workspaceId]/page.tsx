@@ -6,6 +6,7 @@ import { useCallback, useEffect, useState } from "react";
 import DescriptionEditor, {
   isBlankDescription,
 } from "../../../../components/DescriptionEditor";
+import { seedWelcomePage } from "../../../../lib/onboarding/seedWelcome";
 import {
   SkeletonBlock,
   WorkspaceHomeSkeleton,
@@ -79,6 +80,23 @@ export default function WorkspaceHomePage() {
 
   // Single-owner workspace: the viewer owns their own space.
   const isMember = !!user && !!workspace && workspace.creator_id === user.id;
+
+  // A fresh workspace lands empty; seed the "what to do next" welcome doc as
+  // the default description (idempotent — only writes when still blank). Covers
+  // skipped onboarding and pre-existing empty workspaces, not just the finish
+  // path. The owner can edit or delete it like any page.
+  useEffect(() => {
+    if (!user || !workspace) return;
+    if (workspace.creator_id !== user.id) return;
+    if (!isBlankDescription(workspace.description ?? "")) return;
+    seedWelcomePage({
+      workspaceId,
+      displayName: user.display_name || user.name,
+    })
+      .then(() => getWorkspace(workspaceId))
+      .then(setWorkspace)
+      .catch(() => {});
+  }, [user, workspace, workspaceId]);
 
   async function handleJoin() {
     if (!workspace) return;
