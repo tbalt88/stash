@@ -10,11 +10,11 @@ import { useAuth } from "../../../../../../hooks/useAuth";
 import {
   ApiError,
   getFolderContents,
-  getPublicStash,
-  type PublicStashItem,
-  type WorkspaceStash,
+  getPublicCartridge,
+  type PublicCartridgeItem,
+  type WorkspaceCartridge,
 } from "../../../../../../lib/api";
-import { FolderBody } from "../../../../stashes/[slug]/StashItemBodies";
+import { FolderBody } from "../../../../cartridges/[slug]/CartridgeItemBodies";
 
 export default function FolderDetailPage() {
   const params = useParams();
@@ -31,15 +31,15 @@ export default function FolderDetailPage() {
   const [crumbs, setCrumbs] = useState<{ label: string; href?: string }[]>([
     { label: "Folder" },
   ]);
-  const [stashFallback, setStashFallback] = useState<
-    { stash: WorkspaceStash; item: PublicStashItem } | null
+  const [stashFallback, setCartridgeFallback] = useState<
+    { stash: WorkspaceCartridge; item: PublicCartridgeItem } | null
   >(null);
   const [error, setError] = useState("");
 
-  const loadStashFallback = useCallback(async () => {
+  const loadCartridgeFallback = useCallback(async () => {
     if (!stashSlug) return false;
     try {
-      const data = await getPublicStash(stashSlug);
+      const data = await getPublicCartridge(stashSlug);
       const item = data.items.find(
         (it) => it.object_type === "folder" && it.object_id === folderId,
       );
@@ -47,7 +47,7 @@ export default function FolderDetailPage() {
         setError("This folder isn't part of the linked Stash.");
         return false;
       }
-      setStashFallback({ stash: data.stash, item });
+      setCartridgeFallback({ stash: data.stash, item });
       setError("");
       return true;
     } catch (e) {
@@ -58,7 +58,7 @@ export default function FolderDetailPage() {
 
   useEffect(() => {
     if (!user) {
-      if (!loading && stashSlug) void loadStashFallback();
+      if (!loading && stashSlug) void loadCartridgeFallback();
       return;
     }
     let cancelled = false;
@@ -74,7 +74,7 @@ export default function FolderDetailPage() {
           ...trail,
           { label: c.folder.name },
         ]);
-        setStashFallback(null);
+        setCartridgeFallback(null);
       })
       .catch(async (e) => {
         if (cancelled) return;
@@ -83,13 +83,13 @@ export default function FolderDetailPage() {
           e instanceof ApiError &&
           (e.status === 401 || e.status === 403 || e.status === 404)
         ) {
-          await loadStashFallback();
+          await loadCartridgeFallback();
         }
       });
     return () => {
       cancelled = true;
     };
-  }, [user, loading, workspaceId, folderId, stashSlug, loadStashFallback]);
+  }, [user, loading, workspaceId, folderId, stashSlug, loadCartridgeFallback]);
 
   useBreadcrumbs(
     crumbs,
@@ -103,7 +103,7 @@ export default function FolderDetailPage() {
   if (loading) return <FileBrowserSkeleton />;
   if (stashFallback) {
     return (
-      <StashFallbackFolderView
+      <CartridgeFallbackFolderView
         stashSlug={stashSlug ?? ""}
         stashTitle={stashFallback.stash.title}
         item={stashFallback.item}
@@ -124,20 +124,20 @@ export default function FolderDetailPage() {
   return <WorkspaceFileBrowser workspaceId={workspaceId} folderId={folderId} />;
 }
 
-function StashFallbackFolderView({
+function CartridgeFallbackFolderView({
   stashSlug,
   stashTitle,
   item,
 }: {
   stashSlug: string;
   stashTitle: string;
-  item: PublicStashItem;
+  item: PublicCartridgeItem;
 }) {
   return (
     <div className="scroll-thin flex-1 overflow-y-auto">
       <div className="mx-auto max-w-[920px] px-12 pb-20 pt-6">
         <Link
-          href={`/stashes/${stashSlug}`}
+          href={`/cartridges/${stashSlug}`}
           className="inline-flex items-center gap-1 text-[12.5px] text-muted hover:text-foreground"
         >
           ← {stashTitle}

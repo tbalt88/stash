@@ -5,8 +5,8 @@ import uuid
 import pytest
 from httpx import AsyncClient
 
-from backend.models import StashItem
-from backend.services import permission_service, stash_service
+from backend.models import CartridgeItem
+from backend.services import cartridge_service, permission_service
 
 from .conftest import unique_name
 
@@ -151,9 +151,9 @@ async def _make_history_event(
     )
 
 
-async def _make_stash(workspace_id, owner_id, access, object_type, object_id):
+async def _make_cartridge(workspace_id, owner_id, access, object_type, object_id):
     workspace_permission, public_permission = _permissions_for_access(access)
-    return await stash_service.create_stash(
+    return await cartridge_service.create_cartridge(
         workspace_id=workspace_id,
         owner_id=owner_id,
         title=f"{access} Stash",
@@ -162,7 +162,7 @@ async def _make_stash(workspace_id, owner_id, access, object_type, object_id):
         public_permission=public_permission,
         discoverable=False,
         cover_image_url=None,
-        items=[StashItem(object_type=object_type, object_id=object_id)],
+        items=[CartridgeItem(object_type=object_type, object_id=object_id)],
     )
 
 
@@ -174,11 +174,11 @@ def _permissions_for_access(access):
     return "read", "none"
 
 
-async def _add_stash_member(pool, stash_id, user_id, granted_by, permission="read"):
+async def _add_cartridge_member(pool, cartridge_id, user_id, granted_by, permission="read"):
     await pool.execute(
-        "INSERT INTO stash_members (stash_id, user_id, permission, granted_by) "
+        "INSERT INTO cartridge_members (cartridge_id, user_id, permission, granted_by) "
         "VALUES ($1, $2, $3, $4)",
-        stash_id,
+        cartridge_id,
         user_id,
         permission,
         granted_by,
@@ -236,26 +236,26 @@ async def test_non_member_cannot_read_unstashed_content(pool):
 
 
 @pytest.mark.asyncio
-async def test_public_stash_makes_page_anonymously_readable(pool):
+async def test_public_cartridge_makes_page_anonymously_readable(pool):
     owner_id = await _make_user(pool)
     ws_id = await _make_workspace(pool, owner_id)
     page_id = await _make_page(pool, ws_id, owner_id)
 
-    await _make_stash(ws_id, owner_id, "public", "page", page_id)
+    await _make_cartridge(ws_id, owner_id, "public", "page", page_id)
 
     assert await permission_service.check_access("page", page_id, None)
     assert await permission_service.get_visibility("page", page_id) == "public"
 
 
 @pytest.mark.asyncio
-async def test_private_stash_hides_page_from_workspace_member(pool):
+async def test_private_cartridge_hides_page_from_workspace_member(pool):
     owner_id = await _make_user(pool)
     member_id = await _make_user(pool)
     ws_id = await _make_workspace(pool, owner_id)
     await _add_workspace_member(pool, ws_id, member_id)
     page_id = await _make_page(pool, ws_id, owner_id)
 
-    await _make_stash(ws_id, owner_id, "private", "page", page_id)
+    await _make_cartridge(ws_id, owner_id, "private", "page", page_id)
 
     assert await permission_service.check_access("page", page_id, owner_id, workspace_id=ws_id)
     assert not await permission_service.check_access("page", page_id, member_id, workspace_id=ws_id)
@@ -263,9 +263,9 @@ async def test_private_stash_hides_page_from_workspace_member(pool):
 
 
 @pytest.mark.asyncio
-async def test_private_stash_hides_member_content_from_workspace_admin(client: AsyncClient):
-    admin_key, admin = await _register(client, "private_stash_admin")
-    member_key, _member = await _register(client, "private_stash_member_owner")
+async def test_private_cartridge_hides_member_content_from_workspace_admin(client: AsyncClient):
+    admin_key, admin = await _register(client, "private_cartridge_admin")
+    member_key, _member = await _register(client, "private_cartridge_member_owner")
 
     workspace_resp = await client.post(
         "/api/v1/workspaces",
@@ -290,7 +290,7 @@ async def test_private_stash_hides_member_content_from_workspace_admin(client: A
     page = page_resp.json()
 
     stash_resp = await client.post(
-        f"/api/v1/workspaces/{workspace['id']}/stashes",
+        f"/api/v1/workspaces/{workspace['id']}/cartridges",
         json={
             "title": "Member private stash",
             "workspace_permission": "none",
@@ -308,7 +308,7 @@ async def test_private_stash_hides_member_content_from_workspace_admin(client: A
         uuid.UUID(admin["id"]),
         workspace_id=uuid.UUID(workspace["id"]),
     )
-    assert not await stash_service.user_can_read(
+    assert not await cartridge_service.user_can_read(
         uuid.UUID(stash["id"]),
         uuid.UUID(admin["id"]),
     )
@@ -320,24 +320,24 @@ async def test_private_stash_hides_member_content_from_workspace_admin(client: A
     assert page_get_resp.status_code == 404
 
     stashes_resp = await client.get(
-        f"/api/v1/workspaces/{workspace['id']}/stashes",
+        f"/api/v1/workspaces/{workspace['id']}/cartridges",
         headers=_auth(admin_key),
     )
     assert stashes_resp.status_code == 200
-    assert stashes_resp.json()["stashes"] == []
+    assert stashes_resp.json()["cartridges"] == []
 
 
 @pytest.mark.asyncio
-async def test_private_stash_member_can_read_and_write_with_permission(pool):
+async def test_private_cartridge_member_can_read_and_write_with_permission(pool):
     owner_id = await _make_user(pool)
     reader_id = await _make_user(pool)
     writer_id = await _make_user(pool)
     ws_id = await _make_workspace(pool, owner_id)
     page_id = await _make_page(pool, ws_id, owner_id)
-    stash = await _make_stash(ws_id, owner_id, "private", "page", page_id)
+    stash = await _make_cartridge(ws_id, owner_id, "private", "page", page_id)
 
-    await _add_stash_member(pool, stash["id"], reader_id, owner_id, "read")
-    await _add_stash_member(pool, stash["id"], writer_id, owner_id, "write")
+    await _add_cartridge_member(pool, stash["id"], reader_id, owner_id, "read")
+    await _add_cartridge_member(pool, stash["id"], writer_id, owner_id, "write")
 
     assert await permission_service.check_access("page", page_id, reader_id)
     assert not await permission_service.check_access("page", page_id, reader_id, require_write=True)
@@ -345,9 +345,9 @@ async def test_private_stash_member_can_read_and_write_with_permission(pool):
 
 
 @pytest.mark.asyncio
-async def test_workspace_stash_content_requires_stash_write_permission(client: AsyncClient):
-    owner_key, _owner = await _register(client, "workspace_stash_owner")
-    member_key, member = await _register(client, "workspace_stash_member")
+async def test_workspace_cartridge_content_requires_cartridge_write_permission(client: AsyncClient):
+    owner_key, _owner = await _register(client, "workspace_cartridge_owner")
+    member_key, member = await _register(client, "workspace_cartridge_member")
 
     workspace = (
         await client.post(
@@ -371,7 +371,7 @@ async def test_workspace_stash_content_requires_stash_write_permission(client: A
     ).json()
     stash = (
         await client.post(
-            f"/api/v1/workspaces/{workspace['id']}/stashes",
+            f"/api/v1/workspaces/{workspace['id']}/cartridges",
             json={
                 "title": "Workspace plan",
                 "workspace_permission": "read",
@@ -390,7 +390,7 @@ async def test_workspace_stash_content_requires_stash_write_permission(client: A
     assert denied.status_code == 404
 
     grant = await client.post(
-        f"/api/v1/stashes/{stash['id']}/members",
+        f"/api/v1/cartridges/{stash['id']}/members",
         json={"user_id": member["id"], "permission": "write"},
         headers=_auth(owner_key),
     )
@@ -414,7 +414,7 @@ async def test_public_view_with_workspace_edit_permissions(pool):
     await _add_workspace_member(pool, ws_id, member_id)
     page_id = await _make_page(pool, ws_id, owner_id)
 
-    await stash_service.create_stash(
+    await cartridge_service.create_cartridge(
         workspace_id=ws_id,
         owner_id=owner_id,
         title="Public read workspace edit",
@@ -423,7 +423,7 @@ async def test_public_view_with_workspace_edit_permissions(pool):
         public_permission="read",
         discoverable=False,
         cover_image_url=None,
-        items=[StashItem(object_type="page", object_id=page_id)],
+        items=[CartridgeItem(object_type="page", object_id=page_id)],
     )
 
     assert await permission_service.check_access("page", page_id, None)
@@ -443,7 +443,7 @@ async def test_public_edit_permission_allows_authenticated_writer(pool):
     ws_id = await _make_workspace(pool, owner_id)
     page_id = await _make_page(pool, ws_id, owner_id)
 
-    await stash_service.create_stash(
+    await cartridge_service.create_cartridge(
         workspace_id=ws_id,
         owner_id=owner_id,
         title="Public edit",
@@ -452,7 +452,7 @@ async def test_public_edit_permission_allows_authenticated_writer(pool):
         public_permission="write",
         discoverable=False,
         cover_image_url=None,
-        items=[StashItem(object_type="page", object_id=page_id)],
+        items=[CartridgeItem(object_type="page", object_id=page_id)],
     )
 
     assert await permission_service.check_access("page", page_id, None)
@@ -460,7 +460,7 @@ async def test_public_edit_permission_allows_authenticated_writer(pool):
 
 
 @pytest.mark.asyncio
-async def test_invited_private_external_stash_can_be_added_to_workspace(client: AsyncClient):
+async def test_invited_private_external_cartridge_can_be_added_to_workspace(client: AsyncClient):
     owner_key, _owner = await _register(client, "private_external_owner")
     collaborator_key, collaborator = await _register(client, "private_external_collaborator")
 
@@ -487,7 +487,7 @@ async def test_invited_private_external_stash_can_be_added_to_workspace(client: 
     ).json()
     stash = (
         await client.post(
-            f"/api/v1/workspaces/{source_workspace['id']}/stashes",
+            f"/api/v1/workspaces/{source_workspace['id']}/cartridges",
             json={
                 "title": "Private external brief",
                 "workspace_permission": "none",
@@ -498,14 +498,14 @@ async def test_invited_private_external_stash_can_be_added_to_workspace(client: 
         )
     ).json()
     grant = await client.post(
-        f"/api/v1/stashes/{stash['id']}/members",
+        f"/api/v1/cartridges/{stash['id']}/members",
         json={"user_id": collaborator["id"], "permission": "read"},
         headers=_auth(owner_key),
     )
     assert grant.status_code == 201
 
     added = await client.post(
-        f"/api/v1/stashes/{stash['slug']}/add-to-workspace",
+        f"/api/v1/cartridges/{stash['slug']}/add-to-workspace",
         json={"workspace_id": target_workspace["id"]},
         headers=_auth(collaborator_key),
     )
@@ -514,7 +514,7 @@ async def test_invited_private_external_stash_can_be_added_to_workspace(client: 
     assert fork["is_external"] is True
     assert fork["workspace_id"] == target_workspace["id"]
     assert fork["added_to_workspace_id"] == target_workspace["id"]
-    assert fork["forked_from_stash_id"] == stash["id"]
+    assert fork["forked_from_cartridge_id"] == stash["id"]
     assert fork["id"] != stash["id"]
 
     fork_page_id = fork["items"][0]["object_id"]
@@ -541,7 +541,7 @@ async def test_invited_private_external_stash_can_be_added_to_workspace(client: 
 
 
 @pytest.mark.asyncio
-async def test_stash_member_api_grants_and_revokes_private_page_access(
+async def test_cartridge_member_api_grants_and_revokes_private_page_access(
     client: AsyncClient,
 ):
     owner_key, owner = await _register(client, "stash_owner")
@@ -564,7 +564,7 @@ async def test_stash_member_api_grants_and_revokes_private_page_access(
     page = page_resp.json()
 
     stash_resp = await client.post(
-        f"/api/v1/workspaces/{workspace['id']}/stashes",
+        f"/api/v1/workspaces/{workspace['id']}/cartridges",
         json={
             "title": "Private plan stash",
             "workspace_permission": "none",
@@ -584,7 +584,7 @@ async def test_stash_member_api_grants_and_revokes_private_page_access(
     )
 
     add_resp = await client.post(
-        f"/api/v1/stashes/{stash['id']}/members",
+        f"/api/v1/cartridges/{stash['id']}/members",
         json={"user_id": collaborator["id"], "permission": "write"},
         headers=_auth(owner_key),
     )
@@ -592,7 +592,7 @@ async def test_stash_member_api_grants_and_revokes_private_page_access(
     assert add_resp.json()["permission"] == "write"
 
     members_resp = await client.get(
-        f"/api/v1/stashes/{stash['id']}/members",
+        f"/api/v1/cartridges/{stash['id']}/members",
         headers=_auth(owner_key),
     )
     assert members_resp.status_code == 200
@@ -605,14 +605,14 @@ async def test_stash_member_api_grants_and_revokes_private_page_access(
     )
 
     forbidden_resp = await client.post(
-        f"/api/v1/stashes/{stash['id']}/members",
+        f"/api/v1/cartridges/{stash['id']}/members",
         json={"user_id": owner["id"], "permission": "read"},
         headers=_auth(collaborator_key),
     )
     assert forbidden_resp.status_code == 403
 
     delete_resp = await client.delete(
-        f"/api/v1/stashes/{stash['id']}/members/{collaborator['id']}",
+        f"/api/v1/cartridges/{stash['id']}/members/{collaborator['id']}",
         headers=_auth(owner_key),
     )
     assert delete_resp.status_code == 204
@@ -625,7 +625,7 @@ async def test_stash_member_api_grants_and_revokes_private_page_access(
 
 
 @pytest.mark.asyncio
-async def test_stash_write_member_can_create_shared_page_outside_workspace_files(
+async def test_cartridge_write_member_can_create_shared_page_outside_workspace_files(
     client: AsyncClient,
 ):
     owner_key, _owner = await _register(client, "shared_page_owner")
@@ -648,7 +648,7 @@ async def test_stash_write_member_can_create_shared_page_outside_workspace_files
     page = page_resp.json()
 
     stash_resp = await client.post(
-        f"/api/v1/workspaces/{workspace['id']}/stashes",
+        f"/api/v1/workspaces/{workspace['id']}/cartridges",
         json={
             "title": "Private edit stash",
             "workspace_permission": "none",
@@ -661,23 +661,23 @@ async def test_stash_write_member_can_create_shared_page_outside_workspace_files
     stash = stash_resp.json()
 
     add_resp = await client.post(
-        f"/api/v1/stashes/{stash['id']}/members",
+        f"/api/v1/cartridges/{stash['id']}/members",
         json={"user_id": collaborator["id"], "permission": "write"},
         headers=_auth(owner_key),
     )
     assert add_resp.status_code == 201
 
     shared_resp = await client.post(
-        f"/api/v1/stashes/{stash['id']}/shared-pages",
+        f"/api/v1/cartridges/{stash['id']}/shared-pages",
         json={"name": "Collaborator note", "content": "# Collaborator note"},
         headers=_auth(collaborator_key),
     )
     assert shared_resp.status_code == 201
     shared_page = shared_resp.json()
-    assert shared_page["metadata"]["shared_in_stash_id"] == stash["id"]
+    assert shared_page["metadata"]["shared_in_cartridge_id"] == stash["id"]
 
     stash_detail = await client.get(
-        f"/api/v1/stashes/{stash['slug']}",
+        f"/api/v1/cartridges/{stash['slug']}",
         headers=_auth(collaborator_key),
     )
     assert stash_detail.status_code == 200
@@ -704,7 +704,7 @@ async def test_stash_write_member_can_create_shared_page_outside_workspace_files
 
 
 @pytest.mark.asyncio
-async def test_private_stash_hides_session_surfaces_until_user_is_added(
+async def test_private_cartridge_hides_session_surfaces_until_user_is_added(
     client: AsyncClient,
     pool,
 ):
@@ -737,7 +737,7 @@ async def test_private_stash_hides_session_surfaces_until_user_is_added(
         content="secret session note",
         event_type="user_message",
     )
-    stash = await _make_stash(
+    stash = await _make_cartridge(
         workspace_id,
         owner_id,
         "private",
@@ -812,7 +812,7 @@ async def test_private_stash_hides_session_surfaces_until_user_is_added(
     assert timeline_resp.status_code == 200
     assert timeline_resp.json()["contributors"] == []
 
-    await _add_stash_member(pool, stash["id"], member_id, owner_id, "read")
+    await _add_cartridge_member(pool, stash["id"], member_id, owner_id, "read")
 
     overview_resp = await client.get(
         f"/api/v1/workspaces/{workspace['id']}/overview",
@@ -856,7 +856,7 @@ async def test_private_stash_hides_session_surfaces_until_user_is_added(
 
 
 @pytest.mark.asyncio
-async def test_private_stash_hides_files_pages_and_tables_until_user_is_added(
+async def test_private_cartridge_hides_files_pages_and_tables_until_user_is_added(
     client: AsyncClient,
     pool,
 ):
@@ -879,9 +879,9 @@ async def test_private_stash_hides_files_pages_and_tables_until_user_is_added(
     file_id = await _make_file(pool, workspace_id, owner_id, name="private.txt")
     table_id = await _make_table(pool, workspace_id, owner_id, name="Private table")
 
-    page_stash = await _make_stash(workspace_id, owner_id, "private", "page", page_id)
-    file_stash = await _make_stash(workspace_id, owner_id, "private", "file", file_id)
-    table_stash = await _make_stash(workspace_id, owner_id, "private", "table", table_id)
+    page_cartridge = await _make_cartridge(workspace_id, owner_id, "private", "page", page_id)
+    file_cartridge = await _make_cartridge(workspace_id, owner_id, "private", "file", file_id)
+    table_cartridge = await _make_cartridge(workspace_id, owner_id, "private", "table", table_id)
 
     overview_resp = await client.get(
         f"/api/v1/workspaces/{workspace['id']}/overview",
@@ -918,9 +918,9 @@ async def test_private_stash_hides_files_pages_and_tables_until_user_is_added(
     )
     assert table_resp.status_code == 404
 
-    await _add_stash_member(pool, page_stash["id"], member_id, owner_id, "read")
-    await _add_stash_member(pool, file_stash["id"], member_id, owner_id, "read")
-    await _add_stash_member(pool, table_stash["id"], member_id, owner_id, "read")
+    await _add_cartridge_member(pool, page_cartridge["id"], member_id, owner_id, "read")
+    await _add_cartridge_member(pool, file_cartridge["id"], member_id, owner_id, "read")
+    await _add_cartridge_member(pool, table_cartridge["id"], member_id, owner_id, "read")
 
     overview_resp = await client.get(
         f"/api/v1/workspaces/{workspace['id']}/overview",
@@ -967,8 +967,8 @@ async def test_folder_contents_do_not_leak_private_child_counts(client: AsyncCli
     page_id = await _make_page(pool, workspace_id, owner_id, folder_id=child_id)
     file_id = await _make_file(pool, workspace_id, owner_id, folder_id=child_id)
 
-    await _make_stash(workspace_id, owner_id, "private", "page", page_id)
-    await _make_stash(workspace_id, owner_id, "private", "file", file_id)
+    await _make_cartridge(workspace_id, owner_id, "private", "page", page_id)
+    await _make_cartridge(workspace_id, owner_id, "private", "file", file_id)
 
     contents_resp = await client.get(
         f"/api/v1/workspaces/{workspace['id']}/folders/{parent_id}/contents",
@@ -982,15 +982,15 @@ async def test_folder_contents_do_not_leak_private_child_counts(client: AsyncCli
 
 
 @pytest.mark.asyncio
-async def test_private_stash_partitions_items_from_workspace_and_public_stashes(pool):
+async def test_private_cartridge_partitions_items_from_workspace_and_public_stashes(pool):
     owner_id = await _make_user(pool)
     ws_id = await _make_workspace(pool, owner_id)
     page_id = await _make_page(pool, ws_id, owner_id)
 
-    await _make_stash(ws_id, owner_id, "private", "page", page_id)
+    await _make_cartridge(ws_id, owner_id, "private", "page", page_id)
 
-    with pytest.raises(ValueError, match="private Stashes"):
-        await _make_stash(ws_id, owner_id, "workspace", "page", page_id)
+    with pytest.raises(ValueError, match="private Cartridges"):
+        await _make_cartridge(ws_id, owner_id, "workspace", "page", page_id)
 
 
 @pytest.mark.asyncio
@@ -1000,10 +1000,10 @@ async def test_folder_partition_blocks_descendant_page_conflicts(pool):
     folder_id = await _make_folder(pool, ws_id, owner_id)
     page_id = await _make_page(pool, ws_id, owner_id, folder_id=folder_id)
 
-    await _make_stash(ws_id, owner_id, "private", "folder", folder_id)
+    await _make_cartridge(ws_id, owner_id, "private", "folder", folder_id)
 
-    with pytest.raises(ValueError, match="private Stashes"):
-        await _make_stash(ws_id, owner_id, "public", "page", page_id)
+    with pytest.raises(ValueError, match="private Cartridges"):
+        await _make_cartridge(ws_id, owner_id, "public", "page", page_id)
 
 
 @pytest.mark.asyncio
@@ -1013,14 +1013,14 @@ async def test_page_partition_blocks_ancestor_folder_conflicts(pool):
     folder_id = await _make_folder(pool, ws_id, owner_id)
     page_id = await _make_page(pool, ws_id, owner_id, folder_id=folder_id)
 
-    await _make_stash(ws_id, owner_id, "private", "page", page_id)
+    await _make_cartridge(ws_id, owner_id, "private", "page", page_id)
 
-    with pytest.raises(ValueError, match="private Stashes"):
-        await _make_stash(ws_id, owner_id, "workspace", "folder", folder_id)
+    with pytest.raises(ValueError, match="private Cartridges"):
+        await _make_cartridge(ws_id, owner_id, "workspace", "folder", folder_id)
 
 
 @pytest.mark.asyncio
-async def test_page_inherits_folder_stash_access(pool):
+async def test_page_inherits_folder_cartridge_access(pool):
     owner_id = await _make_user(pool)
     member_id = await _make_user(pool)
     ws_id = await _make_workspace(pool, owner_id)
@@ -1028,13 +1028,13 @@ async def test_page_inherits_folder_stash_access(pool):
     folder_id = await _make_folder(pool, ws_id, owner_id)
     page_id = await _make_page(pool, ws_id, owner_id, folder_id=folder_id)
 
-    await _make_stash(ws_id, owner_id, "private", "folder", folder_id)
+    await _make_cartridge(ws_id, owner_id, "private", "folder", folder_id)
 
     assert not await permission_service.check_access("page", page_id, member_id, workspace_id=ws_id)
 
 
 @pytest.mark.asyncio
-async def test_nested_page_inherits_outer_folder_stash_access(pool):
+async def test_nested_page_inherits_outer_folder_cartridge_access(pool):
     owner_id = await _make_user(pool)
     member_id = await _make_user(pool)
     ws_id = await _make_workspace(pool, owner_id)
@@ -1043,38 +1043,38 @@ async def test_nested_page_inherits_outer_folder_stash_access(pool):
     inner = await _make_folder(pool, ws_id, owner_id, name="inner", parent_folder_id=outer)
     page_id = await _make_page(pool, ws_id, owner_id, folder_id=inner)
 
-    await _make_stash(ws_id, owner_id, "private", "folder", outer)
+    await _make_cartridge(ws_id, owner_id, "private", "folder", outer)
 
     assert not await permission_service.check_access("page", page_id, member_id)
 
 
 @pytest.mark.asyncio
-async def test_page_reports_stash_membership_from_parent_folder(pool):
+async def test_page_reports_cartridge_membership_from_parent_folder(pool):
     owner_id = await _make_user(pool)
     ws_id = await _make_workspace(pool, owner_id)
     folder_id = await _make_folder(pool, ws_id, owner_id)
     page_id = await _make_page(pool, ws_id, owner_id, folder_id=folder_id)
-    stash = await _make_stash(ws_id, owner_id, "workspace", "folder", folder_id)
+    stash = await _make_cartridge(ws_id, owner_id, "workspace", "folder", folder_id)
 
-    stashes = await stash_service.list_object_stashes(ws_id, "page", page_id, owner_id)
+    cartridges = await cartridge_service.list_object_stashes(ws_id, "page", page_id, owner_id)
 
-    assert [item["id"] for item in stashes] == [stash["id"]]
+    assert [item["id"] for item in cartridges] == [stash["id"]]
 
 
 @pytest.mark.asyncio
-async def test_folder_stash_inlines_folder_files(pool, monkeypatch):
+async def test_folder_cartridge_inlines_folder_files(pool, monkeypatch):
     async def fake_file_url(storage_key, expires_in=3600):
         return f"https://files.test/{storage_key}?expires={expires_in}"
 
-    monkeypatch.setattr(stash_service.storage_service, "get_file_url", fake_file_url)
+    monkeypatch.setattr(cartridge_service.storage_service, "get_file_url", fake_file_url)
 
     owner_id = await _make_user(pool)
     ws_id = await _make_workspace(pool, owner_id)
     folder_id = await _make_folder(pool, ws_id, owner_id)
     await _make_file(pool, ws_id, owner_id, folder_id=folder_id, name="brief.pdf")
-    stash = await _make_stash(ws_id, owner_id, "workspace", "folder", folder_id)
+    stash = await _make_cartridge(ws_id, owner_id, "workspace", "folder", folder_id)
 
-    items = await stash_service.inline_items(stash, owner_id)
+    items = await cartridge_service.inline_items(stash, owner_id)
 
     files = items[0]["inline"]["files"]
     assert [file["name"] for file in files] == ["brief.pdf"]
@@ -1082,14 +1082,14 @@ async def test_folder_stash_inlines_folder_files(pool, monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_public_folder_stash_file_download_url_works_anonymously(client, pool, monkeypatch):
+async def test_public_folder_cartridge_file_download_url_works_anonymously(client, pool, monkeypatch):
     async def fake_download_file(storage_key):
         return f"bytes from {storage_key}".encode()
 
     async def fake_file_url(storage_key, expires_in=3600):
         return f"https://files.test/{storage_key}?expires={expires_in}"
 
-    monkeypatch.setattr(stash_service.storage_service, "get_file_url", fake_file_url)
+    monkeypatch.setattr(cartridge_service.storage_service, "get_file_url", fake_file_url)
     monkeypatch.setattr("backend.routers.files.storage_service.download_file", fake_download_file)
 
     owner_id = await _make_user(pool)
@@ -1114,16 +1114,16 @@ async def test_public_folder_stash_file_download_url_works_anonymously(client, p
         folder_id=folder_id,
         content=f"![public]({public_url})\n![private]({private_url})",
     )
-    stash = await _make_stash(ws_id, owner_id, "public", "folder", folder_id)
+    stash = await _make_cartridge(ws_id, owner_id, "public", "folder", folder_id)
 
-    items = await stash_service.inline_items(stash, None)
+    items = await cartridge_service.inline_items(stash, None)
 
     content = items[0]["inline"]["pages"][0]["content_markdown"]
     assert public_url in content
     assert private_url in content
 
     stale_token_resp = await client.get(
-        f"/api/v1/stashes/{stash['slug']}",
+        f"/api/v1/cartridges/{stash['slug']}",
         headers={"Authorization": "Bearer mc_invalid"},
     )
     public_resp = await client.get(public_url)
@@ -1155,7 +1155,7 @@ async def test_object_level_permission_mutators_are_not_routes(client: AsyncClie
     page = (
         await client.post(
             f"/api/v1/workspaces/{workspace['id']}/pages/new",
-            json={"name": "Plan", "folder_id": folder["id"], "content": "Only Stashes share"},
+            json={"name": "Plan", "folder_id": folder["id"], "content": "Only Cartridges share"},
             headers=_auth(api_key),
         )
     ).json()

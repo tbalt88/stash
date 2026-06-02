@@ -257,30 +257,30 @@ def readable_session_event_condition(event_alias: str, user_arg: int) -> str:
               AND (
                 NOT EXISTS (
                   SELECT 1
-                  FROM stash_items session_stash_item
-                  WHERE session_stash_item.object_type = 'session'
-                    AND session_stash_item.object_id = readable_session.id
+                  FROM cartridge_items session_cartridge_item
+                  WHERE session_cartridge_item.object_type = 'session'
+                    AND session_cartridge_item.object_id = readable_session.id
                 )
                 OR EXISTS (
                   SELECT 1
-                  FROM stash_items session_stash_item
-                  JOIN stashes session_stash ON session_stash.id = session_stash_item.stash_id
+                  FROM cartridge_items session_cartridge_item
+                  JOIN cartridges session_cartridge ON session_cartridge.id = session_cartridge_item.cartridge_id
                   LEFT JOIN workspace_members session_workspace_member
-                    ON session_workspace_member.workspace_id = session_stash.workspace_id
+                    ON session_workspace_member.workspace_id = session_cartridge.workspace_id
                    AND session_workspace_member.user_id = ${user_arg}
-                  LEFT JOIN stash_members session_stash_member
-                    ON session_stash_member.stash_id = session_stash.id
-                   AND session_stash_member.user_id = ${user_arg}
-                  WHERE session_stash_item.object_type = 'session'
-                    AND session_stash_item.object_id = readable_session.id
+                  LEFT JOIN cartridge_members session_cartridge_member
+                    ON session_cartridge_member.cartridge_id = session_cartridge.id
+                   AND session_cartridge_member.user_id = ${user_arg}
+                  WHERE session_cartridge_item.object_type = 'session'
+                    AND session_cartridge_item.object_id = readable_session.id
                     AND (
-                      session_stash.public_permission != 'none'
+                      session_cartridge.public_permission != 'none'
                       OR (
-                        session_stash.workspace_permission != 'none'
+                        session_cartridge.workspace_permission != 'none'
                         AND session_workspace_member.user_id IS NOT NULL
                       )
-                      OR session_stash.owner_id = ${user_arg}
-                      OR session_stash_member.user_id IS NOT NULL
+                      OR session_cartridge.owner_id = ${user_arg}
+                      OR session_cartridge_member.user_id IS NOT NULL
                     )
                 )
               )

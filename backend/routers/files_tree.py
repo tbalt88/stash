@@ -192,7 +192,7 @@ async def get_folder_contents(
         "       ("
         "         SELECT COUNT(*) FROM pages p WHERE p.folder_id = f.id "
         "         AND p.workspace_id = $2 "
-        "         AND COALESCE(p.metadata->>'shared_in_stash_id', '') = '' "
+        "         AND COALESCE(p.metadata->>'shared_in_cartridge_id', '') = '' "
         "         AND p.deleted_at IS NULL "
         f"         AND {readable_page}"
         "       ) AS page_count, "
@@ -212,7 +212,7 @@ async def get_folder_contents(
     pages = await pool.fetch(
         "SELECT id, name, content_type FROM pages p WHERE p.folder_id = $1 "
         "AND p.workspace_id = $2 "
-        "AND COALESCE(p.metadata->>'shared_in_stash_id', '') = '' "
+        "AND COALESCE(p.metadata->>'shared_in_cartridge_id', '') = '' "
         "AND p.deleted_at IS NULL "
         f"AND {readable_page} "
         "ORDER BY name",

@@ -227,18 +227,18 @@ function resolveSessionPins(
   return rows;
 }
 
-function resolveStashPins(
+function resolveCartridgePins(
   ids: string[],
   spine: WorkspaceSidebar | null,
   pathname: string,
 ): PinnedRow[] {
-  if (!spine?.stashes) return [];
-  const byId = new Map(spine.stashes.map((s) => [s.id, s]));
+  if (!spine?.cartridges) return [];
+  const byId = new Map(spine.cartridges.map((s) => [s.id, s]));
   const rows: PinnedRow[] = [];
   for (const id of ids) {
     const stash = byId.get(id);
     if (!stash) continue;
-    const href = `/stashes/${stash.slug}`;
+    const href = `/cartridges/${stash.slug}`;
     rows.push({
       key: id,
       href,
@@ -518,7 +518,7 @@ export default function AppSidebar({
   const cachedWorkspaces = readCachedWorkspaces(userId);
   const routeWorkspaceId = pathname.match(/^\/workspaces\/([^/]+)/)?.[1] ?? null;
   // Persisted "last-viewed workspace" so navigation to non-workspace routes
-  // (/stashes/{slug}, /discover, /activity) doesn't lose the workspace
+  // (/cartridges/{slug}, /discover, /activity) doesn't lose the workspace
   // context. Updated below whenever the route reveals an explicit workspace.
   const [lastWorkspaceId, setLastWorkspaceId] = useState<string | null>(() => {
     if (typeof window === "undefined") return null;
@@ -551,7 +551,7 @@ export default function AppSidebar({
     (shared[0] ? { ...shared[0], shared: true } : null);
   const activeWorkspaceKey = activeWorkspace?.id ?? "";
 
-  const stashPins = usePins("stashes", activeWorkspaceKey);
+  const stashPins = usePins("cartridges", activeWorkspaceKey);
   const sessionPins = usePins("sessions", activeWorkspaceKey);
   const filePins = usePins("files", activeWorkspaceKey);
   const [openSections, setOpenSections] = useState<Record<string, boolean>>(() =>
@@ -615,7 +615,7 @@ export default function AppSidebar({
 
   const spine = activeWorkspace ? spines[activeWorkspace.id] ?? null : null;
   const stashRows = useMemo(
-    () => resolveStashPins(stashPins.pinnedIds, spine, pathname),
+    () => resolveCartridgePins(stashPins.pinnedIds, spine, pathname),
     [stashPins.pinnedIds, spine, pathname],
   );
   const sessionRows = useMemo(
@@ -638,18 +638,18 @@ export default function AppSidebar({
     }));
   }, [activeWorkspaceKey, sourceMap]);
 
-  const activeStashSlug = pathname.match(/^\/stashes\/([^/?#]+)/)?.[1] ?? null;
-  const activeStash =
-    activeWorkspace && activeStashSlug
-      ? spines[activeWorkspace.id]?.stashes?.find((stash) => stash.slug === activeStashSlug)
+  const activeCartridgeSlug = pathname.match(/^\/cartridges\/([^/?#]+)/)?.[1] ?? null;
+  const activeCartridge =
+    activeWorkspace && activeCartridgeSlug
+      ? spines[activeWorkspace.id]?.cartridges?.find((stash) => stash.slug === activeCartridgeSlug)
       : null;
-  const settingsHref = activeStash
-    ? `/stashes/${activeStash.slug}/settings`
+  const settingsHref = activeCartridge
+    ? `/cartridges/${activeCartridge.slug}/settings`
     : activeWorkspace
       ? `/workspaces/${activeWorkspace.id}/settings`
       : "";
-  const settingsActive = activeStash
-    ? pathname === `/stashes/${activeStash.slug}/settings`
+  const settingsActive = activeCartridge
+    ? pathname === `/cartridges/${activeCartridge.slug}/settings`
     : activeWorkspace
       ? pathname === `/workspaces/${activeWorkspace.id}/settings`
       : false;
@@ -701,15 +701,15 @@ export default function AppSidebar({
         {activeWorkspace ? (
           <>
             <PinnedSection
-              label="Stashes"
-              href={`/workspaces/${activeWorkspace.id}/stashes`}
+              label="Cartridges"
+              href={`/workspaces/${activeWorkspace.id}/cartridges`}
               headerActive={
-                pathname.startsWith(`/workspaces/${activeWorkspace.id}/stashes`) ||
-                pathname.startsWith("/stashes/")
+                pathname.startsWith(`/workspaces/${activeWorkspace.id}/cartridges`) ||
+                pathname.startsWith("/cartridges/")
               }
               items={stashRows}
-              open={sectionOpen("stashes")}
-              onToggle={() => toggleSection("stashes")}
+              open={sectionOpen("cartridges")}
+              onToggle={() => toggleSection("cartridges")}
             />
             <PinnedSection
               label="Sessions"

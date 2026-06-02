@@ -11,20 +11,20 @@ import { useAuth } from "../../../../../../hooks/useAuth";
 import {
   ApiError,
   fetchAuthed,
-  getPublicStash,
+  getPublicCartridge,
   getSessionDetail,
   getSessionEvents,
   getWorkspaceSidebar,
   listObjectStashes,
   renameSession,
   trashItem,
-  type PublicStashItem,
+  type PublicCartridgeItem,
   type SessionDetail,
   type SessionEvent,
-  type WorkspaceStash,
+  type WorkspaceCartridge,
 } from "../../../../../../lib/api";
 import { refreshWorkspaceSidebar } from "../../../../../../lib/stashNavigationCache";
-import { SessionBody } from "../../../../stashes/[slug]/StashItemBodies";
+import { SessionBody } from "../../../../cartridges/[slug]/CartridgeItemBodies";
 import EditableTitle from "../../../../../../components/workspace/EditableTitle";
 
 interface MessageTurn {
@@ -127,9 +127,9 @@ export default function SessionViewerPage() {
   const [agentName, setAgentName] = useState("");
   const [sessionDetail, setSessionDetail] = useState<SessionDetail | null>(null);
   const [turns, setTurns] = useState<MessageTurn[]>([]);
-  const [containingStashes, setContainingStashes] = useState<WorkspaceStash[]>([]);
-  const [stashFallback, setStashFallback] = useState<
-    { stash: WorkspaceStash; item: PublicStashItem } | null
+  const [containingStashes, setContainingStashes] = useState<WorkspaceCartridge[]>([]);
+  const [stashFallback, setCartridgeFallback] = useState<
+    { stash: WorkspaceCartridge; item: PublicCartridgeItem } | null
   >(null);
   const [error, setError] = useState("");
 
@@ -138,10 +138,10 @@ export default function SessionViewerPage() {
     `${workspaceId}/session/${sessionId}`
   );
 
-  const loadStashFallback = useCallback(async () => {
+  const loadCartridgeFallback = useCallback(async () => {
     if (!stashSlug) return false;
     try {
-      const data = await getPublicStash(stashSlug);
+      const data = await getPublicCartridge(stashSlug);
       const item = data.items.find((it) => {
         if (it.object_type !== "session") return false;
         const s = (it.inline as { session?: { session_id?: string } }).session;
@@ -151,7 +151,7 @@ export default function SessionViewerPage() {
         setError("This session isn't part of the linked Stash.");
         return false;
       }
-      setStashFallback({ stash: data.stash, item });
+      setCartridgeFallback({ stash: data.stash, item });
       setError("");
       return true;
     } catch (e) {
@@ -170,7 +170,7 @@ export default function SessionViewerPage() {
       setAgentName(detail.agent_name || events.find((event) => event.agent_name)?.agent_name || "");
       setSessionDetail(detail);
       setTurns(events.map(eventToTurn));
-      setStashFallback(null);
+      setCartridgeFallback(null);
       const session = sidebar.sessions.find((item) => item.session_id === sessionId);
       setContainingStashes(
         session?.id ? await listObjectStashes(workspaceId, "session", session.id) : []
@@ -181,16 +181,16 @@ export default function SessionViewerPage() {
         e instanceof ApiError &&
         (e.status === 401 || e.status === 403 || e.status === 404)
       ) {
-        if (await loadStashFallback()) return;
+        if (await loadCartridgeFallback()) return;
       }
       setError(e instanceof Error ? e.message : "Failed to load session");
     }
-  }, [workspaceId, sessionId, stashSlug, loadStashFallback]);
+  }, [workspaceId, sessionId, stashSlug, loadCartridgeFallback]);
 
   useEffect(() => {
     if (user) load();
-    else if (!loading && stashSlug) void loadStashFallback();
-  }, [user, loading, load, loadStashFallback, stashSlug]);
+    else if (!loading && stashSlug) void loadCartridgeFallback();
+  }, [user, loading, load, loadCartridgeFallback, stashSlug]);
 
   useEffect(() => {
     if (!loading && !user && !stashSlug) router.push("/login");
@@ -199,7 +199,7 @@ export default function SessionViewerPage() {
   if (loading) return <SessionDetailSkeleton />;
   if (stashFallback) {
     return (
-      <StashFallbackSessionView
+      <CartridgeFallbackSessionView
         stashSlug={stashSlug ?? ""}
         stashTitle={stashFallback.stash.title}
         item={stashFallback.item}
@@ -337,7 +337,7 @@ export default function SessionViewerPage() {
             )}
           </div>
         </main>
-        <SessionAside detail={sessionDetail} stashes={containingStashes} />
+        <SessionAside detail={sessionDetail} cartridges={containingStashes} />
       </div>
     </div>
   );
@@ -345,10 +345,10 @@ export default function SessionViewerPage() {
 
 function SessionAside({
   detail,
-  stashes,
+  cartridges,
 }: {
   detail: SessionDetail | null;
-  stashes: WorkspaceStash[];
+  cartridges: WorkspaceCartridge[];
 }) {
   const filesTouched = normalizeStringList(detail?.files_touched);
   const artifacts = detail?.artifacts ?? [];
@@ -410,13 +410,13 @@ function SessionAside({
         </div>
 
         <div className="card-soft p-3.5">
-          <div className="sys-label">In Stashes</div>
-          {stashes.length > 0 ? (
+          <div className="sys-label">In Cartridges</div>
+          {cartridges.length > 0 ? (
             <div className="mt-2 flex flex-col gap-1.5">
-              {stashes.map((stash) => (
+              {cartridges.map((stash) => (
                 <a
                   key={stash.id}
-                  href={`/stashes/${stash.slug}`}
+                  href={`/cartridges/${stash.slug}`}
                   className="linkrow px-2 py-1.5"
                 >
                   <span className="text-[var(--color-brand-600)]">
@@ -594,20 +594,20 @@ function MessageRow({ turn, index }: { turn: MessageTurn; index: number }) {
   );
 }
 
-function StashFallbackSessionView({
+function CartridgeFallbackSessionView({
   stashSlug,
   stashTitle,
   item,
 }: {
   stashSlug: string;
   stashTitle: string;
-  item: PublicStashItem;
+  item: PublicCartridgeItem;
 }) {
   return (
     <div className="scroll-thin flex-1 overflow-y-auto">
       <div className="mx-auto max-w-[920px] px-12 pb-20 pt-6">
         <Link
-          href={`/stashes/${stashSlug}`}
+          href={`/cartridges/${stashSlug}`}
           className="inline-flex items-center gap-1 text-[12.5px] text-muted hover:text-foreground"
         >
           ← {stashTitle}

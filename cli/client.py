@@ -9,7 +9,7 @@ from pathlib import Path
 import httpx
 
 
-class StashError(Exception):
+class CartridgeError(Exception):
     def __init__(self, status_code: int, detail):
         self.status_code = status_code
         self.detail = detail
@@ -26,7 +26,7 @@ def stash_permissions_for_access(access: str) -> dict[str, str]:
     raise ValueError("access must be public, workspace, or private")
 
 
-class StashClient:
+class CartridgeClient:
     def __init__(self, base_url: str, api_key: str = ""):
         self._base_url = base_url.rstrip("/")
         self._api_key = api_key
@@ -56,7 +56,7 @@ class StashClient:
                 detail = resp.json().get("detail", resp.text)
             except Exception:
                 detail = resp.text
-            raise StashError(resp.status_code, detail)
+            raise CartridgeError(resp.status_code, detail)
         return resp
 
     def _get(self, path: str, **params) -> dict | list:
@@ -147,14 +147,14 @@ class StashClient:
         params: dict = {"sort": sort}
         if query:
             params["q"] = query
-        return self._get("/api/v1/discover/stashes", **params)
+        return self._get("/api/v1/discover/cartridges", **params)
 
-    # --- Stashes (publishable subsets) ---
+    # --- Cartridges (publishable subsets) ---
 
     def list_stashes(self, workspace_id: str) -> list:
-        return self._list(f"/api/v1/workspaces/{workspace_id}/stashes", "stashes")
+        return self._list(f"/api/v1/workspaces/{workspace_id}/cartridges", "cartridges")
 
-    def create_stash(
+    def create_cartridge(
         self,
         workspace_id: str,
         title: str,
@@ -165,7 +165,7 @@ class StashClient:
         items: list | None = None,
     ) -> dict:
         return self._post(
-            f"/api/v1/workspaces/{workspace_id}/stashes",
+            f"/api/v1/workspaces/{workspace_id}/cartridges",
             json={
                 "title": title,
                 "description": description,
@@ -176,7 +176,7 @@ class StashClient:
             },
         )
 
-    def publish_stash(
+    def publish_cartridge(
         self,
         workspace_id: str,
         title: str,
@@ -186,7 +186,7 @@ class StashClient:
     ) -> dict:
         """Create a public Stash in one atomic call."""
         return self._post(
-            f"/api/v1/workspaces/{workspace_id}/stashes/publish",
+            f"/api/v1/workspaces/{workspace_id}/cartridges/publish",
             json={
                 "title": title,
                 "description": description,
@@ -197,26 +197,26 @@ class StashClient:
             },
         )
 
-    def update_stash(self, stash_id: str, **fields) -> dict:
-        return self._patch(f"/api/v1/stashes/{stash_id}", json=fields)
+    def update_cartridge(self, cartridge_id: str, **fields) -> dict:
+        return self._patch(f"/api/v1/cartridges/{cartridge_id}", json=fields)
 
-    def delete_stash(self, stash_id: str) -> None:
-        self._delete(f"/api/v1/stashes/{stash_id}")
+    def delete_cartridge(self, cartridge_id: str) -> None:
+        self._delete(f"/api/v1/cartridges/{cartridge_id}")
 
-    def add_external_stash(self, slug: str, workspace_id: str) -> dict:
+    def add_external_cartridge(self, slug: str, workspace_id: str) -> dict:
         return self._post(
-            f"/api/v1/stashes/{slug}/add-to-workspace",
+            f"/api/v1/cartridges/{slug}/add-to-workspace",
             json={"workspace_id": workspace_id},
         )
 
-    def remove_external_stash(self, workspace_id: str, stash_id: str) -> None:
-        self._delete(f"/api/v1/workspaces/{workspace_id}/external-stashes/{stash_id}")
+    def remove_external_cartridge(self, workspace_id: str, cartridge_id: str) -> None:
+        self._delete(f"/api/v1/workspaces/{workspace_id}/external-cartridges/{cartridge_id}")
 
-    def get_public_stash(self, slug: str) -> dict:
-        return self._get(f"/api/v1/stashes/{slug}")
+    def get_public_cartridge(self, slug: str) -> dict:
+        return self._get(f"/api/v1/cartridges/{slug}")
 
-    def get_stash_text(self, slug: str) -> str:
-        resp = self._request("GET", f"/api/v1/stashes/{slug}", params={"format": "text"})
+    def get_cartridge_text(self, slug: str) -> str:
+        resp = self._request("GET", f"/api/v1/cartridges/{slug}", params={"format": "text"})
         return resp.text
 
     # --- Magic-link invite tokens ---
@@ -251,7 +251,7 @@ class StashClient:
                 detail = resp.json().get("detail", resp.text)
             except Exception:
                 detail = resp.text
-            raise StashError(resp.status_code, detail)
+            raise CartridgeError(resp.status_code, detail)
         return resp.json()
 
     # --- Aggregate ---
@@ -371,7 +371,7 @@ class StashClient:
         event_type: str,
         content: str,
         session_id: str | None = None,
-        default_stash_id: str | None = None,
+        default_cartridge_id: str | None = None,
         tool_name: str | None = None,
         metadata: dict | None = None,
         attachments: list[dict] | None = None,
@@ -380,8 +380,8 @@ class StashClient:
         body: dict = {"agent_name": agent_name, "event_type": event_type, "content": content}
         if session_id:
             body["session_id"] = session_id
-        if default_stash_id:
-            body["default_stash_id"] = default_stash_id
+        if default_cartridge_id:
+            body["default_cartridge_id"] = default_cartridge_id
         if tool_name:
             body["tool_name"] = tool_name
         if metadata:
@@ -445,11 +445,11 @@ class StashClient:
         self,
         workspace_id: str,
         events: list[dict],
-        default_stash_id: str | None = None,
+        default_cartridge_id: str | None = None,
     ) -> list:
         body: dict = {"events": events}
-        if default_stash_id:
-            body["default_stash_id"] = default_stash_id
+        if default_cartridge_id:
+            body["default_cartridge_id"] = default_cartridge_id
         return self._post(
             f"/api/v1/workspaces/{workspace_id}/sessions/events/batch",
             json=body,
@@ -462,7 +462,7 @@ class StashClient:
         transcript_path: str | Path,
         agent_name: str,
         cwd: str = "",
-        default_stash_id: str | None = None,
+        default_cartridge_id: str | None = None,
         replace: bool = False,
     ) -> dict:
         import gzip as _gzip
@@ -481,7 +481,7 @@ class StashClient:
                 "agent_name": agent_name,
                 "cwd": cwd,
                 "replace": str(replace).lower(),
-                **({"default_stash_id": default_stash_id} if default_stash_id else {}),
+                **({"default_cartridge_id": default_cartridge_id} if default_cartridge_id else {}),
             },
             files={"file": (name, body, "application/gzip")},
             timeout=120,

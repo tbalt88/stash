@@ -34,7 +34,7 @@ ALLOWED_EVENT_NAMES = {
     "web.stash_created",
     "web.session_shared",
     "web.search_query",
-    "web.ask_stash",
+    "web.ask_cartridge",
     # Auth lifecycle
     "auth.signed_up",
     # CLI commands (one event per invocation; properties.command is the sub-axis)

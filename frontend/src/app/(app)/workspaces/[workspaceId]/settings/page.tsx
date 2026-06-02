@@ -16,7 +16,7 @@ import {
 import { resetStashNavigationCache } from "../../../../../lib/stashNavigationCache";
 import type { Workspace, WorkspaceMember } from "../../../../../lib/types";
 
-export default function StashSettingsPage() {
+export default function CartridgeSettingsPage() {
   const params = useParams();
   const router = useRouter();
   const workspaceId = params.workspaceId as string;

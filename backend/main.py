@@ -18,6 +18,8 @@ from .routers import (
     admin,
     aggregate,
     analytics,
+    cartridge_invites,
+    cartridges,
     collab,
     demo,
     discover,
@@ -30,8 +32,6 @@ from .routers import (
     sessions,
     skill,
     sources,
-    stash_invites,
-    stashes,
     tables,
     tasks,
     transcripts,
@@ -97,9 +97,9 @@ app.include_router(collab.router)
 app.include_router(workspaces.router)
 app.include_router(workspace_knowledge.router)
 app.include_router(discover.router)
-app.include_router(stash_invites.router)
-app.include_router(stashes.ws_router)
-app.include_router(stashes.public_router)
+app.include_router(cartridge_invites.router)
+app.include_router(cartridges.ws_router)
+app.include_router(cartridges.public_router)
 app.include_router(files_tree.router)
 app.include_router(memory.ws_router)
 app.include_router(tables.ws_router)

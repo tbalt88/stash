@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useBreadcrumbs } from "../../../../../../components/BreadcrumbContext";
-import { PageBody } from "../../../../stashes/[slug]/StashItemBodies";
+import { PageBody } from "../../../../cartridges/[slug]/CartridgeItemBodies";
 import {
   downloadBlob,
   downloadRenderedPdf,
@@ -33,7 +33,7 @@ import {
   deleteCommentThread,
   getFolderContents,
   getPage,
-  getPublicStash,
+  getPublicCartridge,
   listCommentThreads,
   listObjectStashes,
   reconcileCommentAnchors,
@@ -42,8 +42,8 @@ import {
   trashItem,
   updatePage,
   type FolderBreadcrumb,
-  type PublicStashItem,
-  type WorkspaceStash,
+  type PublicCartridgeItem,
+  type WorkspaceCartridge,
 } from "../../../../../../lib/api";
 import type { CommentThread, Page } from "../../../../../../lib/types";
 
@@ -62,7 +62,7 @@ function escapeHtml(s: string): string {
   );
 }
 
-export default function StashPageView() {
+export default function CartridgePageView() {
   const params = useParams();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -76,9 +76,9 @@ export default function StashPageView() {
 
   const [page, setPage] = useState<Page | null>(null);
   const [folderChain, setFolderChain] = useState<FolderBreadcrumb[]>([]);
-  const [containingStashes, setContainingStashes] = useState<WorkspaceStash[]>([]);
-  const [stashFallback, setStashFallback] = useState<
-    { stash: WorkspaceStash; item: PublicStashItem } | null
+  const [containingStashes, setContainingStashes] = useState<WorkspaceCartridge[]>([]);
+  const [stashFallback, setCartridgeFallback] = useState<
+    { stash: WorkspaceCartridge; item: PublicCartridgeItem } | null
   >(null);
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("saved");
   const [error, setError] = useState("");
@@ -131,10 +131,10 @@ export default function StashPageView() {
     }
   }, [workspaceId, pageId]);
 
-  const loadStashFallback = useCallback(async () => {
+  const loadCartridgeFallback = useCallback(async () => {
     if (!stashSlug) return false;
     try {
-      const data = await getPublicStash(stashSlug);
+      const data = await getPublicCartridge(stashSlug);
       const item = data.items.find(
         (it) => it.object_type === "page" && it.object_id === pageId,
       );
@@ -142,7 +142,7 @@ export default function StashPageView() {
         setError("This page isn't part of the linked Stash.");
         return false;
       }
-      setStashFallback({ stash: data.stash, item });
+      setCartridgeFallback({ stash: data.stash, item });
       setError("");
       return true;
     } catch (e) {
@@ -155,7 +155,7 @@ export default function StashPageView() {
     try {
       const p = await getPage(workspaceId, pageId);
       setPage(p);
-      setStashFallback(null);
+      setCartridgeFallback(null);
       setContainingStashes(await listObjectStashes(workspaceId, "page", pageId));
       if (p.folder_id) {
         const contents = await getFolderContents(workspaceId, p.folder_id);
@@ -173,11 +173,11 @@ export default function StashPageView() {
         e instanceof ApiError &&
         (e.status === 401 || e.status === 403 || e.status === 404)
       ) {
-        if (await loadStashFallback()) return;
+        if (await loadCartridgeFallback()) return;
       }
       setError(e instanceof Error ? e.message : "Failed to load page");
     }
-  }, [workspaceId, pageId, refreshThreads, stashSlug, loadStashFallback]);
+  }, [workspaceId, pageId, refreshThreads, stashSlug, loadCartridgeFallback]);
 
   const reconcileAfterSave = useCallback(
     (savedContent: string, contentType: "markdown" | "html") => {
@@ -334,8 +334,8 @@ export default function StashPageView() {
     // the stash payload is the read source. Authenticated viewers always
     // try the workspace endpoint first.
     if (user) load();
-    else if (!loading && stashSlug) void loadStashFallback();
-  }, [user, loading, load, loadStashFallback, stashSlug]);
+    else if (!loading && stashSlug) void loadCartridgeFallback();
+  }, [user, loading, load, loadCartridgeFallback, stashSlug]);
 
   useEffect(() => {
     // Only bounce to login if there's no stash fallback path available.
@@ -345,7 +345,7 @@ export default function StashPageView() {
   if (loading) return <DocumentPageSkeleton />;
   if (stashFallback) {
     return (
-      <StashFallbackPageView
+      <CartridgeFallbackPageView
         stashSlug={stashSlug ?? ""}
         stashTitle={stashFallback.stash.title}
         item={stashFallback.item}
@@ -564,7 +564,7 @@ export default function StashPageView() {
         </main>
 
         <div className="mt-20 hidden flex-col gap-4 lg:flex">
-          <StashAside stashes={containingStashes} />
+          <CartridgeAside cartridges={containingStashes} />
           <CommentsSidebar
             threads={threads}
             activeThreadId={activeThreadId}
@@ -581,17 +581,17 @@ export default function StashPageView() {
   );
 }
 
-function StashAside({ stashes }: { stashes: WorkspaceStash[] }) {
+function CartridgeAside({ cartridges }: { cartridges: WorkspaceCartridge[] }) {
   return (
     <aside>
       <div className="card-soft p-3.5">
-        <div className="sys-label">In Stashes</div>
-        {stashes.length > 0 ? (
+        <div className="sys-label">In Cartridges</div>
+        {cartridges.length > 0 ? (
           <div className="mt-2 flex flex-col gap-1.5">
-            {stashes.map((stash) => (
+            {cartridges.map((stash) => (
               <Link
                 key={stash.id}
-                href={`/stashes/${stash.slug}`}
+                href={`/cartridges/${stash.slug}`}
                 className="linkrow px-2 py-1.5"
               >
                 <span className="text-[var(--color-brand-600)]">
@@ -640,20 +640,20 @@ function HtmlGlyph() {
 // Read-only render for viewers who can't reach the workspace endpoint —
 // usually because they aren't a workspace member. The content comes from
 // the public-stash payload, gated by the stash's readability rules.
-function StashFallbackPageView({
+function CartridgeFallbackPageView({
   stashSlug,
   stashTitle,
   item,
 }: {
   stashSlug: string;
   stashTitle: string;
-  item: PublicStashItem;
+  item: PublicCartridgeItem;
 }) {
   return (
     <div className="scroll-thin flex-1 overflow-y-auto">
       <div className="mx-auto max-w-[920px] px-12 pb-20 pt-6">
         <Link
-          href={`/stashes/${stashSlug}`}
+          href={`/cartridges/${stashSlug}`}
           className="inline-flex items-center gap-1 text-[12.5px] text-muted hover:text-foreground"
         >
           ← {stashTitle}

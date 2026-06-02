@@ -9,7 +9,7 @@ import {
   ApiError,
   getFile,
   getFolderContents,
-  getPublicStash,
+  getPublicCartridge,
   ingestCsvFile,
   ingestXlsxFile,
   trashItem,
@@ -64,7 +64,7 @@ function FileViewerPageInner() {
   const [file, setFile] = useState<FileInfo | null>(null);
   const [folderChain, setFolderChain] = useState<FolderBreadcrumb[]>([]);
   const [error, setError] = useState("");
-  const [stashTitle, setStashTitle] = useState<string | null>(null);
+  const [stashTitle, setCartridgeTitle] = useState<string | null>(null);
   // readOnly flips on only when we fall back to the stash payload — i.e.
   // the viewer can't reach the workspace endpoint. Workspace members who
   // arrive via ?stash= still get full edit affordances.
@@ -73,8 +73,8 @@ function FileViewerPageInner() {
   useBreadcrumbs(
     readOnly
       ? [
-          { label: "Stashes", href: "/stashes" },
-          { label: stashTitle ?? "Stash", href: stashSlug ? `/stashes/${stashSlug}` : "/stashes" },
+          { label: "Cartridges", href: "/cartridges" },
+          { label: stashTitle ?? "Stash", href: stashSlug ? `/cartridges/${stashSlug}` : "/cartridges" },
           { label: file ? file.name : "File" },
         ]
       : [
@@ -87,11 +87,11 @@ function FileViewerPageInner() {
     `${workspaceId}/file/${fileId}/${file?.name ?? ""}/${folderChain.map((c) => c.id).join(",")}/${stashSlug ?? ""}`
   );
 
-  const loadStashFallback = useCallback(async () => {
+  const loadCartridgeFallback = useCallback(async () => {
     if (!stashSlug) return false;
     try {
-      const stash = await getPublicStash(stashSlug);
-      setStashTitle(stash.stash.title);
+      const stash = await getPublicCartridge(stashSlug);
+      setCartridgeTitle(stash.stash.title);
       const item = stash.items.find(
         (it) => it.object_type === "file" && it.object_id === fileId
       );
@@ -185,16 +185,16 @@ function FileViewerPageInner() {
         e instanceof ApiError &&
         (e.status === 401 || e.status === 403 || e.status === 404)
       ) {
-        if (await loadStashFallback()) return;
+        if (await loadCartridgeFallback()) return;
       }
       setError(e instanceof Error ? e.message : "Failed to load file");
     }
-  }, [workspaceId, fileId, router, stashSlug, loadStashFallback]);
+  }, [workspaceId, fileId, router, stashSlug, loadCartridgeFallback]);
 
   useEffect(() => {
     if (user) load();
-    else if (!loading && stashSlug) void loadStashFallback();
-  }, [user, loading, load, loadStashFallback, stashSlug]);
+    else if (!loading && stashSlug) void loadCartridgeFallback();
+  }, [user, loading, load, loadCartridgeFallback, stashSlug]);
 
   useEffect(() => {
     if (!loading && !user && !stashSlug) router.push("/login");
@@ -235,7 +235,7 @@ function FileViewerPageInner() {
         }
         readOnly={readOnly}
         readOnlyLabel="read-only · via Stash"
-        backLink={readOnly && stashSlug ? { label: stashTitle ?? "Stash", href: `/stashes/${stashSlug}` } : undefined}
+        backLink={readOnly && stashSlug ? { label: stashTitle ?? "Stash", href: `/cartridges/${stashSlug}` } : undefined}
         tags={tags}
         meta={meta}
         downloadOptions={

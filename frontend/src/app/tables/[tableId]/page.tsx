@@ -11,7 +11,7 @@ import { useShareModal } from "../../../lib/shareModalContext";
 import { SkeletonBlock, TableEditorSkeleton } from "../../../components/SkeletonStates";
 import {
   fetchAuthed,
-  getPublicStash,
+  getPublicCartridge,
   getTable, updateTable,
   deleteTable, addTableColumn, updateTableColumn,
   deleteTableColumn, reorderTableColumns, listTableRows, searchTableRows,
@@ -56,7 +56,7 @@ function TableEditorPageInner() {
   // mutating UI is hidden in this mode.
   const stashSlug = searchParams.get("stash");
   const readOnly = !!stashSlug;
-  const [stashTitle, setStashTitle] = useState<string | null>(null);
+  const [stashTitle, setCartridgeTitle] = useState<string | null>(null);
   const { user, loading, logout } = useAuth();
 
   // Core state
@@ -149,8 +149,8 @@ function TableEditorPageInner() {
         // Synthesize a Table from the stash's inlined item content. The
         // backend serializes columns + the first 500 rows when the stash
         // is readable; that's the source of truth in stash mode.
-        const stash = await getPublicStash(stashSlug);
-        setStashTitle(stash.stash.title);
+        const stash = await getPublicCartridge(stashSlug);
+        setCartridgeTitle(stash.stash.title);
         const item = stash.items.find(
           (it) => it.object_type === "table" && it.object_id === tableId
         );
@@ -704,7 +704,7 @@ function TableEditorPageInner() {
           readOnlyLabel="read-only · via Stash"
           backLink={
             readOnly && stashSlug
-              ? { label: stashTitle ?? "Stash", href: `/stashes/${stashSlug}` }
+              ? { label: stashTitle ?? "Stash", href: `/cartridges/${stashSlug}` }
               : undefined
           }
           tags={[{ label: "table", tone: "muted" }]}

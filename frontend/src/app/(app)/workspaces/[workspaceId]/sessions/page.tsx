@@ -41,7 +41,7 @@ const SORTS: { key: SortKey; label: string }[] = [
   { key: "name", label: "Name" },
 ];
 
-export default function StashSessionsPage() {
+export default function CartridgeSessionsPage() {
   const params = useParams();
   const router = useRouter();
   const workspaceId = params.workspaceId as string;

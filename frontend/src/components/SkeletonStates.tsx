@@ -625,7 +625,7 @@ export function TableEditorSkeleton() {
   );
 }
 
-export function PublicStashSkeleton() {
+export function PublicCartridgeSkeleton() {
   return (
     <div className="scroll-thin min-h-screen bg-background">
       <SkeletonBlock className="h-[72px] w-full rounded-none bg-brand-100" />
@@ -652,7 +652,7 @@ export function PublicStashSkeleton() {
   );
 }
 
-export function StashItemSkeleton() {
+export function CartridgeItemSkeleton() {
   return (
     <div className="scroll-thin min-h-screen bg-background">
       <div className="mx-auto max-w-[920px] px-12 pb-20 pt-6">

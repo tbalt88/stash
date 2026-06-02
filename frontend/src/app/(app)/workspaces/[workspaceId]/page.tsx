@@ -10,7 +10,7 @@ import {
   SkeletonBlock,
   WorkspaceHomeSkeleton,
 } from "../../../../components/SkeletonStates";
-import StashQuickAdd from "../../../../components/StashQuickAdd";
+import CartridgeQuickAdd from "../../../../components/CartridgeQuickAdd";
 import DriveImportDialog from "../../../../components/import/DriveImportDialog";
 import GitImportDialog from "../../../../components/import/GitImportDialog";
 import NotionImportDialog from "../../../../components/import/NotionImportDialog";
@@ -262,7 +262,7 @@ export default function WorkspaceHomePage() {
             <div className="sys-label mb-1.5">
               Quick add — paste a URL, drop a file, drop a .jsonl transcript
             </div>
-            <StashQuickAdd workspaceId={workspaceId} onAdded={load} />
+            <CartridgeQuickAdd workspaceId={workspaceId} onAdded={load} />
           </section>
         )}
 

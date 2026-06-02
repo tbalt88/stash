@@ -4,16 +4,16 @@ import json
 
 from mcp.server.fastmcp import FastMCP
 
-from cli.client import StashClient, stash_permissions_for_access
+from cli.client import CartridgeClient, stash_permissions_for_access
 from cli.config import load_config, load_manifest
 
 mcp = FastMCP("stash", instructions="Stash — shared memory for AI coding agents")
 
 
-def _client() -> tuple[StashClient, str]:
-    """Build a StashClient + resolve the active workspace id."""
+def _client() -> tuple[CartridgeClient, str]:
+    """Build a CartridgeClient + resolve the active workspace id."""
     cfg = load_config()
-    client = StashClient(cfg["base_url"], cfg.get("api_key", ""))
+    client = CartridgeClient(cfg["base_url"], cfg.get("api_key", ""))
     manifest = load_manifest()
     ws_id = (manifest or {}).get("workspace_id", "")
     return client, ws_id
@@ -74,7 +74,7 @@ def stash_push_event(
     event_type: str,
     content: str,
     session_id: str = "",
-    default_stash_id: str = "",
+    default_cartridge_id: str = "",
     tool_name: str = "",
     workspace_id: str = "",
 ) -> str:
@@ -88,7 +88,7 @@ def stash_push_event(
             event_type=event_type,
             content=content,
             session_id=session_id or None,
-            default_stash_id=default_stash_id or None,
+            default_cartridge_id=default_cartridge_id or None,
             tool_name=tool_name or None,
         )
     )
@@ -446,19 +446,19 @@ def stash_delete_file(file_id: str, workspace_id: str = "") -> str:
     return _json({"deleted": file_id})
 
 
-# ── Stashes ───────────────────────────────────────────────
+# ── Cartridges ───────────────────────────────────────────────
 
 
 @mcp.tool()
 def stash_list_stashes(workspace_id: str = "") -> str:
-    """List Stashes in the workspace."""
+    """List Cartridges in the workspace."""
     client, default_ws = _client()
     ws = _require_ws(workspace_id or default_ws)
     return _json(client.list_stashes(ws))
 
 
 @mcp.tool()
-def stash_create_stash(
+def stash_create_cartridge(
     title: str,
     description: str = "",
     access: str = "workspace",
@@ -472,7 +472,7 @@ def stash_create_stash(
     item_list = json.loads(items) if isinstance(items, str) else items
     if access == "public":
         return _json(
-            client.publish_stash(
+            client.publish_cartridge(
                 ws,
                 title,
                 description=description,
@@ -481,7 +481,7 @@ def stash_create_stash(
             )
         )
     return _json(
-        client.create_stash(
+        client.create_cartridge(
             ws,
             title,
             description=description,
@@ -493,8 +493,8 @@ def stash_create_stash(
 
 
 @mcp.tool()
-def stash_update_stash(
-    stash_id: str,
+def stash_update_cartridge(
+    cartridge_id: str,
     title: str = "",
     description: str = "",
     access: str = "",
@@ -516,39 +516,39 @@ def stash_update_stash(
         fields["items"] = json.loads(items)
     if not fields:
         raise ValueError("Pass at least one field to update")
-    return _json(client.update_stash(stash_id, **fields))
+    return _json(client.update_cartridge(cartridge_id, **fields))
 
 
 @mcp.tool()
-def stash_delete_stash(stash_id: str) -> str:
+def stash_delete_cartridge(cartridge_id: str) -> str:
     """Delete a Stash."""
     client, _ = _client()
-    client.delete_stash(stash_id)
-    return _json({"deleted": stash_id})
+    client.delete_cartridge(cartridge_id)
+    return _json({"deleted": cartridge_id})
 
 
 @mcp.tool()
-def stash_get_stash(slug: str) -> str:
+def stash_get_cartridge(slug: str) -> str:
     """Get a public Stash by its slug."""
     client, _ = _client()
-    return _json(client.get_public_stash(slug))
+    return _json(client.get_public_cartridge(slug))
 
 
 @mcp.tool()
-def stash_add_external_stash(slug: str, workspace_id: str = "") -> str:
+def stash_add_external_cartridge(slug: str, workspace_id: str = "") -> str:
     """Fork an external Stash into a workspace."""
     client, default_ws = _client()
     ws = _require_ws(workspace_id or default_ws)
-    return _json(client.add_external_stash(slug, ws))
+    return _json(client.add_external_cartridge(slug, ws))
 
 
 @mcp.tool()
-def stash_remove_external_stash(stash_id: str, workspace_id: str = "") -> str:
+def stash_remove_external_cartridge(cartridge_id: str, workspace_id: str = "") -> str:
     """Remove a forked external Stash from a workspace."""
     client, default_ws = _client()
     ws = _require_ws(workspace_id or default_ws)
-    client.remove_external_stash(ws, stash_id)
-    return _json({"removed": stash_id})
+    client.remove_external_cartridge(ws, cartridge_id)
+    return _json({"removed": cartridge_id})
 
 
 # ── Invites ───────────────────────────────────────────────────────
@@ -655,19 +655,19 @@ def stash_search_public_stashes(query: str = "", sort: str = "trending") -> str:
 
     sort: trending | newest | popular. Pass an empty query to browse by
     sort order. Returns the catalog entries — fork into a workspace with
-    stash_add_external_stash to follow up.
+    stash_add_external_cartridge to follow up.
     """
     client, _ = _client()
     return _json(client.list_discover_stashes(query=query, sort=sort))
 
 
 @mcp.tool()
-def stash_read_public_stash(slug: str) -> str:
+def stash_read_public_cartridge(slug: str) -> str:
     """Fetch a public Stash by slug as plain text (markdown-formatted
     transcript + pages). Use this instead of WebFetch for joinstash.ai/v/
-    or any /stashes/<slug> URL."""
+    or any /cartridges/<slug> URL."""
     client, _ = _client()
-    return client.get_stash_text(slug)
+    return client.get_cartridge_text(slug)
 
 
 # ── Sessions: full surface (transcript + soft-delete) ─────────────
@@ -711,8 +711,8 @@ _STASH_ACCESS = {"private", "workspace", "public"}
 
 
 @mcp.tool()
-def stash_set_stash_access(
-    stash_id: str,
+def stash_set_cartridge_access(
+    cartridge_id: str,
     access: str = "workspace",
     discoverable: bool = False,
 ) -> str:
@@ -730,7 +730,7 @@ def stash_set_stash_access(
         "workspace_permission": "read" if access in {"workspace", "public"} else "none",
         "discoverable": discoverable,
     }
-    return _json(client.update_stash(stash_id, **fields))
+    return _json(client.update_cartridge(cartridge_id, **fields))
 
 
 # ── Tables: rename + export ───────────────────────────────────────

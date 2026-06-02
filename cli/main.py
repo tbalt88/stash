@@ -18,7 +18,7 @@ from rich.text import Text
 from stashai.plugin.upload_status import read_upload_status
 
 from . import __version__, telemetry
-from .client import StashClient, StashError, stash_permissions_for_access
+from .client import CartridgeClient, CartridgeError, stash_permissions_for_access
 from .config import (
     MANIFEST_FILE,
     PRODUCTION_BASE_URL,
@@ -37,7 +37,7 @@ from .formatting import console, output_json, print_members, print_user, print_w
 
 app = typer.Typer(
     name="stash",
-    help="Stash CLI — workspaces, Stashes, files, tables, and sessions.",
+    help="Stash CLI — workspaces, Cartridges, files, tables, and sessions.",
 )
 
 
@@ -86,9 +86,9 @@ def upgrade() -> None:
     raise typer.Exit(result.returncode)
 
 
-def _client() -> StashClient:
+def _client() -> CartridgeClient:
     cfg = load_config()
-    return StashClient(base_url=cfg["base_url"], api_key=cfg.get("api_key", ""))
+    return CartridgeClient(base_url=cfg["base_url"], api_key=cfg.get("api_key", ""))
 
 
 def _use_json(flag: bool) -> bool:
@@ -117,12 +117,12 @@ def _resolve_workspace() -> str:
     return choice
 
 
-def _default_stash_id() -> str:
+def _default_cartridge_id() -> str:
     manifest = load_manifest()
-    return (manifest or {}).get("default_stash_id", "")
+    return (manifest or {}).get("default_cartridge_id", "")
 
 
-def _err(e: StashError) -> None:
+def _err(e: CartridgeError) -> None:
     if isinstance(e.detail, list):
         console.print(f"[red]Error [{e.status_code}]:[/red]")
         for item in e.detail:
@@ -149,7 +149,7 @@ def register(
     with _client() as c:
         try:
             data = c.register(name, description="", password=password)
-        except StashError as e:
+        except CartridgeError as e:
             _err(e)
     save_config(api_key=data["api_key"], username=data["name"])
     if _use_json(as_json):
@@ -170,7 +170,7 @@ def login(
     with _client() as c:
         try:
             data = c.login(name, password)
-        except StashError as e:
+        except CartridgeError as e:
             _err(e)
     save_config(api_key=data["api_key"], username=data["name"])
     if _use_json(as_json):
@@ -292,12 +292,12 @@ def signin(
 def auth(base_url: str = typer.Argument(...), api_key: str = typer.Option(..., "--api-key")):
     """Store existing credentials."""
     save_config(base_url=base_url, api_key=api_key)
-    with StashClient(base_url=base_url, api_key=api_key) as c:
+    with CartridgeClient(base_url=base_url, api_key=api_key) as c:
         try:
             user = c.whoami()
             save_config(username=user["name"])
             console.print(f"[green]Authenticated as {user['name']}[/green]")
-        except StashError:
+        except CartridgeError:
             console.print("[yellow]Saved but could not verify.[/yellow]")
 
 
@@ -698,7 +698,7 @@ def whoami(as_json: bool = typer.Option(False, "--json")):
     with _client() as c:
         try:
             data = c.whoami()
-        except StashError as e:
+        except CartridgeError as e:
             _err(e)
     if _use_json(as_json):
         output_json(data)
@@ -720,7 +720,7 @@ def ws_list(as_json: bool = typer.Option(False, "--json")):
     with _client() as c:
         try:
             data = c.list_workspaces()
-        except StashError as e:
+        except CartridgeError as e:
             _err(e)
     if _use_json(as_json):
         output_json(data)
@@ -738,7 +738,7 @@ def ws_create(
     with _client() as c:
         try:
             data = c.create_workspace(name, description=description)
-        except StashError as e:
+        except CartridgeError as e:
             _err(e)
     if _use_json(as_json):
         output_json(data)
@@ -754,7 +754,7 @@ def ws_join(invite_code: str = typer.Argument(...), as_json: bool = typer.Option
     with _client() as c:
         try:
             data = c.join_workspace(invite_code)
-        except StashError as e:
+        except CartridgeError as e:
             _err(e)
     if _use_json(as_json):
         output_json(data)
@@ -768,7 +768,7 @@ def ws_info(workspace_id: str = typer.Argument(...), as_json: bool = typer.Optio
     with _client() as c:
         try:
             data = c.get_workspace(workspace_id)
-        except StashError as e:
+        except CartridgeError as e:
             _err(e)
     if _use_json(as_json):
         output_json(data)
@@ -785,7 +785,7 @@ def ws_members(
     with _client() as c:
         try:
             data = c.workspace_members(workspace_id)
-        except StashError as e:
+        except CartridgeError as e:
             _err(e)
     if _use_json(as_json):
         output_json(data)
@@ -794,7 +794,7 @@ def ws_members(
 
 
 # ===========================================================================
-# Discover (public catalog of Stashes)
+# Discover (public catalog of Cartridges)
 # ===========================================================================
 
 
@@ -808,8 +808,8 @@ def _web_app_url() -> str:
     return api
 
 
-def _stash_url(stash: dict) -> str:
-    return f"{_web_app_url()}/stashes/{stash['slug']}"
+def _cartridge_url(stash: dict) -> str:
+    return f"{_web_app_url()}/cartridges/{stash['slug']}"
 
 
 @app.command("browse")
@@ -825,20 +825,20 @@ def browse(
     with _client() as c:
         try:
             data = c.list_discover_stashes(query=query, sort=sort)
-        except StashError as e:
+        except CartridgeError as e:
             _err(e)
 
-    stashes = data.get("stashes", [])
+    cartridges = data.get("cartridges", [])
     if as_json:
-        output_json(stashes)
+        output_json(cartridges)
         return
 
-    if not stashes:
-        console.print("[yellow]No public Stashes match your filters.[/yellow]")
+    if not cartridges:
+        console.print("[yellow]No public Cartridges match your filters.[/yellow]")
         return
 
     if not pick:
-        for stash in stashes:
+        for stash in cartridges:
             owner = stash.get("owner_display_name") or stash.get("owner_name") or "unknown"
             console.print(
                 f"[bold]{stash['title']}[/bold]  [dim]by {owner} in {stash['workspace_name']}[/dim]  "
@@ -849,7 +849,7 @@ def browse(
         return
 
     choices = []
-    for stash in stashes:
+    for stash in cartridges:
         owner = stash.get("owner_display_name") or stash.get("owner_name") or "unknown"
         label = (
             f"{stash['title']:<32} by {owner:<14} "
@@ -892,7 +892,7 @@ def browse(
     if not action:
         return
 
-    url = f"{_web_app_url()}/stashes/{picked['slug']}"
+    url = f"{_web_app_url()}/cartridges/{picked['slug']}"
     if action == "open":
         import webbrowser
 
@@ -904,8 +904,8 @@ def browse(
         workspace_id = _resolve_workspace()
         with _client() as c:
             try:
-                c.add_external_stash(picked["slug"], workspace_id)
-            except StashError as e:
+                c.add_external_cartridge(picked["slug"], workspace_id)
+            except CartridgeError as e:
                 _err(e)
         console.print(f"[green]Added[/green] {picked['title']} to workspace {workspace_id}")
 
@@ -1112,7 +1112,7 @@ def share_session(
             c.create_page(ws, f"Subagent: {sa_label}", content=sa_md, folder_id=folder["id"])
             console.print(f"  [dim]Included subagent: {sa_label}[/dim]")
 
-        stash_items: list[dict] = [
+        cartridge_items: list[dict] = [
             {"object_type": "folder", "object_id": folder["id"], "position": 0},
         ]
 
@@ -1123,11 +1123,11 @@ def share_session(
                 console.print(f"[yellow]Skipping {fp} (not found)[/yellow]")
                 continue
             uploaded = c.upload_ws_file(ws, str(p))
-            stash_items.append(
+            cartridge_items.append(
                 {
                     "object_type": "file",
                     "object_id": uploaded["id"],
-                    "position": len(stash_items),
+                    "position": len(cartridge_items),
                     "label_override": p.name,
                 }
             )
@@ -1138,7 +1138,7 @@ def share_session(
             c.upload_transcript(
                 ws, sid, str(jsonl_path), agent_name="claude", cwd=str(jsonl_path.parent)
             )
-        except StashError as e:
+        except CartridgeError as e:
             if e.status_code != 409:
                 raise
 
@@ -1152,17 +1152,17 @@ def share_session(
                     agent_name="claude-subagent",
                     cwd=str(jsonl_path.parent),
                 )
-            except StashError as e:
+            except CartridgeError as e:
                 if e.status_code != 409:
                     raise
 
         # Create the public Stash and publish the underlying items
         # so the anonymous URL works immediately.
-        bundle = c.publish_stash(
+        bundle = c.publish_cartridge(
             ws,
             title=page_title,
             description="Shared session Stash",
-            items=stash_items,
+            items=cartridge_items,
         )
 
     public_url = bundle["url"]
@@ -1232,7 +1232,7 @@ def _upload_file_list(target: Path) -> list[Path]:
 
 
 def _upload_folder_for_file(
-    c: StashClient,
+    c: CartridgeClient,
     workspace_id: str,
     root_folder_id: str,
     folder_cache: dict[tuple[str, str], str],
@@ -1296,16 +1296,16 @@ def upload(
 
     root_name = name or (target.stem if target.is_file() else target.name)
     stash_title = stash.strip() or root_name
-    create_stash = bool(stash)
+    create_cartridge = bool(stash)
     ws = workspace_id or _resolve_workspace()
     console.print(f"[dim]Uploading {len(files)} file(s) as '{root_name}'...[/dim]")
 
     with _client() as c:
         root_folder = c.create_folder(ws, root_name)
         folder_cache: dict[tuple[str, str], str] = {}
-        stash_items: list[dict] = []
+        cartridge_items: list[dict] = []
         if target.is_dir():
-            stash_items.append(
+            cartridge_items.append(
                 {"object_type": "folder", "object_id": root_folder["id"], "position": 0}
             )
 
@@ -1325,11 +1325,11 @@ def upload(
                 content = file_path.read_text(errors="replace")
                 page = c.create_page(ws, file_path.name, content=content, folder_id=folder_id)
                 if target.is_file():
-                    stash_items.append(
+                    cartridge_items.append(
                         {
                             "object_type": "page",
                             "object_id": page["id"],
-                            "position": len(stash_items),
+                            "position": len(cartridge_items),
                             "label_override": str(relative_path),
                         }
                     )
@@ -1343,11 +1343,11 @@ def upload(
                 content=_markdown_snippet(uploaded),
                 folder_id=folder_id,
             )
-            stash_items.append(
+            cartridge_items.append(
                 {
                     "object_type": "file",
                     "object_id": uploaded["id"],
-                    "position": len(stash_items),
+                    "position": len(cartridge_items),
                     "label_override": str(relative_path),
                 }
             )
@@ -1356,31 +1356,31 @@ def upload(
         folder_url = f"{_web_app_url()}/workspaces/{ws}/folders/{root_folder['id']}"
         result: dict = {"folder": root_folder, "app_url": folder_url}
 
-        if create_stash:
+        if create_cartridge:
             if public:
-                bundle = c.publish_stash(
+                bundle = c.publish_cartridge(
                     ws,
                     title=stash_title,
                     description=f"Uploaded from {target.name}",
-                    items=stash_items,
+                    items=cartridge_items,
                 )
                 stash_row = bundle["stash"]
                 stash_url = bundle["url"]
             else:
-                stash_row = c.create_stash(
+                stash_row = c.create_cartridge(
                     ws,
                     title=stash_title,
                     description=f"Uploaded from {target.name}",
-                    items=stash_items,
+                    items=cartridge_items,
                 )
-                stash_url = _stash_url(stash_row)
+                stash_url = _cartridge_url(stash_row)
             result["stash"] = stash_row
             result["url"] = stash_url
 
     if _use_json(as_json):
         output_json(result)
         return
-    if create_stash:
+    if create_cartridge:
         console.print(
             f"\n[green bold]Uploaded![/green bold]  {result['url']}\n"
             f"[dim]Folder: {root_folder['id']}  Stash: {result['stash']['id']}[/dim]"
@@ -1393,31 +1393,31 @@ def upload(
         )
 
 
-def _parse_stash_slug(url_or_slug: str) -> str:
+def _parse_cartridge_slug(url_or_slug: str) -> str:
     """Extract a Stash slug from a full URL or bare slug."""
     url_or_slug = url_or_slug.strip().rstrip("/")
-    if "/stashes/" in url_or_slug:
-        return url_or_slug.split("/stashes/")[-1]
+    if "/cartridges/" in url_or_slug:
+        return url_or_slug.split("/cartridges/")[-1]
     return url_or_slug
 
 
 @app.command("read")
-def read_stash(
+def read_cartridge(
     url: str = typer.Argument(..., help="Stash URL or slug."),
 ):
     """Read a public Stash and print its contents."""
-    slug = _parse_stash_slug(url)
+    slug = _parse_cartridge_slug(url)
     with _client() as c:
-        text = c.get_stash_text(slug)
+        text = c.get_cartridge_text(slug)
     console.print(text)
 
 
 # ===========================================================================
-# Stashes
+# Cartridges
 # ===========================================================================
 
-stashes_app = typer.Typer(help="Stashes — shareable sets of pages, sessions, tables, and files.")
-app.add_typer(stashes_app, name="stashes")
+stashes_app = typer.Typer(help="Cartridges — shareable sets of pages, sessions, tables, and files.")
+app.add_typer(stashes_app, name="cartridges")
 
 
 @stashes_app.command("list")
@@ -1425,23 +1425,23 @@ def stashes_list(
     workspace_id: str = typer.Argument(None, help="Workspace ID; falls back to .stash."),
     as_json: bool = typer.Option(False, "--json"),
 ):
-    """List Stashes in a workspace."""
+    """List Cartridges in a workspace."""
     ws_id = workspace_id or _resolve_workspace()
     with _client() as c:
         try:
             data = c.list_stashes(ws_id)
-        except StashError as e:
+        except CartridgeError as e:
             _err(e)
     if _use_json(as_json):
         output_json(data)
         return
     if not data:
-        console.print("[dim]No Stashes in this workspace.[/dim]")
+        console.print("[dim]No Cartridges in this workspace.[/dim]")
         return
     for v in data:
         flag = f"[cyan]{v['access']}[/cyan]"
         console.print(
-            f"[bold]{v['title']}[/bold]  {flag}  /stashes/{v['slug']}  "
+            f"[bold]{v['title']}[/bold]  {flag}  /cartridges/{v['slug']}  "
             f"[dim]({len(v['items'])} items, viewed {v['view_count']}x)[/dim]"
         )
 
@@ -1469,7 +1469,7 @@ def stashes_create(
     with _client() as c:
         try:
             if public:
-                bundle = c.publish_stash(
+                bundle = c.publish_cartridge(
                     ws_id,
                     title=title,
                     description=description,
@@ -1478,14 +1478,14 @@ def stashes_create(
                 )
                 stash = bundle["stash"]
             else:
-                stash = c.create_stash(
+                stash = c.create_cartridge(
                     ws_id,
                     title=title,
                     description=description,
                     discoverable=False,
                     items=items,
                 )
-        except StashError as e:
+        except CartridgeError as e:
             _err(e)
     if _use_json(as_json):
         output_json(stash)
@@ -1496,12 +1496,12 @@ def stashes_create(
     console.print(f"[green]Created Stash[/green] '{stash['title']}'  {flag}")
     console.print(f"  ID: {stash['id']}  Slug: {stash['slug']}")
     if stash["access"] == "public":
-        console.print(f"  Public URL: [cyan]{_web_app_url()}/stashes/{stash['slug']}[/cyan]")
+        console.print(f"  Public URL: [cyan]{_web_app_url()}/cartridges/{stash['slug']}[/cyan]")
 
 
 @stashes_app.command("publish")
 def stashes_publish(
-    stash_id: str = typer.Argument(...),
+    cartridge_id: str = typer.Argument(...),
     private: bool = typer.Option(False, "--private", help="Make the Stash private."),
     workspace: bool = typer.Option(
         False, "--workspace-access", help="Make the Stash workspace-visible."
@@ -1515,18 +1515,18 @@ def stashes_publish(
     access = "private" if private else "workspace" if workspace else "public"
     with _client() as c:
         try:
-            stash = c.update_stash(
-                stash_id,
+            stash = c.update_cartridge(
+                cartridge_id,
                 **stash_permissions_for_access(access),
                 discoverable=False if access != "public" else discover,
             )
-        except StashError as e:
+        except CartridgeError as e:
             _err(e)
     if stash["access"] == "public":
         label = "Published to Discover" if stash.get("discoverable") else "Published"
         console.print(
             f"[green]{label}[/green] '{stash['title']}' -> "
-            f"[cyan]{_web_app_url()}/stashes/{stash['slug']}[/cyan]"
+            f"[cyan]{_web_app_url()}/cartridges/{stash['slug']}[/cyan]"
         )
     else:
         console.print(f"[yellow]{stash['access'].title()}[/yellow] '{stash['title']}'")
@@ -1534,7 +1534,7 @@ def stashes_publish(
 
 @stashes_app.command("update")
 def stashes_update(
-    stash_id: str = typer.Argument(...),
+    cartridge_id: str = typer.Argument(...),
     title: str | None = typer.Option(None, "--title"),
     description: str | None = typer.Option(None, "--description"),
     access: str | None = typer.Option(
@@ -1575,8 +1575,8 @@ def stashes_update(
 
     with _client() as c:
         try:
-            stash = c.update_stash(stash_id, **fields)
-        except StashError as e:
+            stash = c.update_cartridge(cartridge_id, **fields)
+        except CartridgeError as e:
             _err(e)
     if _use_json(as_json):
         output_json(stash)
@@ -1589,52 +1589,52 @@ def stashes_update(
 
 @stashes_app.command("default")
 def stashes_default(
-    stash_id: str = typer.Argument("", help="Stash ID to receive this repo's streamed sessions."),
+    cartridge_id: str = typer.Argument("", help="Stash ID to receive this repo's streamed sessions."),
     clear: bool = typer.Option(False, "--clear", help="Clear this repo's default Stash."),
     workspace_id: str = typer.Option("", "--workspace", help="Workspace ID; falls back to .stash."),
 ):
     """Set which Stash this repo streams sessions into by default."""
     if clear:
         try:
-            write_manifest({"default_stash_id": ""})
+            write_manifest({"default_cartridge_id": ""})
         except FileNotFoundError:
             console.print("[red]No .stash file found. Run `stash connect` first.[/red]")
             raise typer.Exit(1)
         console.print("[green]Cleared default Stash.[/green]")
         return
 
-    if not stash_id:
-        current = _default_stash_id()
+    if not cartridge_id:
+        current = _default_cartridge_id()
         console.print(current or "(none)")
         return
 
     ws_id = workspace_id or _resolve_workspace()
     with _client() as c:
         try:
-            stashes = c.list_stashes(ws_id)
-        except StashError as e:
+            cartridges = c.list_stashes(ws_id)
+        except CartridgeError as e:
             _err(e)
-    if not any(stash["id"] == stash_id for stash in stashes):
+    if not any(stash["id"] == cartridge_id for stash in cartridges):
         console.print("[red]Default Stash must belong to the active workspace.[/red]")
         raise typer.Exit(1)
 
     try:
-        write_manifest({"default_stash_id": stash_id})
+        write_manifest({"default_cartridge_id": cartridge_id})
     except FileNotFoundError:
         console.print("[red]No .stash file found. Run `stash connect` first.[/red]")
         raise typer.Exit(1)
-    console.print(f"[green]Default Stash set[/green] {stash_id}")
+    console.print(f"[green]Default Stash set[/green] {cartridge_id}")
 
 
 @stashes_app.command("delete")
-def stashes_delete(stash_id: str = typer.Argument(...)):
+def stashes_delete(cartridge_id: str = typer.Argument(...)):
     """Delete a Stash. The underlying resources are not touched."""
     with _client() as c:
         try:
-            c.delete_stash(stash_id)
-        except StashError as e:
+            c.delete_cartridge(cartridge_id)
+        except CartridgeError as e:
             _err(e)
-    console.print(f"[green]Deleted Stash[/green] {stash_id}")
+    console.print(f"[green]Deleted Stash[/green] {cartridge_id}")
 
 
 @stashes_app.command("add-external")
@@ -1647,29 +1647,29 @@ def stashes_add_external(
     ws_id = workspace_id or _resolve_workspace()
     with _client() as c:
         try:
-            stash = c.add_external_stash(slug, ws_id)
-        except StashError as e:
+            stash = c.add_external_cartridge(slug, ws_id)
+        except CartridgeError as e:
             _err(e)
     if _use_json(as_json):
         output_json(stash)
         return
     console.print(f"[green]Forked external Stash[/green] '{stash['title']}'")
-    console.print(f"  Open it: [cyan]{_web_app_url()}/stashes/{stash['slug']}[/cyan]")
+    console.print(f"  Open it: [cyan]{_web_app_url()}/cartridges/{stash['slug']}[/cyan]")
 
 
 @stashes_app.command("remove-external")
 def stashes_remove_external(
-    stash_id: str = typer.Argument(..., help="Stash ID."),
+    cartridge_id: str = typer.Argument(..., help="Stash ID."),
     workspace_id: str = typer.Option("", "--workspace", help="Workspace ID; falls back to .stash."),
 ):
     """Remove a forked external Stash from a workspace."""
     ws_id = workspace_id or _resolve_workspace()
     with _client() as c:
         try:
-            c.remove_external_stash(ws_id, stash_id)
-        except StashError as e:
+            c.remove_external_cartridge(ws_id, cartridge_id)
+        except CartridgeError as e:
             _err(e)
-    console.print(f"[green]Removed forked Stash[/green] {stash_id}")
+    console.print(f"[green]Removed forked Stash[/green] {cartridge_id}")
 
 
 # ===========================================================================
@@ -1711,7 +1711,7 @@ def invite_default(
     with _client() as c:
         try:
             data = c.create_invite_token(ws, max_uses=uses, ttl_days=days)
-        except StashError as e:
+        except CartridgeError as e:
             _err(e)
     if _use_json(as_json):
         output_json(data)
@@ -1750,7 +1750,7 @@ def invite_list(
     with _client() as c:
         try:
             tokens = c.list_invite_tokens(ws)
-        except StashError as e:
+        except CartridgeError as e:
             _err(e)
     if _use_json(as_json):
         output_json(tokens)
@@ -1776,7 +1776,7 @@ def invite_revoke(
     with _client() as c:
         try:
             c.revoke_invite_token(ws, token_id)
-        except StashError as e:
+        except CartridgeError as e:
             _err(e)
     console.print(f"[green]Revoked invite token {token_id[:8]}…[/green]")
 
@@ -1799,7 +1799,7 @@ def files_tree(
         try:
             ws = workspace_id or _resolve_workspace()
             data = c.get_workspace_tree(ws)
-        except StashError as e:
+        except CartridgeError as e:
             _err(e)
     if _use_json(as_json):
         output_json(data)
@@ -1829,7 +1829,7 @@ def files_folders(
         try:
             ws = workspace_id or _resolve_workspace()
             data = c.list_folders(ws)
-        except StashError as e:
+        except CartridgeError as e:
             _err(e)
     if _use_json(as_json):
         output_json(data)
@@ -1858,7 +1858,7 @@ def files_create_folder(
         try:
             ws = workspace_id or _resolve_workspace()
             data = c.create_folder(ws, name, parent_folder_id=parent)
-        except StashError as e:
+        except CartridgeError as e:
             _err(e)
     if _use_json(as_json):
         output_json(data)
@@ -1889,7 +1889,7 @@ def files_edit_folder(
                 parent_folder_id=parent,
                 move_to_root=to_root,
             )
-        except StashError as e:
+        except CartridgeError as e:
             _err(e)
     if _use_json(as_json):
         output_json(data)
@@ -1907,7 +1907,7 @@ def files_pages(
     with _client() as c:
         try:
             data = c.all_pages() if all_ else c.list_pages(workspace_id or _resolve_workspace())
-        except StashError as e:
+        except CartridgeError as e:
             _err(e)
     if _use_json(as_json):
         output_json(data)
@@ -1934,7 +1934,7 @@ def files_search(
     with _client() as c:
         try:
             data = c.search_pages(ws, query, limit=limit)
-        except StashError as e:
+        except CartridgeError as e:
             _err(e)
     if _use_json(as_json):
         output_json(data)
@@ -1960,7 +1960,7 @@ def _markdown_snippet(file_resp: dict) -> str:
 
 
 def _prepend_attachments(
-    c: StashClient, workspace_id: str, content: str, attach: list[str] | None
+    c: CartridgeClient, workspace_id: str, content: str, attach: list[str] | None
 ) -> str:
     if not attach:
         return content
@@ -2040,7 +2040,7 @@ def files_add_page(
                 content_html=html_body,
                 html_layout=layout,
             )
-        except StashError as e:
+        except CartridgeError as e:
             _err(e)
     if _use_json(as_json):
         output_json(data)
@@ -2062,7 +2062,7 @@ def files_read_page(
         try:
             ws = workspace_id or _resolve_workspace()
             data = c.get_page(ws, page_id)
-        except StashError as e:
+        except CartridgeError as e:
             _err(e)
     if _use_json(as_json):
         output_json(data)
@@ -2152,7 +2152,7 @@ def files_edit_page(
             if layout is not None:
                 kwargs["html_layout"] = layout
             data = c.update_page(ws, page_id, **kwargs)
-        except StashError as e:
+        except CartridgeError as e:
             _err(e)
     if _use_json(as_json):
         output_json(data)
@@ -2184,7 +2184,7 @@ def hist_default(
     with _client() as c:
         try:
             data = c.query_events(ws, limit=limit)
-        except StashError as e:
+        except CartridgeError as e:
             _err(e)
     if _use_json(as_json):
         output_json(data)
@@ -2205,7 +2205,7 @@ def hist_agents(
     with _client() as c:
         try:
             data = c.list_agent_names(ws)
-        except StashError as e:
+        except CartridgeError as e:
             _err(e)
     if _use_json(as_json):
         output_json(data)
@@ -2258,12 +2258,12 @@ def hist_push(
                 event_type=event_type,
                 content=content,
                 session_id=session_id,
-                default_stash_id=_default_stash_id(),
+                default_cartridge_id=_default_cartridge_id(),
                 tool_name=tool_name,
                 attachments=attachments or None,
                 created_at=created_at,
             )
-        except StashError as e:
+        except CartridgeError as e:
             _err(e)
     if _use_json(as_json):
         output_json(data)
@@ -2309,7 +2309,7 @@ def hist_query(
                     after=after,
                     order=order,
                 )
-        except StashError as e:
+        except CartridgeError as e:
             _err(e)
     if _use_json(as_json):
         output_json(data)
@@ -2334,7 +2334,7 @@ def hist_search(
     with _client() as c:
         try:
             data = c.search_events(ws, query, limit=limit)
-        except StashError as e:
+        except CartridgeError as e:
             _err(e)
     if _use_json(as_json):
         output_json(data)
@@ -2488,7 +2488,7 @@ def hist_share(
     with _client() as c:
         folder = c.create_folder(ws, page_title)
         c.create_page(ws, page_title, content=md, folder_id=folder["id"])
-        bundle = c.publish_stash(
+        bundle = c.publish_cartridge(
             ws,
             title=page_title,
             description="Shared session transcript",
@@ -2561,11 +2561,11 @@ def hist_import(
                     c,
                     ws,
                     conv,
-                    default_stash_id=_default_stash_id(),
+                    default_cartridge_id=_default_cartridge_id(),
                     replace=replace,
                 )
                 imported += 1
-            except StashError:
+            except CartridgeError:
                 errors += 1
             progress.advance(task)
 
@@ -2592,7 +2592,7 @@ def hist_delete(
             c.delete_session(ws, session_row_id)
             if permanent:
                 c.purge_session(ws, session_row_id)
-        except StashError as e:
+        except CartridgeError as e:
             _err(e)
     console.print(
         "[green]Session permanently deleted.[/green]"
@@ -2611,7 +2611,7 @@ def hist_restore(
     with _client() as c:
         try:
             c.restore_session(ws, session_row_id)
-        except StashError as e:
+        except CartridgeError as e:
             _err(e)
     console.print("[green]Session restored.[/green]")
 
@@ -2626,7 +2626,7 @@ def hist_purge(
     with _client() as c:
         try:
             c.purge_session(ws, session_row_id)
-        except StashError as e:
+        except CartridgeError as e:
             _err(e)
     console.print("[green]Session permanently deleted.[/green]")
 
@@ -2649,7 +2649,7 @@ def trash_list(
     with _client() as c:
         try:
             data = c.get_trash(ws)
-        except StashError as e:
+        except CartridgeError as e:
             _err(e)
     if _use_json(as_json):
         output_json(data)
@@ -2691,7 +2691,7 @@ def _resolve_col_names(table: dict, data: dict) -> dict:
             unknown.append(k)
     if unknown:
         valid = ", ".join(col["name"] for col in cols) or "(none)"
-        raise StashError(
+        raise CartridgeError(
             422,
             [f"unknown column '{k}'. Valid columns: {valid}" for k in unknown],
         )
@@ -2734,7 +2734,7 @@ def tables_list(
                 data = c.all_tables()
             else:
                 data = c.list_tables(workspace_id or _resolve_workspace())
-        except StashError as e:
+        except CartridgeError as e:
             _err(e)
     if _use_json(as_json):
         output_json(data)
@@ -2765,7 +2765,7 @@ def tables_create(
         try:
             ws = workspace_id or _resolve_workspace()
             data = c.create_table(ws, name, description=description, columns=cols)
-        except StashError as e:
+        except CartridgeError as e:
             _err(e)
     if _use_json(as_json):
         output_json(data)
@@ -2794,7 +2794,7 @@ def tables_update(
         try:
             ws = workspace_id or _resolve_workspace()
             data = c.update_table(ws, table_id, **kwargs)
-        except StashError as e:
+        except CartridgeError as e:
             _err(e)
     if _use_json(as_json):
         output_json(data)
@@ -2813,7 +2813,7 @@ def tables_schema(
         try:
             ws = workspace_id or _resolve_workspace()
             data = c.get_table(ws, table_id)
-        except StashError as e:
+        except CartridgeError as e:
             _err(e)
     if _use_json(as_json):
         output_json(data)
@@ -2862,7 +2862,7 @@ def tables_rows(
                 sort_order=sort_order,
                 filters=resolved_filters,
             )
-        except StashError as e:
+        except CartridgeError as e:
             _err(e)
     if _use_json(as_json):
         output_json(result)
@@ -2897,7 +2897,7 @@ def _parse_uploads(upload: list[str] | None) -> dict[str, str]:
 
 
 def _apply_uploads(
-    c: StashClient, workspace_id: str, row_data: dict, uploads: dict[str, str]
+    c: CartridgeClient, workspace_id: str, row_data: dict, uploads: dict[str, str]
 ) -> dict:
     """Upload each file and set the file URL as the value for the named column.
     Explicit values already in row_data for the same column take precedence."""
@@ -2929,7 +2929,7 @@ def tables_insert(
             table = c.get_table(ws, table_id)
             resolved = _resolve_col_names(table, row_data)
             result = c.insert_table_row(ws, table_id, resolved)
-        except StashError as e:
+        except CartridgeError as e:
             _err(e)
     if _use_json(as_json):
         output_json(result)
@@ -3005,7 +3005,7 @@ def tables_import(
                     console.print(
                         f"  [dim]Inserted {total_inserted}/{len(resolved_rows)} rows...[/dim]"
                     )
-        except StashError as e:
+        except CartridgeError as e:
             _err(e)
 
     if _use_json(as_json):
@@ -3035,7 +3035,7 @@ def tables_update_row(
             table = c.get_table(ws, table_id)
             resolved = _resolve_col_names(table, row_data)
             result = c.update_table_row(ws, table_id, row_id, resolved)
-        except StashError as e:
+        except CartridgeError as e:
             _err(e)
     if _use_json(as_json):
         output_json(result)
@@ -3054,7 +3054,7 @@ def tables_delete_row(
         try:
             ws = workspace_id or _resolve_workspace()
             c.delete_table_row(ws, table_id, row_id)
-        except StashError as e:
+        except CartridgeError as e:
             _err(e)
     console.print("[green]Row deleted.[/green]")
 
@@ -3076,7 +3076,7 @@ def tables_add_column(
         try:
             ws = workspace_id or _resolve_workspace()
             result = c.add_table_column(ws, table_id, name, col_type=col_type, options=opts)
-        except StashError as e:
+        except CartridgeError as e:
             _err(e)
     if _use_json(as_json):
         output_json(result)
@@ -3102,7 +3102,7 @@ def tables_delete_column(
                 if column_id in name_to_id:
                     column_id = name_to_id[column_id]
             result = c.delete_table_column(ws, table_id, column_id)
-        except StashError as e:
+        except CartridgeError as e:
             _err(e)
     if _use_json(as_json):
         output_json(result)
@@ -3128,7 +3128,7 @@ def tables_count(
             if filters:
                 params["filters"] = filters
             result = c._get(f"/api/v1/workspaces/{ws}/tables/{table_id}/rows/count", **params)
-        except StashError as e:
+        except CartridgeError as e:
             _err(e)
     if _use_json(as_json):
         output_json(result)
@@ -3161,7 +3161,7 @@ def tables_export(
                 "GET", f"/api/v1/workspaces/{ws}/tables/{table_id}/export/csv", params=params
             )
             csv_content = resp.text
-        except StashError as e:
+        except CartridgeError as e:
             _err(e)
     if file:
         with open(file, "w") as f:
@@ -3184,7 +3184,7 @@ def tables_delete(
         try:
             ws = workspace_id or _resolve_workspace()
             c.delete_table(ws, table_id)
-        except StashError as e:
+        except CartridgeError as e:
             _err(e)
     console.print("[green]Table deleted.[/green]")
 
@@ -3194,7 +3194,7 @@ def tables_delete(
 # ===========================================================================
 
 
-def _upload_path(c: StashClient, workspace_id: str, path: str) -> dict:
+def _upload_path(c: CartridgeClient, workspace_id: str, path: str) -> dict:
     """Upload `path` to the given workspace. Returns FileResponse dict."""
     if not Path(path).is_file():
         console.print(f"[red]Not a file: {path}[/red]")
@@ -3202,7 +3202,7 @@ def _upload_path(c: StashClient, workspace_id: str, path: str) -> dict:
     return c.upload_ws_file(workspace_id, path)
 
 
-def _get_file_meta(c: StashClient, workspace_id: str, file_id: str) -> dict:
+def _get_file_meta(c: CartridgeClient, workspace_id: str, file_id: str) -> dict:
     return c.get_ws_file(workspace_id, file_id)
 
 
@@ -3222,7 +3222,7 @@ def files_upload(
     with _client() as c:
         try:
             data = _upload_path(c, ws, path)
-        except StashError as e:
+        except CartridgeError as e:
             _err(e)
     if _use_json(as_json):
         output_json(data)
@@ -3243,7 +3243,7 @@ def files_list(
     with _client() as c:
         try:
             data = c.list_ws_files(ws)
-        except StashError as e:
+        except CartridgeError as e:
             _err(e)
     if _use_json(as_json):
         output_json(data)
@@ -3282,7 +3282,7 @@ def files_edit_file(
                 folder_id=folder,
                 move_to_root=to_root,
             )
-        except StashError as e:
+        except CartridgeError as e:
             _err(e)
     if _use_json(as_json):
         output_json(data)
@@ -3307,7 +3307,7 @@ def files_rm(
             c.delete_ws_file(ws, file_id)
             if permanent:
                 c.purge_ws_file(ws, file_id)
-        except StashError as e:
+        except CartridgeError as e:
             _err(e)
     console.print(
         "[green]File permanently deleted.[/green]"
@@ -3326,7 +3326,7 @@ def files_restore(
     with _client() as c:
         try:
             c.restore_ws_file(ws, file_id)
-        except StashError as e:
+        except CartridgeError as e:
             _err(e)
     console.print("[green]File restored.[/green]")
 
@@ -3341,7 +3341,7 @@ def files_purge(
     with _client() as c:
         try:
             c.purge_ws_file(ws, file_id)
-        except StashError as e:
+        except CartridgeError as e:
             _err(e)
     console.print("[green]File permanently deleted.[/green]")
 
@@ -3359,7 +3359,7 @@ def files_rm_page(
             c.delete_page(ws, page_id)
             if permanent:
                 c.purge_page(ws, page_id)
-        except StashError as e:
+        except CartridgeError as e:
             _err(e)
     console.print(
         "[green]Page permanently deleted.[/green]"
@@ -3378,7 +3378,7 @@ def files_restore_page(
     with _client() as c:
         try:
             c.restore_page(ws, page_id)
-        except StashError as e:
+        except CartridgeError as e:
             _err(e)
     console.print("[green]Page restored.[/green]")
 
@@ -3393,7 +3393,7 @@ def files_purge_page(
     with _client() as c:
         try:
             c.purge_page(ws, page_id)
-        except StashError as e:
+        except CartridgeError as e:
             _err(e)
     console.print("[green]Page permanently deleted.[/green]")
 
@@ -3408,7 +3408,7 @@ def files_text(
     with _client() as c:
         try:
             data = c.get_ws_file_text(ws, file_id)
-        except StashError as e:
+        except CartridgeError as e:
             _err(e)
     text = data.get("text") if isinstance(data, dict) else None
     status = data.get("status") if isinstance(data, dict) else None
@@ -3508,7 +3508,7 @@ def _auto_connect_repo(repo_root: Path, cfg: dict) -> None:
     """Connect a repo to a workspace, auto-creating one named after the repo directory."""
     manifest_path = repo_root / MANIFEST_FILE
 
-    with StashClient(base_url=cfg["base_url"], api_key=cfg["api_key"]) as c:
+    with CartridgeClient(base_url=cfg["base_url"], api_key=cfg["api_key"]) as c:
         if manifest_path.is_file():
             manifest = json.loads(manifest_path.read_text())
             ws_id = manifest.get("workspace_id", "")
@@ -3519,7 +3519,7 @@ def _auto_connect_repo(repo_root: Path, cfg: dict) -> None:
                     f"[bold]{ws_id[:8]}…[/bold]"
                 )
                 return
-            except StashError as e:
+            except CartridgeError as e:
                 if e.status_code in (403, 404):
                     console.print(
                         f"  [yellow]Workspace {ws_id[:8]}… not found — "
@@ -3587,13 +3587,13 @@ its own access control and an optional public URL. Use one when you're publishin
 of related things together — a project writeup with its supporting files, a research thread with
 its sources, a session transcript plus the files it produced.
 
-A Stash is **not** a wrapper to slap on every single file you happen to share. One-item Stashes
+A Stash is **not** a wrapper to slap on every single file you happen to share. One-item Cartridges
 clutter Discover and defeat the model. Pick the right tool:
 
 - Internal share of a single file → `stash files upload <path> --json`, hand over `app_url`.
 - Upload a folder/project → `stash upload <path> --json` (returns `app_url`, no Stash).
 - Publishing a curated bundle → `stash upload <path> --stash "<title>" --json`.
-- Composing from existing items → `stash stashes create "<title>" --items '<json>' --json`.
+- Composing from existing items → `stash cartridges create "<title>" --items '<json>' --json`.
 - Share a coding session → `stash share <session_id>`.
 
 Run `stash prompts agent-guidance` to reprint this rule mid-session.
@@ -3689,10 +3689,10 @@ def login_cmd():
     has_key = bool(cfg.get("api_key"))
     if has_key:
         try:
-            with StashClient(base_url=base_url, api_key=cfg["api_key"]) as c:
+            with CartridgeClient(base_url=base_url, api_key=cfg["api_key"]) as c:
                 user = c.whoami()
             console.print(f"  [green]✓[/green] Authenticated as [bold]{user['name']}[/bold]")
-        except StashError:
+        except CartridgeError:
             has_key = False
 
     if not has_key:
@@ -3784,7 +3784,7 @@ def login_cmd():
         else:
             try:
                 _auto_connect_repo(repo_root, cfg)
-            except StashError as e:
+            except CartridgeError as e:
                 console.print(f"[red]Could not connect repo: {e.detail}[/red]")
     elif answer == "other":
         _reserve_bottom_padding(4)
@@ -3796,7 +3796,7 @@ def login_cmd():
         else:
             try:
                 _auto_connect_repo(target_root, cfg)
-            except StashError as e:
+            except CartridgeError as e:
                 console.print(f"[red]Could not connect repo: {e.detail}[/red]")
 
     # --- Step 6: Import historical conversations ---
@@ -3837,7 +3837,7 @@ def join_cmd():
     manifest = json.loads(manifest_path.read_text())
     ws_id = manifest.get("workspace_id", "")
 
-    with StashClient(base_url=cfg["base_url"], api_key=cfg["api_key"]) as c:
+    with CartridgeClient(base_url=cfg["base_url"], api_key=cfg["api_key"]) as c:
         _handle_not_member(ws_id, c)
 
 
@@ -3859,10 +3859,10 @@ def leave_cmd():
     manifest = json.loads(manifest_path.read_text())
     ws_id = manifest.get("workspace_id", "")
 
-    with StashClient(base_url=cfg["base_url"], api_key=cfg["api_key"]) as c:
+    with CartridgeClient(base_url=cfg["base_url"], api_key=cfg["api_key"]) as c:
         try:
             c.leave_workspace(ws_id)
-        except StashError as e:
+        except CartridgeError as e:
             if "owner" in str(e.detail).lower():
                 console.print("  [red]Owners cannot leave their own workspace.[/red]")
                 return
@@ -3888,10 +3888,10 @@ def start_cmd():
         console.print("[red].stash file is missing workspace_id.[/red]")
         raise typer.Exit(1)
 
-    with StashClient(base_url=cfg["base_url"], api_key=cfg["api_key"]) as c:
+    with CartridgeClient(base_url=cfg["base_url"], api_key=cfg["api_key"]) as c:
         try:
             c.get_workspace(workspace_id)
-        except StashError as e:
+        except CartridgeError as e:
             if e.status_code in (403, 404):
                 console.print(
                     "  [yellow]You're not a member of this workspace.[/yellow] "
@@ -4068,9 +4068,9 @@ def _onboarding_import_history(detected_agents: list[str]) -> None:
         task = progress.add_task("Importing…", total=len(conversations))
         for conv in conversations:
             try:
-                upload_conversation(c, ws, conv, default_stash_id=_default_stash_id())
+                upload_conversation(c, ws, conv, default_cartridge_id=_default_cartridge_id())
                 imported += 1
-            except StashError as e:
+            except CartridgeError as e:
                 errors += 1
                 last_error = str(e)
             progress.advance(task)
@@ -4264,16 +4264,16 @@ def _render_settings_header(cfg: dict) -> None:
 
     manifest = load_manifest()
     workspace_id = (manifest.get("workspace_id") if manifest else None) or ""
-    default_stash_id = (manifest.get("default_stash_id") if manifest else None) or ""
+    default_cartridge_id = (manifest.get("default_cartridge_id") if manifest else None) or ""
     workspace_label = workspace_id[:12] + "…" if workspace_id else "(none — no .stash file)"
-    default_stash_label = default_stash_id[:12] + "…" if default_stash_id else "(none)"
+    default_cartridge_label = default_cartridge_id[:12] + "…" if default_cartridge_id else "(none)"
 
     def row(label: str, value: str, *, highlight: bool = True) -> None:
         console.print(f"  [dim]{label}[/dim]{value}", highlight=highlight)
 
     row(f"{'User:':<14}", cfg.get("username") or "(not logged in)")
     row(f"{'Workspace:':<14}", workspace_label, highlight=False)
-    row(f"{'Default Stash:':<14}", default_stash_label, highlight=False)
+    row(f"{'Default Stash:':<14}", default_cartridge_label, highlight=False)
 
     enabled = load_enabled_agents()
     detected = _detected_agents()
@@ -4370,7 +4370,7 @@ def keys_list(as_json: bool = typer.Option(False, "--json")):
     with _client() as c:
         try:
             keys = c.list_api_keys()
-        except StashError as e:
+        except CartridgeError as e:
             _err(e)
     if _use_json(as_json):
         output_json(keys)
@@ -4393,7 +4393,7 @@ def keys_revoke(key_id: str = typer.Argument(..., help="Key id to revoke.")):
     with _client() as c:
         try:
             c.revoke_api_key(key_id)
-        except StashError as e:
+        except CartridgeError as e:
             _err(e)
     console.print(f"[green]Revoked key {key_id}.[/green]")
 
@@ -4451,13 +4451,13 @@ def mount_command(
     ),
 ):
     """Experimentally mount Stash as a local FUSE filesystem."""
-    from .mount import StashMountError, check_fuse_runtime, mount_stash
+    from .mount import CartridgeMountError, check_fuse_runtime, mount_cartridge
 
     telemetry.record("mount")
     if check:
         try:
             check_fuse_runtime()
-        except StashMountError as e:
+        except CartridgeMountError as e:
             console.print(f"[red]{e}[/red]")
             raise typer.Exit(1)
         console.print("[green]FUSE runtime available.[/green]")
@@ -4475,12 +4475,12 @@ def mount_command(
         console.print("[red]Not signed in. Run [bold]stash signin[/bold] first.[/red]")
         raise typer.Exit(1)
 
-    client = StashClient(base_url=cfg["base_url"], api_key=cfg["api_key"])
+    client = CartridgeClient(base_url=cfg["base_url"], api_key=cfg["api_key"])
     try:
         console.print(f"[green]Mounting Stash at {mountpoint}[/green]")
         console.print("[dim]Press Ctrl-C to unmount.[/dim]")
-        mount_stash(client, Path(mountpoint).expanduser(), workspace_id=workspace_id)
-    except StashMountError as e:
+        mount_cartridge(client, Path(mountpoint).expanduser(), workspace_id=workspace_id)
+    except CartridgeMountError as e:
         console.print(f"[red]{e}[/red]")
         raise typer.Exit(1)
     finally:
@@ -4498,19 +4498,19 @@ def vfs_command(
     cwd: str = typer.Option("/", "--cwd", help="Virtual working directory."),
 ):
     """Run bash-shaped commands against Stash without mounting a filesystem."""
-    from .app_vfs import StashAppVfsShell
-    from .mount import StashMountError, StashVfsModel
+    from .app_vfs import CartridgeAppVfsShell
+    from .mount import CartridgeMountError, CartridgeVfsModel
 
     cfg = load_config()
     if not cfg.get("api_key"):
         console.print("[red]Not signed in. Run [bold]stash signin[/bold] first.[/red]")
         raise typer.Exit(1)
 
-    client = StashClient(base_url=cfg["base_url"], api_key=cfg["api_key"])
+    client = CartridgeClient(base_url=cfg["base_url"], api_key=cfg["api_key"])
     try:
-        model = StashVfsModel(client, workspace_id=workspace_id)
+        model = CartridgeVfsModel(client, workspace_id=workspace_id)
         model.refresh()
-        shell = StashAppVfsShell(model, cwd=cwd)
+        shell = CartridgeAppVfsShell(model, cwd=cwd)
 
         command = " ".join(ctx.args).strip()
         if command:
@@ -4533,7 +4533,7 @@ def vfs_command(
             result = shell.run(command)
             sys.stdout.write(result.stdout)
             sys.stderr.write(result.stderr)
-    except StashMountError as e:
+    except CartridgeMountError as e:
         console.print(f"[red]{e}[/red]")
         raise typer.Exit(1)
     finally:
@@ -4594,7 +4594,7 @@ def publish_cmd(
         raise typer.Exit(1)
     content_type = "html" if p.suffix.lower() in (".html", ".htm") else "markdown"
     cfg = load_config()
-    c = StashClient(cfg["base_url"], cfg.get("api_key", ""))
+    c = CartridgeClient(cfg["base_url"], cfg.get("api_key", ""))
     ws = workspace_id or (load_manifest() or {}).get("workspace_id")
     if not ws:
         console.print("[red]No workspace. Pass --workspace or run `stash connect`.[/red]")
@@ -4625,14 +4625,14 @@ def skill_list(
 ):
     """List skills in a workspace."""
     cfg = load_config()
-    c = StashClient(cfg["base_url"], cfg.get("api_key", ""))
+    c = CartridgeClient(cfg["base_url"], cfg.get("api_key", ""))
     ws = workspace_id or (load_manifest() or {}).get("workspace_id")
     if not ws:
         console.print("[red]No workspace. Pass an ID or run `stash connect`.[/red]")
         raise typer.Exit(1)
     try:
         data = c._get(f"/api/v1/workspaces/{ws}/skills")
-    except StashError as e:
+    except CartridgeError as e:
         _err(e)
     if _use_json(as_json):
         output_json(data)
@@ -4654,10 +4654,10 @@ def skill_show(
 ):
     """Read a skill (SKILL.md frontmatter + body + sibling files concatenated)."""
     cfg = load_config()
-    c = StashClient(cfg["base_url"], cfg.get("api_key", ""))
+    c = CartridgeClient(cfg["base_url"], cfg.get("api_key", ""))
     try:
         data = c._get(f"/api/v1/workspaces/{workspace_id}/skills/{name}")
-    except StashError as e:
+    except CartridgeError as e:
         _err(e)
     console.print(data["combined"])
 
@@ -4678,7 +4678,7 @@ def skill_add(
         raise typer.Exit(1)
 
     cfg = load_config()
-    c = StashClient(cfg["base_url"], cfg.get("api_key", ""))
+    c = CartridgeClient(cfg["base_url"], cfg.get("api_key", ""))
     folder_name = src.name
     try:
         # Skills are represented as folders containing markdown pages.
@@ -4692,7 +4692,7 @@ def skill_add(
                 folder_id=folder_id,
                 content_type="markdown",
             )
-    except StashError as e:
+    except CartridgeError as e:
         _err(e)
     console.print(f"[green]Added skill '{folder_name}' to workspace {workspace_id}.[/green]")
 
@@ -4744,14 +4744,14 @@ Commands to reach for
 - `stash upload <path> --stash "<title>" --json` — same as above AND
   bundle the upload into a Stash with the given title. Use only when
   you're producing a shareable bundle.
-- `stash stashes create "<title>" --items '<json>' --json` — create a
+- `stash cartridges create "<title>" --items '<json>' --json` — create a
   Stash that bundles existing workspace artifacts you've already
   produced. Use this to compose a Stash from many sources.
 - `stash share <session_id>` — wrap a coding session (transcript + the
   files it touched) into a Stash. Sessions are inherently a bundle, so
   this is the right unit.
 
-Anti-pattern: minting one Stash per file you happen to share. Stashes
+Anti-pattern: minting one Stash per file you happen to share. Cartridges
 exist to group related things; one item per Stash defeats the model and
 clutters Discover.
 """

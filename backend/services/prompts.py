@@ -24,7 +24,7 @@ def render_ask_system(stash_name: str, sources: list[dict] | None = None) -> str
         f"You are an expert assistant for the '{stash_name}' Stash Workspace. Answer "
         "questions by calling tools to ground every claim. "
         f"{source_line}"
-        "Use Stashes when "
+        "Use Cartridges when "
         "the user asks to collect, bundle, publish, or organize a shareable subset of "
         "workspace material. Reference what you found by name (e.g., the page "
         "name, session id, Stash title, or table). Be concise. "
@@ -37,7 +37,7 @@ def render_ask_system(stash_name: str, sources: list[dict] | None = None) -> str
 # Tool set names — schemas + executors live in agent_runtime.
 
 # Full tool set including mutators. Use for surfaces where the agent is
-# allowed to create / update / delete stashes on the user's behalf.
+# allowed to create / update / delete cartridges on the user's behalf.
 STASH_TOOL_SET = (
     "search_history",
     "read_page",
@@ -48,9 +48,9 @@ STASH_TOOL_SET = (
     "list_skills",
     "read_skill",
     "list_stashes",
-    "create_stash",
-    "update_stash",
-    "delete_stash",
+    "create_cartridge",
+    "update_cartridge",
+    "delete_cartridge",
     "list_sources",
     "list_source",
     "read_source",

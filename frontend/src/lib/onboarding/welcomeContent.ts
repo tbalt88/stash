@@ -72,7 +72,7 @@ export function generateWelcomeHtml(inputs: WelcomeInputs): string {
   parts.push(
     `<ul>
       <li><strong><a href="/onboarding?path=migrant">Import your existing data</a></strong> — Notion, GitHub, Obsidian, Google Drive.</li>
-      <li><strong><a href="/discover">Discover &amp; install Stashes</a></strong> — browse skills and knowledge others have published; copy into this workspace.</li>
+      <li><strong><a href="/discover">Discover &amp; install Cartridges</a></strong> — browse skills and knowledge others have published; copy into this workspace.</li>
       <li><strong>Invite a teammate to this workspace</strong>${
         inviteLink
           ? ` — share <a href="${escapeAttr(inviteLink)}">${escapeHtml(inviteLink)}</a>.`
@@ -86,7 +86,7 @@ export function generateWelcomeHtml(inputs: WelcomeInputs): string {
   parts.push(
     `<p>Everything is organized within a <strong>Workspace</strong>. This is a shared hopper for everything agents produce or consume: session transcripts, HTML pages, markdown docs, images, tables, raw files. Structured or not. Within it, there are three main structures:</p>
     <ul>
-      <li><strong>Stashes</strong> — virtual sub-workspaces. Bundle any subset of workspace data into a Stash; share to the public or make it private to everyone else in the workspace. This becomes the go-to point for teams, workstreams, or projects (e.g. LinkedIn marketing, Backend infra team, Kernel optimization reading group).</li>
+      <li><strong>Cartridges</strong> — virtual sub-workspaces. Bundle any subset of workspace data into a Stash; share to the public or make it private to everyone else in the workspace. This becomes the go-to point for teams, workstreams, or projects (e.g. LinkedIn marketing, Backend infra team, Kernel optimization reading group).</li>
       <li><strong>Files</strong> — a file system for documents (e.g. markdown, HTML, images, PDF, CSV). Built so agents can natively use it.</li>
       <li><strong>Sessions</strong> — history of conversations between users and agents. Automatically pushed from your agent of choice (e.g. Claude Code, Codex, Openclaw).</li>
     </ul>`,

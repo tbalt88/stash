@@ -13,10 +13,10 @@ def test_upload_text_file_detection() -> None:
     assert not _is_upload_text_file(Path("diagram.png"))
 
 
-def test_stash_url_uses_web_app_url(monkeypatch) -> None:
+def test_cartridge_url_uses_web_app_url(monkeypatch) -> None:
     monkeypatch.setattr(main, "_web_app_url", lambda: "https://app.example")
 
-    assert main._stash_url({"slug": "demo-stash"}) == "https://app.example/stashes/demo-stash"
+    assert main._cartridge_url({"slug": "demo-stash"}) == "https://app.example/cartridges/demo-stash"
 
 
 def test_file_app_url_points_to_workspace_file_viewer(monkeypatch) -> None:
@@ -53,11 +53,11 @@ def test_single_blob_upload_publishes_only_the_file_item(monkeypatch, tmp_path) 
         def create_page(self, *_args, **_kwargs):
             return {"id": "page-1"}
 
-        def publish_stash(self, _workspace_id, title, description, items):
+        def publish_cartridge(self, _workspace_id, title, description, items):
             published_items.extend(items)
             return {
                 "stash": {"id": "stash-1", "slug": "shot"},
-                "url": "https://app.example/stashes/shot",
+                "url": "https://app.example/cartridges/shot",
             }
 
     monkeypatch.setattr(main, "_require_auth", lambda: None)
@@ -98,11 +98,11 @@ def test_single_text_upload_publishes_only_the_page_item(monkeypatch, tmp_path) 
             assert folder_id == "folder-1"
             return {"id": "page-1"}
 
-        def publish_stash(self, _workspace_id, title, description, items):
+        def publish_cartridge(self, _workspace_id, title, description, items):
             published_items.extend(items)
             return {
                 "stash": {"id": "stash-1", "slug": "notes"},
-                "url": "https://app.example/stashes/notes",
+                "url": "https://app.example/cartridges/notes",
             }
 
     monkeypatch.setattr(main, "_require_auth", lambda: None)
