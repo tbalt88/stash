@@ -28,6 +28,7 @@ from pydantic import BaseModel
 from ..auth import get_current_user
 from ..config import settings
 from . import storage
+from .base import TokenSet
 from .registry import get_provider, list_providers
 
 logger = logging.getLogger(__name__)
@@ -83,6 +84,8 @@ class ProviderListItem(BaseModel):
     display_name: str
     scopes: list[str]
     connected: bool
+    # "oauth" (the default redirect flow) or "api_key" (paste a key, e.g. Granola).
+    auth_kind: str = "oauth"
     account_email: str | None = None
     account_display_name: str | None = None
     expires_at: str | None = None
@@ -107,6 +110,7 @@ async def list_integrations(current_user: dict = Depends(get_current_user)):
                 display_name=p.display_name,
                 scopes=p.scopes,
                 connected=conn is not None,
+                auth_kind=getattr(p, "auth_kind", "oauth"),
                 account_email=conn["account_email"] if conn else None,
                 account_display_name=conn["account_display_name"] if conn else None,
                 expires_at=conn["expires_at"] if conn else None,
@@ -149,6 +153,30 @@ async def integration_connect(
     p = get_provider(provider)
     state = _encode_state(current_user["id"], provider, _safe_return_to(return_to))
     return ConnectStartResponse(authorize_url=p.authorize_url(state))
+
+
+class ApiKeyRequest(BaseModel):
+    api_key: str
+
+
+@router.post("/{provider}/api-key")
+async def integration_set_api_key(
+    provider: str,
+    req: ApiKeyRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    """Store a pasted API key for an api_key-kind provider (e.g. Granola).
+    fetch_account validates the key, so a bad key 401s instead of storing."""
+    p = get_provider(provider)
+    if getattr(p, "auth_kind", "oauth") != "api_key":
+        raise HTTPException(status_code=400, detail=f"{provider} does not use an API key")
+    key = req.api_key.strip()
+    if not key:
+        raise HTTPException(status_code=400, detail="API key is required")
+    token = TokenSet(access_token=key, refresh_token=None, expires_at=None, scopes=[])
+    account = await p.fetch_account(key)
+    await storage.store_token(current_user["id"], provider, token, account)
+    return {"ok": True}
 
 
 @router.get("/{provider}/callback")

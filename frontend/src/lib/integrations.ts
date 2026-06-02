@@ -24,6 +24,8 @@ export type IntegrationStatus = {
   account_display_name: string | null;
   expires_at: string | null;
   connected_at: string | null;
+  // "oauth" (redirect flow) or "api_key" (paste a key, e.g. Granola).
+  auth_kind: "oauth" | "api_key";
 };
 
 export type IntegrationsList = {
@@ -56,6 +58,18 @@ export async function startConnect(
 
 export async function disconnectIntegration(provider: IntegrationProvider): Promise<void> {
   await apiFetch(`/api/v1/integrations/${provider}/disconnect`, { method: "POST" });
+}
+
+// For api_key-kind providers (e.g. Granola): store a pasted key. The backend
+// validates it before storing, so a bad key throws here.
+export async function connectApiKey(
+  provider: IntegrationProvider,
+  apiKey: string,
+): Promise<void> {
+  await apiFetch(`/api/v1/integrations/${provider}/api-key`, {
+    method: "POST",
+    body: JSON.stringify({ api_key: apiKey }),
+  });
 }
 
 export type GitHubRepoSummary = {

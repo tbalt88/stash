@@ -1,123 +1,56 @@
-"""Granola OAuth provider.
+"""Granola integration — API-key auth (not OAuth).
 
-Granola's public API (https://public-api.granola.ai/v1) is gated to Business/
-Enterprise workspaces and authenticates via WorkOS OAuth 2.0 with refresh-token
-rotation: each refresh returns a short-lived access token (~1h) AND a new refresh
-token, invalidating the old one. Our token storage already persists a rotated
-refresh token (it COALESCEs the new value), so `supports_refresh = True` is safe.
-
-NOTE: the exact authorize/token/account endpoints below must be confirmed against
-docs.granola.ai before enabling in production. The provider is inert until the
-GRANOLA_OAUTH_* env vars are set (the client-id accessor raises otherwise).
+Granola's official public API (https://docs.granola.ai) authenticates with a
+personal API key (prefixed `grn_`) created in the Granola desktop app under
+Settings → Connectors → API keys. There is no OAuth flow, so this provider is
+`auth_kind = "api_key"`: the key is pasted in the UI and stored like any other
+access token (no refresh, no expiry). The OAuth methods raise.
 """
 
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
-from urllib.parse import urlencode
-
 import httpx
+from fastapi import HTTPException
 
-from ...config import settings
-from ..base import AccountInfo, Integration, TokenSet
+from ..base import AccountInfo, TokenSet
 
-# TODO(verify against docs.granola.ai): WorkOS-backed OAuth endpoints.
-AUTHORIZE_URL = "https://api.granola.ai/oauth/authorize"
-TOKEN_URL = "https://api.granola.ai/oauth/token"
+# https://docs.granola.ai — base URL + bearer `grn_` key.
 API_BASE = "https://public-api.granola.ai/v1"
-ACCOUNT_URL = f"{API_BASE}/me"
+
+_NOT_OAUTH = "Granola connects with an API key, not OAuth."
 
 
-class GranolaIntegration(Integration):
+class GranolaIntegration:
     name = "granola"
     display_name = "Granola"
-    scopes = ["notes:read"]
-    supports_refresh = True
-
-    def _client_id(self) -> str:
-        if not settings.GRANOLA_OAUTH_CLIENT_ID:
-            raise RuntimeError("GRANOLA_OAUTH_CLIENT_ID is not set")
-        return settings.GRANOLA_OAUTH_CLIENT_ID
-
-    def _client_secret(self) -> str:
-        if not settings.GRANOLA_OAUTH_CLIENT_SECRET:
-            raise RuntimeError("GRANOLA_OAUTH_CLIENT_SECRET is not set")
-        return settings.GRANOLA_OAUTH_CLIENT_SECRET
-
-    def _redirect_uri(self) -> str:
-        if not settings.GRANOLA_OAUTH_REDIRECT_URI:
-            raise RuntimeError("GRANOLA_OAUTH_REDIRECT_URI is not set")
-        return settings.GRANOLA_OAUTH_REDIRECT_URI
+    scopes: list[str] = []
+    supports_refresh = False
+    # The integration layer is OAuth-shaped; this flag tells the router and UI
+    # to take the paste-an-API-key path instead of the OAuth redirect.
+    auth_kind = "api_key"
 
     def authorize_url(self, state: str) -> str:
-        params = {
-            "client_id": self._client_id(),
-            "redirect_uri": self._redirect_uri(),
-            "response_type": "code",
-            "scope": " ".join(self.scopes),
-            "state": state,
-        }
-        return f"{AUTHORIZE_URL}?{urlencode(params)}"
-
-    def _token_set(self, payload: dict) -> TokenSet:
-        expires_at = None
-        if payload.get("expires_in"):
-            expires_at = datetime.now(UTC) + timedelta(seconds=int(payload["expires_in"]))
-        return TokenSet(
-            access_token=payload["access_token"],
-            refresh_token=payload.get("refresh_token"),
-            expires_at=expires_at,
-            scopes=[s for s in (payload.get("scope") or "").split(" ") if s],
-        )
+        raise HTTPException(status_code=400, detail=_NOT_OAUTH)
 
     async def exchange_code(self, code: str) -> TokenSet:
-        async with httpx.AsyncClient(timeout=15.0) as client:
-            resp = await client.post(
-                TOKEN_URL,
-                data={
-                    "grant_type": "authorization_code",
-                    "code": code,
-                    "client_id": self._client_id(),
-                    "client_secret": self._client_secret(),
-                    "redirect_uri": self._redirect_uri(),
-                },
-            )
-            resp.raise_for_status()
-            return self._token_set(resp.json())
+        raise HTTPException(status_code=400, detail=_NOT_OAUTH)
 
     async def refresh(self, refresh_token: str) -> TokenSet:
-        async with httpx.AsyncClient(timeout=15.0) as client:
-            resp = await client.post(
-                TOKEN_URL,
-                data={
-                    "grant_type": "refresh_token",
-                    "refresh_token": refresh_token,
-                    "client_id": self._client_id(),
-                    "client_secret": self._client_secret(),
-                },
-            )
-            resp.raise_for_status()
-            return self._token_set(resp.json())
+        raise HTTPException(status_code=400, detail="Granola API keys do not expire.")
 
     async def revoke(self, access_token: str) -> None:
-        # No documented revoke endpoint; disconnecting just drops our token copy.
+        # Keys are revoked in the Granola desktop app; we only drop our copy.
         return None
 
     async def fetch_account(self, access_token: str) -> AccountInfo:
-        info = await self.account_info(access_token)
-        return AccountInfo(email=info.get("email"), display_name=info.get("workspace_name"))
-
-    async def account_info(self, access_token: str) -> dict:
-        """{workspace_id, workspace_name, email} — also used to derive a Granola
-        source's external_ref (the workspace id)."""
-        async with httpx.AsyncClient(
-            timeout=15.0, headers={"Authorization": f"Bearer {access_token}"}
-        ) as client:
-            resp = await client.get(ACCOUNT_URL)
-            resp.raise_for_status()
-            data = resp.json()
-        return {
-            "workspace_id": data.get("workspace_id") or data.get("id"),
-            "workspace_name": data.get("workspace_name") or data.get("name") or "Granola",
-            "email": data.get("email"),
-        }
+        """Validate the key by hitting the notes endpoint, so a bad key fails at
+        connect time instead of storing a dead token."""
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            resp = await client.get(
+                f"{API_BASE}/notes",
+                headers={"Authorization": f"Bearer {access_token}"},
+            )
+        if resp.status_code in (401, 403):
+            raise HTTPException(status_code=401, detail="Invalid Granola API key.")
+        resp.raise_for_status()
+        return AccountInfo(email=None, display_name="Granola")

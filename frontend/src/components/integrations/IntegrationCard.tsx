@@ -5,6 +5,7 @@ import { useState } from "react";
 import {
   IntegrationProvider,
   IntegrationStatus,
+  connectApiKey,
   disconnectIntegration,
   startConnect,
 } from "@/lib/integrations";
@@ -33,6 +34,23 @@ export default function IntegrationCard({ status, onChanged, returnTo }: Props) 
   const [busy, setBusy] = useState(false);
 
   async function onConnect() {
+    // api_key providers (Granola) paste a key instead of an OAuth redirect.
+    if (status.auth_kind === "api_key") {
+      const key = window.prompt(
+        `Paste your ${status.display_name} API key (Settings → Connectors → API keys):`,
+      );
+      if (!key?.trim()) return;
+      setBusy(true);
+      try {
+        await connectApiKey(status.provider as IntegrationProvider, key.trim());
+        onChanged?.();
+      } catch (e) {
+        alert(e instanceof Error ? e.message : String(e));
+      } finally {
+        setBusy(false);
+      }
+      return;
+    }
     setBusy(true);
     try {
       await startConnect(status.provider as IntegrationProvider, returnTo);

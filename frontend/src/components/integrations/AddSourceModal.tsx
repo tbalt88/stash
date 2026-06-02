@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 
 import { addWorkspaceSource, listWorkspaceSources, type WorkspaceSource } from "@/lib/api";
 import {
+  connectApiKey,
   listIntegrations,
   startConnect,
   type IntegrationProvider,
@@ -18,6 +19,8 @@ type Connector = {
   label: string;
   sourceType: string;
   icon: React.ReactNode;
+  // oauth = redirect to Connect; key = paste an API key (Granola).
+  auth: "oauth" | "key";
   // Slack/Granola resolve their source from the token, so we add the source
   // right after connecting. Tree sources need a repo/folder pick (in Settings).
   autoAdd: boolean;
@@ -29,11 +32,11 @@ const DOT = (color: string) => (
 );
 
 const CONNECTORS: Connector[] = [
-  { provider: "github", label: "GitHub", sourceType: "github_repo", icon: <GitHubIcon />, autoAdd: false, blurb: "Navigate repos like a filesystem." },
-  { provider: "google", label: "Google Drive", sourceType: "google_drive", icon: <GoogleDriveIcon />, autoAdd: false, blurb: "Docs, indexed and read on demand." },
-  { provider: "notion", label: "Notion", sourceType: "notion", icon: <NotionIcon />, autoAdd: false, blurb: "Pages and databases." },
-  { provider: "slack", label: "Slack", sourceType: "slack", icon: DOT("#4a154b"), autoAdd: true, blurb: "Channel history, kept in sync." },
-  { provider: "granola", label: "Granola", sourceType: "granola", icon: DOT("#e0700f"), autoAdd: true, blurb: "Meeting notes and transcripts." },
+  { provider: "github", label: "GitHub", sourceType: "github_repo", icon: <GitHubIcon />, auth: "oauth", autoAdd: false, blurb: "Navigate repos like a filesystem." },
+  { provider: "google", label: "Google Drive", sourceType: "google_drive", icon: <GoogleDriveIcon />, auth: "oauth", autoAdd: false, blurb: "Docs, indexed and read on demand." },
+  { provider: "notion", label: "Notion", sourceType: "notion", icon: <NotionIcon />, auth: "oauth", autoAdd: false, blurb: "Pages and databases." },
+  { provider: "slack", label: "Slack", sourceType: "slack", icon: DOT("#4a154b"), auth: "oauth", autoAdd: true, blurb: "Channel history, kept in sync." },
+  { provider: "granola", label: "Granola", sourceType: "granola", icon: DOT("#e0700f"), auth: "key", autoAdd: true, blurb: "Meeting notes and transcripts. Paste your grn_ API key." },
 ];
 
 // A modal launcher for adding sources — separate from the full Settings page.
@@ -52,6 +55,10 @@ export default function AddSourceModal({
   const [added, setAdded] = useState<WorkspaceSource[]>([]);
   const [showObsidian, setShowObsidian] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
+  // The api_key connector (Granola) whose key input is open, + its value/error.
+  const [keyOpen, setKeyOpen] = useState<string | null>(null);
+  const [keyValue, setKeyValue] = useState("");
+  const [keyError, setKeyError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     const [ints, sources] = await Promise.all([
@@ -75,6 +82,24 @@ export default function AddSourceModal({
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
+
+  async function submitKey(c: Connector) {
+    const key = keyValue.trim();
+    if (!key) return;
+    setBusy(c.provider);
+    setKeyError(null);
+    try {
+      await connectApiKey(c.provider, key); // validated server-side
+      await addWorkspaceSource(workspaceId, { source_type: c.sourceType });
+      setKeyOpen(null);
+      setKeyValue("");
+      await refresh();
+    } catch (e) {
+      setKeyError(e instanceof Error ? e.message : "Couldn't add the key");
+    } finally {
+      setBusy(null);
+    }
+  }
 
   async function addSource(c: Connector) {
     setBusy(c.provider);
@@ -119,8 +144,9 @@ export default function AddSourceModal({
             return (
               <div
                 key={c.provider}
-                className="flex items-center gap-3 rounded-lg border border-border bg-surface px-3 py-2.5"
+                className="rounded-lg border border-border bg-surface px-3 py-2.5"
               >
+                <div className="flex items-center gap-3">
                 <span className="flex h-5 w-5 shrink-0 items-center justify-center">{c.icon}</span>
                 <div className="min-w-0 flex-1">
                   <div className="text-[13.5px] font-medium text-foreground">
@@ -133,7 +159,19 @@ export default function AddSourceModal({
                   </div>
                   <div className="truncate text-[11.5px] text-muted">{c.blurb}</div>
                 </div>
-                {!connected ? (
+                {c.auth === "key" && !connected ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setKeyError(null);
+                      setKeyValue("");
+                      setKeyOpen((o) => (o === c.provider ? null : c.provider));
+                    }}
+                    className="shrink-0 rounded-md bg-brand px-3 py-1.5 text-[12px] font-medium text-white hover:bg-brand-hover"
+                  >
+                    Add API key
+                  </button>
+                ) : !connected ? (
                   <button
                     type="button"
                     onClick={() => void startConnect(c.provider, returnTo)}
@@ -159,6 +197,33 @@ export default function AddSourceModal({
                   </a>
                 ) : (
                   <span className="shrink-0 text-[12px] font-medium text-success">Connected ✓</span>
+                )}
+                </div>
+                {keyOpen === c.provider && (
+                  <div className="mt-2.5 flex items-center gap-2">
+                    <input
+                      type="password"
+                      autoFocus
+                      value={keyValue}
+                      onChange={(e) => setKeyValue(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") void submitKey(c);
+                      }}
+                      placeholder="grn_…  (Granola → Settings → Connectors → API keys)"
+                      className="flex-1 rounded-md border border-border bg-base px-2.5 py-1.5 text-[12px] text-foreground placeholder:text-muted focus:border-brand focus:outline-none"
+                    />
+                    <button
+                      type="button"
+                      disabled={busy === c.provider || !keyValue.trim()}
+                      onClick={() => void submitKey(c)}
+                      className="shrink-0 rounded-md bg-brand px-3 py-1.5 text-[12px] font-medium text-white hover:bg-brand-hover disabled:opacity-60"
+                    >
+                      {busy === c.provider ? "Saving…" : "Save"}
+                    </button>
+                  </div>
+                )}
+                {keyOpen === c.provider && keyError && (
+                  <div className="mt-1.5 text-[11.5px] text-error">{keyError}</div>
                 )}
               </div>
             );

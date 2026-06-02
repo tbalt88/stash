@@ -45,10 +45,11 @@ async def _resolve_slack_source(user_id) -> tuple[str, str]:
 
 
 async def _resolve_granola_source(user_id) -> tuple[str, str]:
-    """Granola source external_ref = workspace id, from the connected token."""
-    token = await integration_storage.get_valid_token(user_id, "granola")
-    info = await get_provider("granola").account_info(token)
-    return info["workspace_id"], info["workspace_name"]
+    """Granola is API-key scoped (one connection per user), so the external_ref
+    is a constant — the key itself defines what's visible. We still require a
+    stored key so a source isn't created before the user connects Granola."""
+    await integration_storage.get_valid_token(user_id, "granola")
+    return "granola", "Granola"
 
 
 @router.get("")
