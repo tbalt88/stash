@@ -4,17 +4,15 @@ import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { useBreadcrumbs } from "../../../../../components/BreadcrumbContext";
 import { WorkspaceSettingsSkeleton } from "../../../../../components/SkeletonStates";
-import WorkspaceMembersPanel from "../../../../../components/workspace/WorkspaceMembersPanel";
 import { useAuth } from "../../../../../hooks/useAuth";
 import {
   deleteWorkspace,
   getWorkspace,
-  getWorkspaceMembers,
   updateWorkspace,
   uploadFile,
 } from "../../../../../lib/api";
 import { resetStashNavigationCache } from "../../../../../lib/stashNavigationCache";
-import type { Workspace, WorkspaceMember } from "../../../../../lib/types";
+import type { Workspace } from "../../../../../lib/types";
 
 export default function CartridgeSettingsPage() {
   const params = useParams();
@@ -23,19 +21,13 @@ export default function CartridgeSettingsPage() {
   const { user } = useAuth();
 
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
-  const [members, setMembers] = useState<WorkspaceMember[]>([]);
   const [error, setError] = useState("");
 
   useBreadcrumbs([{ label: "Settings" }], `${workspaceId}/settings`);
 
   const load = useCallback(async () => {
     try {
-      const [ws, m] = await Promise.all([
-        getWorkspace(workspaceId),
-        getWorkspaceMembers(workspaceId),
-      ]);
-      setWorkspace(ws);
-      setMembers(m);
+      setWorkspace(await getWorkspace(workspaceId));
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load settings");
     }
@@ -51,8 +43,8 @@ export default function CartridgeSettingsPage() {
     return <WorkspaceSettingsSkeleton />;
   }
 
-  const myRole = members.find((m) => m.user_id === user.id)?.role;
-  const isAdmin = myRole === "owner";
+  // Single-owner workspace: the viewer owns their own space.
+  const isAdmin = true;
 
   async function uploadAndSet(file: File, field: "cover_image_url" | "icon_url") {
     if (!workspace) return;
@@ -93,17 +85,6 @@ export default function CartridgeSettingsPage() {
             {error}
           </div>
         )}
-
-        <Section title="Members">
-          <WorkspaceMembersPanel
-            workspaceId={workspaceId}
-            members={members}
-            currentUserId={user.id}
-            canManage={isAdmin}
-            onReload={load}
-            showInviteControls={false}
-          />
-        </Section>
 
         <Section title="Branding">
           <ImageField

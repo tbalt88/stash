@@ -4,7 +4,6 @@ import Link from "next/link";
 import {
   useEffect,
   useMemo,
-  useRef,
   useState,
   type MouseEvent,
   type ReactNode,
@@ -32,13 +31,11 @@ import {
   FolderIcon,
   HelpIcon,
   PageIcon,
-  PersonIcon,
   SessionsIcon,
   SettingsIcon,
   StashIcon,
   TableIcon,
   TrashIcon,
-  WorkspaceIcon,
 } from "./StashIcons";
 
 interface AppSidebarProps {
@@ -341,173 +338,6 @@ function PinnedSection({
   );
 }
 
-function WorkspaceSwitcher({
-  active,
-  mine,
-  shared,
-}: {
-  active: WorkspaceNode | null;
-  mine: Workspace[];
-  shared: Workspace[];
-}) {
-  const [open, setOpen] = useState(false);
-  const wrapperRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    function onDown(event: globalThis.MouseEvent) {
-      if (wrapperRef.current && !wrapperRef.current.contains(event.target as Node)) {
-        setOpen(false);
-      }
-    }
-    function onKey(event: globalThis.KeyboardEvent) {
-      if (event.key === "Escape") setOpen(false);
-    }
-    document.addEventListener("mousedown", onDown);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("mousedown", onDown);
-      document.removeEventListener("keydown", onKey);
-    };
-  }, [open]);
-
-  const label = active?.name ?? "Pick a workspace";
-  const total = mine.length + shared.length;
-
-  return (
-    <div ref={wrapperRef} className="relative">
-      <button
-        type="button"
-        onClick={() => setOpen((value) => !value)}
-        aria-haspopup="menu"
-        aria-expanded={open}
-        className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left hover:bg-raised"
-      >
-        <span className="flex h-6 w-6 items-center justify-center rounded-[5px] bg-[var(--color-brand-100)] text-[var(--color-brand-700)]">
-          <WorkspaceIcon className="text-[16px]" />
-        </span>
-        <span className="min-w-0 flex-1">
-          <span className="block truncate font-display text-[13.5px] font-semibold tracking-tight text-foreground">
-            {label}
-          </span>
-          {active && (
-            <span className="block truncate text-[10.5px] text-muted">
-              {total} workspace{total === 1 ? "" : "s"}
-            </span>
-          )}
-        </span>
-        <svg
-          className={"h-3.5 w-3.5 text-muted transition-transform " + (open ? "rotate-180" : "")}
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        >
-          <polyline points="6 9 12 15 18 9" />
-        </svg>
-      </button>
-
-      {open && (
-        <div
-          role="menu"
-          className="absolute left-0 right-0 top-full z-40 mt-1 max-h-[60vh] overflow-y-auto rounded-md border border-border bg-base py-1 shadow-lg"
-        >
-          {mine.length > 0 && (
-            <>
-              <div className="px-3 pb-1 pt-1.5 text-[10px] font-semibold uppercase tracking-wide text-muted">
-                Your workspaces
-              </div>
-              {mine.map((w) => (
-                <WorkspaceMenuItem
-                  key={w.id}
-                  workspace={w}
-                  active={active?.id === w.id}
-                  onClose={() => setOpen(false)}
-                />
-              ))}
-            </>
-          )}
-          {shared.length > 0 && (
-            <>
-              <div className="px-3 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-wide text-muted">
-                Shared with you
-              </div>
-              {shared.map((w) => (
-                <WorkspaceMenuItem
-                  key={w.id}
-                  workspace={w}
-                  active={active?.id === w.id}
-                  onClose={() => setOpen(false)}
-                />
-              ))}
-            </>
-          )}
-          {mine.length === 0 && shared.length === 0 && (
-            <div className="px-3 py-1.5 text-[12px] italic text-muted">
-              No workspaces yet.
-            </div>
-          )}
-          <div className="mt-1 border-t border-border pt-1">
-            <Link
-              href="/"
-              onClick={() => setOpen(false)}
-              className="block px-3 py-1.5 text-[12.5px] text-dim hover:bg-raised hover:text-foreground"
-              role="menuitem"
-            >
-              + New or join workspace
-            </Link>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function WorkspaceMenuItem({
-  workspace,
-  active,
-  onClose,
-}: {
-  workspace: Workspace;
-  active: boolean;
-  onClose: () => void;
-}) {
-  return (
-    <Link
-      href={`/workspaces/${workspace.id}`}
-      onClick={onClose}
-      role="menuitem"
-      className={
-        "flex items-center gap-2 px-3 py-1.5 text-[13px] " +
-        (active
-          ? "bg-[var(--color-brand-50)] text-[var(--color-brand-800)]"
-          : "text-foreground hover:bg-raised")
-      }
-    >
-      <span
-        className="flex h-5 w-5 items-center justify-center rounded-[4px] bg-[var(--color-brand-100)] text-[var(--color-brand-700)]"
-      >
-        <WorkspaceIcon className="text-[13px]" />
-      </span>
-      <span className="min-w-0 flex-1 truncate font-medium">{workspace.name}</span>
-      {active && (
-        <svg
-          className="h-3.5 w-3.5 text-[var(--color-brand-700)]"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2.5"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        >
-          <polyline points="20 6 9 17 4 12" />
-        </svg>
-      )}
-    </Link>
-  );
-}
 
 export default function AppSidebar({
   user,
@@ -656,12 +486,11 @@ export default function AppSidebar({
 
   return (
     <aside className="scroll-thin overflow-y-auto border-r border-border bg-surface">
-      <div className="px-2 pt-2">
-        <WorkspaceSwitcher
-          active={activeWorkspace}
-          mine={mine}
-          shared={shared}
-        />
+      <div className="px-3 pt-3 pb-1">
+        <div className="truncate text-[14px] font-semibold text-foreground">
+          {user?.display_name || user?.name || "You"}
+        </div>
+        <div className="text-[11px] text-muted">Personal</div>
       </div>
 
       <nav className="px-2 pt-2 text-[13px]">
@@ -677,10 +506,10 @@ export default function AppSidebar({
         />
         {activeWorkspace ? (
           <NavRow
-            href={`/workspaces/${activeWorkspace.id}/members`}
-            icon={<PersonIcon />}
-            label="Members"
-            active={pathname === `/workspaces/${activeWorkspace.id}/members`}
+            href={`/workspaces/${activeWorkspace.id}/agents`}
+            icon={<span aria-hidden>✦</span>}
+            label="Agents"
+            active={pathname.startsWith(`/workspaces/${activeWorkspace.id}/agents`)}
           />
         ) : null}
         <NavRow
@@ -738,6 +567,12 @@ export default function AppSidebar({
               items={sourceRows}
               open={sectionOpen("sources")}
               onToggle={() => toggleSection("sources")}
+            />
+            <NavRow
+              href="/settings/integrations"
+              icon={<span aria-hidden>＋</span>}
+              label="Add a new source"
+              active={false}
             />
             <NavRow
               href={`/workspaces/${activeWorkspace.id}/trash`}
