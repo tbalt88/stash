@@ -95,9 +95,11 @@ class Settings:
     # Verifies inbound Events API webhook signatures (X-Slack-Signature).
     SLACK_SIGNING_SECRET: str | None = os.getenv("SLACK_SIGNING_SECRET")
 
-    # Granola uses WorkOS-backed OAuth (refresh-token rotation, 1h access TTL).
-    GRANOLA_OAUTH_CLIENT_ID: str | None = os.getenv("GRANOLA_OAUTH_CLIENT_ID")
-    GRANOLA_OAUTH_CLIENT_SECRET: str | None = os.getenv("GRANOLA_OAUTH_CLIENT_SECRET")
+    # Granola connects through its official MCP server over OAuth 2.0 with
+    # Dynamic Client Registration + PKCE — no pre-shared client_id/secret. We
+    # only need the MCP endpoint and the backend callback URL we register as the
+    # redirect_uri (must be publicly reachable so Granola can redirect back).
+    GRANOLA_MCP_URL: str = os.getenv("GRANOLA_MCP_URL", "https://mcp.granola.ai/mcp")
     GRANOLA_OAUTH_REDIRECT_URI: str | None = os.getenv("GRANOLA_OAUTH_REDIRECT_URI")
 
     # Google Drive Picker requires TWO things distinct from the OAuth

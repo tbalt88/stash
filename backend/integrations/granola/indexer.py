@@ -1,11 +1,15 @@
-"""Granola → granola_notes indexer (scheduled pull, official API).
+"""Granola → granola_notes indexer (scheduled pull, via the MCP server).
 
-Uses Granola's public API (https://docs.granola.ai): GET /notes paginates the
-notes the key can see (only notes with a generated AI summary + transcript are
-returned); GET /notes/{id}?include=transcript returns the summary and the
-speaker/text transcript. We copy each note's rendered markdown into
-granola_notes (FTS + embeddings), keyed by note id. Idempotent re-sync is
-handled upstream (content-hash dedupe + soft-delete of vanished notes).
+Opens an MCP session to Granola (bearer token, refreshed on demand) and pulls
+meetings with `list_meetings`, then each meeting's transcript with
+`get_meeting_transcript`. Each meeting's rendered markdown lands in granola_notes
+(FTS + embeddings), keyed by meeting id. Idempotent re-sync is handled upstream
+(content-hash dedupe + soft-delete of vanished meetings).
+
+Note: the exact JSON field names returned by Granola's MCP tools are only
+visible from an authenticated `tools/list`, so the small parse helpers below
+(`_meeting_id`, `_render_meeting`) encode the documented shape and are the one
+spot to adjust against a live account.
 """
 
 from __future__ import annotations
@@ -13,37 +17,61 @@ from __future__ import annotations
 import logging
 from uuid import UUID
 
-import httpx
-
 from ...services import source_service
-from ..storage import get_valid_token
-from .provider import API_BASE
+from .client import call_tool_json, granola_session
+from .oauth import get_valid_access_token
 
 logger = logging.getLogger(__name__)
 
-MAX_NOTES = 1000
-# Granola allows 25 req / 5s burst; a Get-per-note can approach that on large
-# accounts, so stop after MAX_NOTES rather than hammering the API.
+# Granola rate-limits; a transcript fetch per meeting can add up, so cap a sync.
+MAX_MEETINGS = 1000
 
 
-def _render_note(detail: dict) -> str:
-    """A note's markdown: title + AI summary + the speaker-labelled transcript."""
-    title = detail.get("title") or "Untitled note"
+def _as_list(result, *keys) -> list:
+    """MCP tools may return a bare list or wrap it under a key — accept both."""
+    if isinstance(result, list):
+        return result
+    if isinstance(result, dict):
+        for key in keys:
+            value = result.get(key)
+            if isinstance(value, list):
+                return value
+    return []
+
+
+def _meeting_id(meeting: dict) -> str | None:
+    return meeting.get("id") or meeting.get("meeting_id") or meeting.get("document_id")
+
+
+def _render_meeting(meeting: dict, transcript: list) -> str:
+    """A meeting's markdown: title + attendees + the speaker-labelled transcript."""
+    title = meeting.get("title") or "Untitled meeting"
     lines = [f"# {title}", ""]
-    summary = (detail.get("summary") or "").strip()
-    if summary:
-        lines += [summary, ""]
-    transcript = detail.get("transcript") or []
+
+    when = meeting.get("date") or meeting.get("created_at") or meeting.get("start_time")
+    if when:
+        lines += [f"_{when}_", ""]
+
+    attendees = meeting.get("attendees") or meeting.get("people") or []
+    names = [a.get("name") or a.get("email") if isinstance(a, dict) else str(a) for a in attendees]
+    names = [n for n in names if n]
+    if names:
+        lines += [f"**Attendees:** {', '.join(names)}", ""]
+
+    notes = meeting.get("notes") or meeting.get("summary")
+    if notes:
+        lines += [notes.strip(), ""]
+
     if transcript:
-        lines.append("## Transcript")
-        lines.append("")
+        lines += ["## Transcript", ""]
         for entry in transcript:
-            text = (entry.get("text") or "").strip()
+            text = (entry.get("text") or "").strip() if isinstance(entry, dict) else str(entry).strip()
             if not text:
                 continue
-            speaker = entry.get("speaker") or {}
-            label = speaker.get("diarization_label") or speaker.get("source") or "speaker"
+            speaker = entry.get("speaker") if isinstance(entry, dict) else None
+            label = speaker or "speaker"
             lines.append(f"**{label}:** {text}")
+
     return "\n".join(lines).strip()
 
 
@@ -52,51 +80,33 @@ async def index_granola(source: dict) -> str | None:
     workspace_id = UUID(source["workspace_id"])
     owner_user_id = UUID(source["owner_user_id"])
 
-    token = await get_valid_token(owner_user_id, "granola")
-    headers = {"Authorization": f"Bearer {token}"}
+    access_token = await get_valid_access_token(owner_user_id)
     present: list[str] = []
 
-    async with httpx.AsyncClient(timeout=30.0, headers=headers) as client:
-        cursor: str | None = None
-        while len(present) < MAX_NOTES:
-            params: dict = {}
-            if cursor:
-                params["cursor"] = cursor
-            resp = await client.get(f"{API_BASE}/notes", params=params)
-            resp.raise_for_status()
-            payload = resp.json()
+    async with granola_session(access_token) as session:
+        meetings_result = await call_tool_json(session, "list_meetings")
+        meetings = _as_list(meetings_result, "meetings", "results", "items")
 
-            for note in payload.get("notes", []):
-                note_id = note.get("id")
-                if not note_id:
-                    continue
-                detail_resp = await client.get(
-                    f"{API_BASE}/notes/{note_id}", params={"include": "transcript"}
-                )
-                if detail_resp.status_code != 200:
-                    # 404 = still processing / no summary; 429 = rate limited.
-                    # Skip this note; a later sync picks it up.
-                    continue
-                detail = detail_resp.json()
-                title = detail.get("title") or note.get("title") or "Untitled note"
-                await source_service.upsert_content_document(
-                    table="granola_notes",
-                    source_id=source_id,
-                    workspace_id=workspace_id,
-                    path=note_id,
-                    name=title,
-                    kind="note",
-                    content=_render_note(detail),
-                    external_ref=note_id,
-                )
-                present.append(note_id)
-
-            if not payload.get("hasMore"):
-                break
-            cursor = payload.get("cursor")
-            if not cursor:
-                break
+        for meeting in meetings[:MAX_MEETINGS]:
+            meeting_id = _meeting_id(meeting)
+            if not meeting_id:
+                continue
+            transcript_result = await call_tool_json(
+                session, "get_meeting_transcript", {"meeting_id": meeting_id}
+            )
+            transcript = _as_list(transcript_result, "transcript", "segments", "entries")
+            await source_service.upsert_content_document(
+                table="granola_notes",
+                source_id=source_id,
+                workspace_id=workspace_id,
+                path=meeting_id,
+                name=meeting.get("title") or "Untitled meeting",
+                kind="note",
+                content=_render_meeting(meeting, transcript),
+                external_ref=meeting_id,
+            )
+            present.append(meeting_id)
 
     await source_service.soft_delete_missing("granola_notes", source_id, present)
-    logger.info("granola source %s: indexed %d note(s)", source_id, len(present))
+    logger.info("granola source %s: indexed %d meeting(s)", source_id, len(present))
     return None

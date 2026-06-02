@@ -28,7 +28,6 @@ from pydantic import BaseModel
 from ..auth import get_current_user
 from ..config import settings
 from . import storage
-from .base import TokenSet
 from .registry import get_provider, list_providers
 
 logger = logging.getLogger(__name__)
@@ -84,7 +83,8 @@ class ProviderListItem(BaseModel):
     display_name: str
     scopes: list[str]
     connected: bool
-    # "oauth" (the default redirect flow) or "api_key" (paste a key, e.g. Granola).
+    # "oauth" (the default redirect flow) or "mcp_oauth" (DCR+PKCE via an MCP
+    # server, e.g. Granola).
     auth_kind: str = "oauth"
     account_email: str | None = None
     account_display_name: str | None = None
@@ -151,32 +151,13 @@ async def integration_connect(
     started (e.g. /onboarding) instead of /settings.
     """
     p = get_provider(provider)
+    # MCP OAuth providers (Granola) register a client + carry PKCE through their
+    # own state, so they own the connect step end-to-end.
+    if getattr(p, "auth_kind", "oauth") == "mcp_oauth":
+        url = await p.start_authorization(current_user["id"], _safe_return_to(return_to))
+        return ConnectStartResponse(authorize_url=url)
     state = _encode_state(current_user["id"], provider, _safe_return_to(return_to))
     return ConnectStartResponse(authorize_url=p.authorize_url(state))
-
-
-class ApiKeyRequest(BaseModel):
-    api_key: str
-
-
-@router.post("/{provider}/api-key")
-async def integration_set_api_key(
-    provider: str,
-    req: ApiKeyRequest,
-    current_user: dict = Depends(get_current_user),
-):
-    """Store a pasted API key for an api_key-kind provider (e.g. Granola).
-    fetch_account validates the key, so a bad key 401s instead of storing."""
-    p = get_provider(provider)
-    if getattr(p, "auth_kind", "oauth") != "api_key":
-        raise HTTPException(status_code=400, detail=f"{provider} does not use an API key")
-    key = req.api_key.strip()
-    if not key:
-        raise HTTPException(status_code=400, detail="API key is required")
-    token = TokenSet(access_token=key, refresh_token=None, expires_at=None, scopes=[])
-    account = await p.fetch_account(key)
-    await storage.store_token(current_user["id"], provider, token, account)
-    return {"ok": True}
 
 
 @router.get("/{provider}/callback")
@@ -186,11 +167,14 @@ async def integration_callback(
     state: str = Query(...),
 ):
     p = get_provider(provider)
-    user_id, return_to = _decode_state(state, expected_provider=provider)
-
-    token = await p.exchange_code(code)
-    account = await p.fetch_account(token.access_token)
-    await storage.store_token(user_id, provider, token, account)
+    if getattr(p, "auth_kind", "oauth") == "mcp_oauth":
+        # The provider owns the exchange + storage and returns where to land.
+        return_to = await p.finish_authorization(code, state)
+    else:
+        user_id, return_to = _decode_state(state, expected_provider=provider)
+        token = await p.exchange_code(code)
+        account = await p.fetch_account(token.access_token)
+        await storage.store_token(user_id, provider, token, account)
 
     base = settings.PUBLIC_URL.rstrip("/")
     target = _safe_return_to(return_to) or "/settings"

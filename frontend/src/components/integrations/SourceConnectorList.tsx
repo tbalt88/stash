@@ -11,7 +11,6 @@ import {
   type WorkspaceSource,
 } from "@/lib/api";
 import {
-  connectApiKey,
   listGitHubRepos,
   listIntegrations,
   listNotionPages,
@@ -32,7 +31,7 @@ import {
 } from "./BrandIcons";
 import ObsidianVaultDropZone from "./ObsidianVaultDropZone";
 
-type ConnectorKind = "github" | "drive" | "notion" | "auto" | "key";
+type ConnectorKind = "github" | "drive" | "notion" | "auto";
 
 type Connector = {
   provider: IntegrationProvider;
@@ -89,7 +88,7 @@ const CONNECTORS: Connector[] = [
     label: "Granola",
     sourceType: "granola",
     icon: <GranolaIcon />,
-    kind: "key",
+    kind: "auto",
     blurb: "Meeting notes and transcripts.",
   },
 ];
@@ -106,8 +105,6 @@ export default function SourceConnectorList({
   const [expanded, setExpanded] = useState<IntegrationProvider | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [keyOpen, setKeyOpen] = useState(false);
-  const [keyValue, setKeyValue] = useState("");
 
   const refresh = useCallback(async () => {
     setError(null);
@@ -151,24 +148,6 @@ export default function SourceConnectorList({
       setError(e instanceof Error ? e.message : "Could not add source");
       return false;
     } finally {
-      setBusy(null);
-    }
-  }
-
-  async function submitKey(connector: Connector) {
-    const apiKey = keyValue.trim();
-    if (!apiKey) return;
-    setBusy(connector.provider);
-    setError(null);
-    try {
-      await connectApiKey(connector.provider, apiKey);
-      const added = await addSource(connector);
-      if (added) {
-        setKeyOpen(false);
-        setKeyValue("");
-      }
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not connect source");
       setBusy(null);
     }
   }
@@ -230,40 +209,14 @@ export default function SourceConnectorList({
                 busy={busy === connector.provider}
                 workspaceReady={!!workspaceId}
                 expanded={expanded === connector.provider}
-                keyOpen={keyOpen}
                 onConnect={() => void startConnect(connector.provider, returnTo)}
                 onExpand={() => setExpanded((value) => value === connector.provider ? null : connector.provider)}
                 onAdd={() => void addSource(connector, connector.kind === "drive" ? {
                   external_ref: "root",
                   display_name: "Google Drive",
                 } : undefined)}
-                onKeyOpen={() => setKeyOpen((value) => !value)}
               />
             </div>
-
-            {connector.kind === "key" && keyOpen && (
-              <div className="mt-2.5 flex items-center gap-2">
-                <input
-                  type="password"
-                  autoFocus
-                  value={keyValue}
-                  onChange={(e) => setKeyValue(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") void submitKey(connector);
-                  }}
-                  placeholder="Granola API key"
-                  className="flex-1 rounded-md border border-border bg-base px-2.5 py-1.5 text-[12px] text-foreground placeholder:text-muted focus:border-brand focus:outline-none"
-                />
-                <button
-                  type="button"
-                  disabled={busy === connector.provider || !keyValue.trim()}
-                  onClick={() => void submitKey(connector)}
-                  className="shrink-0 rounded-md bg-brand px-3 py-1.5 text-[12px] font-medium text-white hover:bg-brand-hover disabled:opacity-60"
-                >
-                  {busy === connector.provider ? "Saving..." : "Save"}
-                </button>
-              </div>
-            )}
 
             {expanded === connector.provider && connector.kind === "github" && workspaceId && (
               <GitHubRepoPicker
@@ -338,30 +291,19 @@ function ConnectorAction({
   busy,
   workspaceReady,
   expanded,
-  keyOpen,
   onConnect,
   onExpand,
   onAdd,
-  onKeyOpen,
 }: {
   connector: Connector;
   connected: boolean;
   busy: boolean;
   workspaceReady: boolean;
   expanded: boolean;
-  keyOpen: boolean;
   onConnect: () => void;
   onExpand: () => void;
   onAdd: () => void;
-  onKeyOpen: () => void;
 }) {
-  if (connector.kind === "key" && !connected) {
-    return (
-      <button type="button" onClick={onKeyOpen} className={primaryButton()}>
-        {keyOpen ? "Cancel" : "Add key"}
-      </button>
-    );
-  }
   if (!connected) {
     return (
       <button type="button" onClick={onConnect} className={primaryButton()}>
