@@ -1364,7 +1364,7 @@ def upload(
                     description=f"Uploaded from {target.name}",
                     items=cartridge_items,
                 )
-                stash_row = bundle["stash"]
+                stash_row = bundle["cartridge"]
                 stash_url = bundle["url"]
             else:
                 stash_row = c.create_cartridge(
@@ -1476,7 +1476,7 @@ def stashes_create(
                     discoverable=discover,
                     items=items,
                 )
-                stash = bundle["stash"]
+                stash = bundle["cartridge"]
             else:
                 stash = c.create_cartridge(
                     ws_id,
@@ -1670,6 +1670,117 @@ def stashes_remove_external(
         except CartridgeError as e:
             _err(e)
     console.print(f"[green]Removed forked Stash[/green] {cartridge_id}")
+
+
+@stashes_app.command("members")
+def stashes_members(
+    cartridge_id: str = typer.Argument(..., help="Cartridge ID."),
+    as_json: bool = typer.Option(False, "--json"),
+):
+    """List the people granted access to a Cartridge."""
+    with _client() as c:
+        try:
+            data = c.list_cartridge_members(cartridge_id)
+        except CartridgeError as e:
+            _err(e)
+    if _use_json(as_json):
+        output_json(data)
+        return
+    if not data:
+        console.print("[dim]No members.[/dim]")
+        return
+    for m in data:
+        console.print(
+            f"  [bold]{m.get('display_name') or m.get('name')}[/bold]  "
+            f"[dim]{m.get('permission')} — {m.get('user_id')}[/dim]"
+        )
+
+
+@stashes_app.command("add-member")
+def stashes_add_member(
+    cartridge_id: str = typer.Argument(...),
+    user_id: str = typer.Argument(..., help="The user to grant access."),
+    permission: str = typer.Option("read", "--permission", help="read | write | admin"),
+    as_json: bool = typer.Option(False, "--json"),
+):
+    """Grant a user access to a Cartridge."""
+    with _client() as c:
+        try:
+            data = c.add_cartridge_member(cartridge_id, user_id, permission=permission)
+        except CartridgeError as e:
+            _err(e)
+    if _use_json(as_json):
+        output_json(data)
+        return
+    console.print(f"[green]Added member[/green] {user_id} ({permission})")
+
+
+@stashes_app.command("remove-member")
+def stashes_remove_member(
+    cartridge_id: str = typer.Argument(...),
+    user_id: str = typer.Argument(...),
+):
+    """Revoke a user's access to a Cartridge."""
+    with _client() as c:
+        try:
+            c.remove_cartridge_member(cartridge_id, user_id)
+        except CartridgeError as e:
+            _err(e)
+    console.print(f"[green]Removed member[/green] {user_id}")
+
+
+@stashes_app.command("invites")
+def stashes_invites(as_json: bool = typer.Option(False, "--json")):
+    """List Cartridge invites pending for you (shared with you, awaiting action)."""
+    with _client() as c:
+        try:
+            data = c.list_cartridge_invites()
+        except CartridgeError as e:
+            _err(e)
+    if _use_json(as_json):
+        output_json(data)
+        return
+    if not data:
+        console.print("[dim]No pending invites.[/dim]")
+        return
+    for inv in data:
+        console.print(
+            f"  [bold]{inv.get('cartridge_title')}[/bold]  "
+            f"[dim]from {inv.get('invited_by_display_name')} — {inv.get('permission')} "
+            f"— {inv.get('id')}[/dim]"
+        )
+
+
+@stashes_app.command("dismiss-invite")
+def stashes_dismiss_invite(invite_id: str = typer.Argument(...)):
+    """Dismiss a pending Cartridge invite."""
+    with _client() as c:
+        try:
+            c.dismiss_cartridge_invite(invite_id)
+        except CartridgeError as e:
+            _err(e)
+    console.print(f"[green]Dismissed invite[/green] {invite_id}")
+
+
+@stashes_app.command("snapshot-source")
+def stashes_snapshot_source(
+    cartridge_id: str = typer.Argument(...),
+    source: str = typer.Option(..., "--source", help="Connected-source id (from `stash sources ls`)."),
+    path: str = typer.Option(..., "--path", help="Document path within the source."),
+    workspace_id: str = typer.Option(None, "--ws"),
+    as_json: bool = typer.Option(False, "--json"),
+):
+    """Snapshot one connected-source document into a Cartridge as a page."""
+    ws = workspace_id or _resolve_workspace()
+    with _client() as c:
+        try:
+            data = c.snapshot_source_into_cartridge(ws, cartridge_id, source, path)
+        except CartridgeError as e:
+            _err(e)
+    if _use_json(as_json):
+        output_json(data)
+        return
+    console.print(f"[green]Snapshotted[/green] {path}  [dim]→ page {data.get('id')}[/dim]")
 
 
 # ===========================================================================
@@ -2188,6 +2299,64 @@ def hist_agents(
         else:
             for name in data:
                 console.print(f"  {name}")
+
+
+@hist_app.command("folders")
+def hist_folders(
+    workspace_id: str = typer.Option(None, "--ws"), as_json: bool = typer.Option(False, "--json")
+):
+    """List session folders (shareable groupings of sessions)."""
+    ws = workspace_id or _resolve_workspace()
+    with _client() as c:
+        try:
+            data = c.list_session_folders(ws)
+        except CartridgeError as e:
+            _err(e)
+    if _use_json(as_json):
+        output_json(data)
+        return
+    if not data:
+        console.print("[dim]No session folders.[/dim]")
+        return
+    for f in data:
+        console.print(f"  [bold]{f.get('name')}[/bold]  [dim]({f.get('id')})[/dim]")
+
+
+@hist_app.command("new-folder")
+def hist_new_folder(
+    name: str = typer.Argument(...),
+    workspace_id: str = typer.Option(None, "--ws"),
+    as_json: bool = typer.Option(False, "--json"),
+):
+    """Create a session folder."""
+    ws = workspace_id or _resolve_workspace()
+    with _client() as c:
+        try:
+            data = c.create_session_folder(ws, name)
+        except CartridgeError as e:
+            _err(e)
+    if _use_json(as_json):
+        output_json(data)
+        return
+    console.print(f"[green]Created folder[/green] {name}  [dim]({data.get('id')})[/dim]")
+
+
+@hist_app.command("assign")
+def hist_assign(
+    session_row_id: str = typer.Argument(..., help="The session row id to move."),
+    folder: str = typer.Option(
+        None, "--folder", help="Target folder id; omit to move back to ungrouped root."
+    ),
+    workspace_id: str = typer.Option(None, "--ws"),
+):
+    """Move a session into a session folder (or back to the ungrouped root)."""
+    ws = workspace_id or _resolve_workspace()
+    with _client() as c:
+        try:
+            c.assign_session_folder(ws, session_row_id, folder_id=folder)
+        except CartridgeError as e:
+            _err(e)
+    console.print("[green]Session assigned.[/green]")
 
 
 @hist_app.command("push")
@@ -2761,6 +2930,78 @@ def sources_search(
 ):
     """Search across sources (alias of `stash search`)."""
     _print_search(query, source, workspace_id, limit, as_json)
+
+
+# ===========================================================================
+# Shares — grant a person access to a folder/page/file/session by email
+# ===========================================================================
+
+shares_app = typer.Typer(help="Shares — grant people access to an object by email.")
+app.add_typer(shares_app, name="shares")
+
+_SHARE_OBJECT_TYPES = "folder | page | file | session | table"
+
+
+@shares_app.command("ls")
+def shares_ls(
+    object_type: str = typer.Argument(..., help=_SHARE_OBJECT_TYPES),
+    object_id: str = typer.Argument(...),
+    as_json: bool = typer.Option(False, "--json"),
+):
+    """List who an object is shared with."""
+    with _client() as c:
+        try:
+            data = c.list_object_shares(object_type, object_id)
+        except CartridgeError as e:
+            _err(e)
+    if _use_json(as_json):
+        output_json(data)
+        return
+    if not data:
+        console.print("[dim]Not shared with anyone.[/dim]")
+        return
+    for s in data:
+        who = s.get("display_name") or s.get("name") or s.get("email") or s.get("principal_id")
+        console.print(f"  [bold]{who}[/bold]  [dim]{s.get('permission')}[/dim]")
+
+
+@shares_app.command("add")
+def shares_add(
+    object_type: str = typer.Argument(..., help=_SHARE_OBJECT_TYPES),
+    object_id: str = typer.Argument(...),
+    email: str = typer.Argument(..., help="Recipient email (pending until they sign up)."),
+    permission: str = typer.Option("read", "--permission", help="read | write | admin"),
+    as_json: bool = typer.Option(False, "--json"),
+):
+    """Share an object with a person by email."""
+    with _client() as c:
+        try:
+            data = c.share_object(object_type, object_id, email, permission=permission)
+        except CartridgeError as e:
+            _err(e)
+    if _use_json(as_json):
+        output_json(data)
+        return
+    if data.get("pending"):
+        console.print(f"[green]Invite pending[/green] for {email} (converts on signup).")
+    else:
+        console.print(f"[green]Shared[/green] with {email} ({permission}).")
+
+
+@shares_app.command("rm")
+def shares_rm(
+    object_type: str = typer.Argument(..., help=_SHARE_OBJECT_TYPES),
+    object_id: str = typer.Argument(...),
+    principal_id: str = typer.Argument(..., help="The user id to revoke (from `shares ls`)."),
+    principal_type: str = typer.Option("user", "--principal-type"),
+):
+    """Revoke a person's access to an object."""
+    with _client() as c:
+        try:
+            c.unshare_object(object_type, object_id, principal_type, principal_id)
+        except CartridgeError as e:
+            _err(e)
+    console.print("[green]Access revoked.[/green]")
 
 
 # ===========================================================================

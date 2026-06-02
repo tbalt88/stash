@@ -219,6 +219,88 @@ class CartridgeClient:
         resp = self._request("GET", f"/api/v1/cartridges/{slug}", params={"format": "text"})
         return resp.text
 
+    def snapshot_source_into_cartridge(
+        self, workspace_id: str, cartridge_id: str, source_id: str, path: str
+    ) -> dict:
+        return self._post(
+            f"/api/v1/workspaces/{workspace_id}/cartridges/{cartridge_id}/snapshot-source",
+            json={"source_id": source_id, "path": path},
+        )
+
+    # --- Cartridge members (per-person access on a cartridge) ---
+
+    def list_cartridge_members(self, cartridge_id: str) -> list:
+        return self._list(f"/api/v1/cartridges/{cartridge_id}/members", "members")
+
+    def add_cartridge_member(self, cartridge_id: str, user_id: str, permission: str = "read") -> dict:
+        return self._post(
+            f"/api/v1/cartridges/{cartridge_id}/members",
+            json={"user_id": user_id, "permission": permission},
+        )
+
+    def remove_cartridge_member(self, cartridge_id: str, user_id: str) -> None:
+        self._delete(f"/api/v1/cartridges/{cartridge_id}/members/{user_id}")
+
+    # --- Cartridge invites (pending invites awaiting the current user) ---
+
+    def list_cartridge_invites(self) -> list:
+        return self._list("/api/v1/cartridge-invites", "invites")
+
+    def dismiss_cartridge_invite(self, invite_id: str) -> None:
+        self._post(f"/api/v1/cartridge-invites/{invite_id}/dismiss")
+
+    # --- Object sharing (grant a person access to a folder/file/session by email) ---
+
+    def share_object(
+        self, object_type: str, object_id: str, email: str, permission: str = "read"
+    ) -> dict:
+        return self._post(
+            "/api/v1/share",
+            json={
+                "object_type": object_type,
+                "object_id": object_id,
+                "email": email,
+                "permission": permission,
+            },
+        )
+
+    def unshare_object(
+        self, object_type: str, object_id: str, principal_type: str, principal_id: str
+    ) -> None:
+        self._request(
+            "DELETE",
+            "/api/v1/share",
+            json={
+                "object_type": object_type,
+                "object_id": object_id,
+                "principal_type": principal_type,
+                "principal_id": principal_id,
+            },
+        )
+
+    def list_object_shares(self, object_type: str, object_id: str) -> list:
+        return self._list(
+            "/api/v1/share", "shares", object_type=object_type, object_id=object_id
+        )
+
+    # --- Session folders (shareable grouping for sessions) ---
+
+    def list_session_folders(self, workspace_id: str) -> list:
+        return self._list(f"/api/v1/workspaces/{workspace_id}/session-folders", "folders")
+
+    def create_session_folder(self, workspace_id: str, name: str) -> dict:
+        return self._post(
+            f"/api/v1/workspaces/{workspace_id}/session-folders", json={"name": name}
+        )
+
+    def assign_session_folder(
+        self, workspace_id: str, session_row_id: str, folder_id: str | None = None
+    ) -> dict:
+        return self._post(
+            f"/api/v1/workspaces/{workspace_id}/session-folders/assign",
+            json={"session_row_id": session_row_id, "folder_id": folder_id},
+        )
+
     # --- Magic-link invite tokens ---
 
     def create_invite_token(self, workspace_id: str, max_uses: int = 1, ttl_days: int = 7) -> dict:

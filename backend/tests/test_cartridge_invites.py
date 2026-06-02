@@ -79,7 +79,7 @@ async def test_cartridge_invite_grants_view_access_before_adding(client: AsyncCl
         headers=_auth(recipient_key),
     )
     assert viewed.status_code == 200
-    assert viewed.json()["stash"]["id"] == stash["id"]
+    assert viewed.json()["cartridge"]["id"] == stash["id"]
 
     still_pending = await client.get("/api/v1/cartridge-invites", headers=_auth(recipient_key))
     assert len(still_pending.json()["invites"]) == 1

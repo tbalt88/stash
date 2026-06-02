@@ -519,7 +519,7 @@ def stash_delete_file(file_id: str, workspace_id: str = "") -> str:
 
 
 @mcp.tool()
-def stash_list_stashes(workspace_id: str = "") -> str:
+def stash_list_cartridges(workspace_id: str = "") -> str:
     """List Cartridges in the workspace."""
     client, default_ws = _client()
     ws = _require_ws(workspace_id or default_ws)
@@ -719,8 +719,8 @@ def stash_publish_markdown(
 
 
 @mcp.tool()
-def stash_search_public_stashes(query: str = "", sort: str = "trending") -> str:
-    """Search the public Stash catalog (Discover).
+def stash_search_public_cartridges(query: str = "", sort: str = "trending") -> str:
+    """Search the public Cartridge catalog (Discover).
 
     sort: trending | newest | popular. Pass an empty query to browse by
     sort order. Returns the catalog entries — fork into a workspace with
@@ -863,6 +863,121 @@ def stash_purge(kind: str, id: str, workspace_id: str = "") -> str:
     else:
         client.purge_session(ws, id)
     return _json({"ok": True, "kind": kind, "id": id})
+
+
+# ── Object sharing (grant a person access by email) ───────────────
+
+
+@mcp.tool()
+def stash_share_object(
+    object_type: str, object_id: str, email: str, permission: str = "read"
+) -> str:
+    """Share a folder/page/file/session/table with a person by email. If they
+    don't have an account yet the share is recorded as pending and converts when
+    they sign up. permission: read | write | admin."""
+    client, _ = _client()
+    return _json(client.share_object(object_type, object_id, email, permission=permission))
+
+
+@mcp.tool()
+def stash_unshare_object(
+    object_type: str, object_id: str, principal_type: str, principal_id: str
+) -> str:
+    """Revoke a share. principal_type is 'user' (principal_id is the user id from
+    stash_list_shares)."""
+    client, _ = _client()
+    client.unshare_object(object_type, object_id, principal_type, principal_id)
+    return _json({"unshared": object_id})
+
+
+@mcp.tool()
+def stash_list_shares(object_type: str, object_id: str) -> str:
+    """List who an object is shared with."""
+    client, _ = _client()
+    return _json(client.list_object_shares(object_type, object_id))
+
+
+# ── Cartridge members + invites ───────────────────────────────────
+
+
+@mcp.tool()
+def stash_list_cartridge_members(cartridge_id: str) -> str:
+    """List the people granted access to a Cartridge."""
+    client, _ = _client()
+    return _json(client.list_cartridge_members(cartridge_id))
+
+
+@mcp.tool()
+def stash_add_cartridge_member(cartridge_id: str, user_id: str, permission: str = "read") -> str:
+    """Grant a user access to a Cartridge. permission: read | write | admin."""
+    client, _ = _client()
+    return _json(client.add_cartridge_member(cartridge_id, user_id, permission=permission))
+
+
+@mcp.tool()
+def stash_remove_cartridge_member(cartridge_id: str, user_id: str) -> str:
+    """Revoke a user's access to a Cartridge."""
+    client, _ = _client()
+    client.remove_cartridge_member(cartridge_id, user_id)
+    return _json({"removed": user_id})
+
+
+@mcp.tool()
+def stash_list_cartridge_invites() -> str:
+    """List Cartridge invites pending for the current user (shared with you,
+    awaiting accept/dismiss)."""
+    client, _ = _client()
+    return _json(client.list_cartridge_invites())
+
+
+@mcp.tool()
+def stash_dismiss_cartridge_invite(invite_id: str) -> str:
+    """Dismiss a pending Cartridge invite."""
+    client, _ = _client()
+    client.dismiss_cartridge_invite(invite_id)
+    return _json({"dismissed": invite_id})
+
+
+@mcp.tool()
+def stash_snapshot_source(
+    cartridge_id: str, source_id: str, path: str, workspace_id: str = ""
+) -> str:
+    """Copy a point-in-time snapshot of one connected-source document (source_id
+    + path from the source tools) into a Cartridge as a page, so the bundle stays
+    self-contained."""
+    client, default_ws = _client()
+    ws = _require_ws(workspace_id or default_ws)
+    return _json(client.snapshot_source_into_cartridge(ws, cartridge_id, source_id, path))
+
+
+# ── Session folders ───────────────────────────────────────────────
+
+
+@mcp.tool()
+def stash_list_session_folders(workspace_id: str = "") -> str:
+    """List session folders (shareable groupings of sessions) in the workspace."""
+    client, default_ws = _client()
+    ws = _require_ws(workspace_id or default_ws)
+    return _json(client.list_session_folders(ws))
+
+
+@mcp.tool()
+def stash_create_session_folder(name: str, workspace_id: str = "") -> str:
+    """Create a session folder."""
+    client, default_ws = _client()
+    ws = _require_ws(workspace_id or default_ws)
+    return _json(client.create_session_folder(ws, name))
+
+
+@mcp.tool()
+def stash_assign_session(
+    session_row_id: str, folder_id: str = "", workspace_id: str = ""
+) -> str:
+    """Move a session into a session folder, or pass an empty folder_id to move
+    it back to the ungrouped root."""
+    client, default_ws = _client()
+    ws = _require_ws(workspace_id or default_ws)
+    return _json(client.assign_session_folder(ws, session_row_id, folder_id=folder_id or None))
 
 
 # ── Entry point ───────────────────────────────────────────────────

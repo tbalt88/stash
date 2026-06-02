@@ -56,7 +56,7 @@ def test_single_blob_upload_publishes_only_the_file_item(monkeypatch, tmp_path) 
         def publish_cartridge(self, _workspace_id, title, description, items):
             published_items.extend(items)
             return {
-                "stash": {"id": "stash-1", "slug": "shot"},
+                "cartridge": {"id": "stash-1", "slug": "shot"},
                 "url": "https://app.example/cartridges/shot",
             }
 
@@ -101,7 +101,7 @@ def test_single_text_upload_publishes_only_the_page_item(monkeypatch, tmp_path) 
         def publish_cartridge(self, _workspace_id, title, description, items):
             published_items.extend(items)
             return {
-                "stash": {"id": "stash-1", "slug": "notes"},
+                "cartridge": {"id": "stash-1", "slug": "notes"},
                 "url": "https://app.example/cartridges/notes",
             }
 
