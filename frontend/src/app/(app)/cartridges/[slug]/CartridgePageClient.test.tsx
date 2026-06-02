@@ -92,7 +92,7 @@ vi.mock("../../../../hooks/useAuth", () => ({
 }));
 
 vi.mock("./AddToWorkspaceButton", () => ({
-  default: () => <button type="button">Add to workspace</button>,
+  default: () => <button type="button">Add to my files</button>,
 }));
 
 // Mirrors how AppShell consumes the ShellChromeContext: pulls the page-
