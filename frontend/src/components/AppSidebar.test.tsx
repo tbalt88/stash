@@ -105,7 +105,7 @@ describe("AppSidebar workspace nav", () => {
     await waitFor(() => expect(navLink("Cartridges")).toBeTruthy());
 
     expect(navLink("Cartridges").getAttribute("href")).toBe("/workspaces/ws-1/cartridges");
-    expect(navLink("Sessions").getAttribute("href")).toBe("/workspaces/ws-1/sessions");
+    expect(navLink("Agent Sessions").getAttribute("href")).toBe("/workspaces/ws-1/sessions");
     expect(navLink("Files").getAttribute("href")).toBe("/workspaces/ws-1/files");
     expect(navLink("Trash").getAttribute("href")).toBe("/workspaces/ws-1/trash");
   });
@@ -125,6 +125,6 @@ describe("AppSidebar workspace nav", () => {
     await waitFor(() => expect(navLink("Files")).toBeTruthy());
 
     expect(navLink("Files").className).toContain("color-brand-800");
-    expect(navLink("Sessions").className).not.toContain("color-brand-800");
+    expect(navLink("Agent Sessions").className).not.toContain("color-brand-800");
   });
 });
