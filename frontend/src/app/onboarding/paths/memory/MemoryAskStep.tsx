@@ -1,6 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import Markdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 import { track } from "@/lib/analytics";
 import { API_BASE, apiFetch, getToken } from "@/lib/api";
@@ -30,7 +32,10 @@ type Citation = { id: string; tool: string; label: string };
 // (or let user type their own), stream the answer with citations, then
 // the wizard's "Continue" hands off to /workspaces/{id}. Single question
 // by design — this is the demo, not the workspace itself.
-export default function MemoryAskStep({ workspaceId }: StepCtx) {
+export default function MemoryAskStep({
+  workspaceId,
+  onAnswered,
+}: StepCtx & { onAnswered?: () => void }) {
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [question, setQuestion] = useState("");
   const [submitted, setSubmitted] = useState(false);
@@ -147,6 +152,8 @@ export default function MemoryAskStep({ workspaceId }: StepCtx) {
             }
           }
         }
+        // The agent finished — unblock "Launch workspace".
+        onAnswered?.();
       } catch (e) {
         if ((e as Error).name !== "AbortError") {
           setError(e instanceof Error ? e.message : String(e));
@@ -162,22 +169,13 @@ export default function MemoryAskStep({ workspaceId }: StepCtx) {
         });
       }
     },
-    [workspaceId, streaming],
+    [workspaceId, streaming, onAnswered],
   );
 
   useEffect(() => () => abortRef.current?.abort(), []);
 
   return (
     <div className="space-y-6">
-      <div className="space-y-2">
-        <h1 className="font-display text-[28px] leading-[1.1] font-bold tracking-tight text-foreground">
-          Your agent can search anything
-        </h1>
-        <p className="text-sm text-dim max-w-md">
-          This is what your agent has access to anytime it does work for you.
-        </p>
-      </div>
-
       {!submitted && (
         <div className="space-y-3">
           {suggestions.length > 0 && (
@@ -230,12 +228,21 @@ export default function MemoryAskStep({ workspaceId }: StepCtx) {
             <div className="text-[12px] text-error rounded-lg border border-error/30 bg-error/10 px-3 py-2">
               {error}
             </div>
+          ) : streaming && !answer ? (
+            <div className="flex items-center gap-2 py-2 text-[13px] text-muted">
+              <span className="flex gap-1" aria-hidden>
+                <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-brand [animation-delay:-0.3s]" />
+                <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-brand [animation-delay:-0.15s]" />
+                <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-brand" />
+              </span>
+              Thinking…
+            </div>
           ) : (
             <>
-              <div className="text-[13px] text-foreground whitespace-pre-wrap leading-relaxed min-h-[60px]">
-                {answer}
+              <div className="prose prose-sm max-w-none text-[13px] leading-relaxed text-foreground">
+                <Markdown remarkPlugins={[remarkGfm]}>{answer}</Markdown>
                 {streaming && (
-                  <span className="inline-block w-1.5 h-3 bg-brand ml-0.5 align-baseline animate-pulse" />
+                  <span className="inline-block h-3 w-1.5 animate-pulse bg-brand align-baseline" />
                 )}
               </div>
               {citations.length > 0 && (

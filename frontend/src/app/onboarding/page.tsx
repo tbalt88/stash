@@ -71,6 +71,7 @@ function OnboardingInner() {
   const [workspaceId, setWorkspaceId] = useState<string | null>(null);
   const [connectedCount, setConnectedCount] = useState(0);
   const [obsidianAdded, setObsidianAdded] = useState(false);
+  const [answered, setAnswered] = useState(false);
 
   const stepIdx = useMemo(() => {
     const raw = searchParams.get("step");
@@ -147,7 +148,8 @@ function OnboardingInner() {
   const isAsk = stepIdx >= 2;
 
   const continueLabel = isIntro ? "Get started" : isAsk ? "Launch workspace" : "Continue";
-  const canContinue = isIntro || isAsk || connectedCount > 0 || obsidianAdded;
+  // On the ask step, only let them launch once the agent has actually replied.
+  const canContinue = isIntro || (isAsk ? answered : connectedCount > 0 || obsidianAdded);
   const onContinue = () => {
     if (isAsk) return void finishAndExit();
     goToStep(stepIdx + 1);
@@ -167,7 +169,9 @@ function OnboardingInner() {
               onObsidianAdded={() => setObsidianAdded(true)}
             />
           )}
-          {isAsk && <AskStep workspaceId={workspaceId} />}
+          {isAsk && (
+            <AskStep workspaceId={workspaceId} onAnswered={() => setAnswered(true)} />
+          )}
           <StepControls
             onContinue={onContinue}
             onSkip={skip}
@@ -202,8 +206,9 @@ function IntroStep() {
           stored the way agents read and write, not buried in a UI.
         </IntroPoint>
         <IntroPoint title="Share when you need to">
-          Bundle anything into a Cartridge or share a folder with a teammate by
-          email — so people and their agents can work from the same context.
+          Bundle anything into a Cartridge with a shareable link, or give specific
+          people access to a folder — so teammates and their agents work from the
+          same context.
         </IntroPoint>
       </ul>
       <div className="rounded-lg border border-border bg-surface px-4 py-3 text-[13px] text-muted">
@@ -336,7 +341,13 @@ function ConnectStep({
   );
 }
 
-function AskStep({ workspaceId }: { workspaceId: string | null }) {
+function AskStep({
+  workspaceId,
+  onAnswered,
+}: {
+  workspaceId: string | null;
+  onAnswered: () => void;
+}) {
   return (
     <div className="space-y-4">
       <div className="space-y-2">
@@ -344,11 +355,10 @@ function AskStep({ workspaceId }: { workspaceId: string | null }) {
           Ask your agent
         </h1>
         <p className="text-sm text-dim max-w-md">
-          Your agent can read everything you just connected, plus your files and past
-          sessions. Ask it anything — it picks the right source.
+          Ask it something about your knowledge base.
         </p>
       </div>
-      <MemoryAskStep workspaceId={workspaceId} />
+      <MemoryAskStep workspaceId={workspaceId} onAnswered={onAnswered} />
     </div>
   );
 }
