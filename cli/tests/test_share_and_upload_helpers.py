@@ -64,7 +64,7 @@ def test_single_blob_upload_publishes_only_the_file_item(monkeypatch, tmp_path) 
     monkeypatch.setattr(main, "_resolve_workspace", lambda: "workspace-1")
     monkeypatch.setattr(main, "_client", lambda: FakeClient())
 
-    main.upload(str(uploaded), name="", workspace_id=None, public=True, as_json=False)
+    main.upload(str(uploaded), name="", workspace_id=None, stash="shot", public=True, as_json=False)
 
     assert published_items == [
         {
@@ -109,7 +109,7 @@ def test_single_text_upload_publishes_only_the_page_item(monkeypatch, tmp_path) 
     monkeypatch.setattr(main, "_resolve_workspace", lambda: "workspace-1")
     monkeypatch.setattr(main, "_client", lambda: FakeClient())
 
-    main.upload(str(uploaded), name="", workspace_id=None, public=True, as_json=False)
+    main.upload(str(uploaded), name="", workspace_id=None, stash="notes", public=True, as_json=False)
 
     assert published_items == [
         {
