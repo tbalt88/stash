@@ -9,7 +9,7 @@ export type StashPreviewItem = {
 };
 
 export type StashPreviewData = {
-  stash: {
+  cartridge: {
     id: string;
     workspace_id: string;
     slug: string;
@@ -75,11 +75,11 @@ export function findStashItem(
 }
 
 export function stashMetadataTitle(data: StashPreviewData): string {
-  return `${data.stash.title} - Stash`;
+  return `${data.cartridge.title} - Stash`;
 }
 
 export function stashMetadataDescription(data: StashPreviewData): string {
-  const description = cleanText(data.stash.description);
+  const description = cleanText(data.cartridge.description);
   if (description) return truncateText(description, 220);
 
   const itemCount = data.items.length;
@@ -94,7 +94,7 @@ export function itemMetadataTitle(
   item: StashPreviewItem,
 ): string {
   const label = item.label || formatItemType(item.object_type);
-  return `${label} - ${data.stash.title} - Stash`;
+  return `${label} - ${data.cartridge.title} - Stash`;
 }
 
 export function itemMetadataDescription(
@@ -102,7 +102,7 @@ export function itemMetadataDescription(
   item: StashPreviewItem,
 ): string {
   const summary = itemSummary(item);
-  const prefix = `${formatItemType(item.object_type)} in ${data.stash.title}`;
+  const prefix = `${formatItemType(item.object_type)} in ${data.cartridge.title}`;
   return truncateText(summary ? `${prefix}: ${summary}` : prefix, 220);
 }
 
@@ -128,11 +128,11 @@ export function buildStashPreviewCard(data: StashPreviewData): PreviewCard {
 
   return {
     eyebrow: "Stash",
-    title: data.stash.title,
+    title: data.cartridge.title,
     description,
     stats,
     lines: data.items.slice(0, 4).map(itemPreviewLine),
-    accent: accentFor(data.stash.id || data.stash.slug),
+    accent: accentFor(data.cartridge.id || data.cartridge.slug),
   };
 }
 
@@ -142,12 +142,12 @@ export function buildItemPreviewCard(
 ): PreviewCard {
   const label = item.label || formatItemType(item.object_type);
   return {
-    eyebrow: `${formatItemType(item.object_type)} in ${data.stash.title}`,
+    eyebrow: `${formatItemType(item.object_type)} in ${data.cartridge.title}`,
     title: label,
     description: itemMetadataDescription(data, item),
-    stats: [data.workspace_name, data.stash.title, formatItemType(item.object_type)],
+    stats: [data.workspace_name, data.cartridge.title, formatItemType(item.object_type)],
     lines: itemPreviewLines(item),
-    accent: accentFor(`${data.stash.id}:${item.object_type}:${item.object_id}`),
+    accent: accentFor(`${data.cartridge.id}:${item.object_type}:${item.object_id}`),
   };
 }
 
