@@ -487,7 +487,13 @@ function injectResizeBootstrap(
   channel: string,
   bridgeLinks: boolean,
 ): string {
-  const script = `<script>(function(){
+  // Defensive: a previous save round-trip may have left our bootstrap script
+  // or comment-css style tag embedded in `html`. Strip any prior copies so the
+  // iframe starts with exactly one fresh bootstrap and doesn't accumulate them.
+  const cleaned = html
+    .replace(/<script\s+id=["']__stash_resize_script__["'][\s\S]*?<\/script>/gi, "")
+    .replace(/<style\s+id=["']__stash_comments_css__["'][\s\S]*?<\/style>/gi, "");
+  const script = `<script id="__stash_resize_script__">(function(){
     var c=${JSON.stringify(channel)};
     var BRIDGE_LINKS=${bridgeLinks ? "true" : "false"};
     // Slide-deck HTML (responsive layout with section.slide elements +
@@ -512,6 +518,24 @@ function injectResizeBootstrap(
       s.id="__stash_comments_css__";
       s.textContent=COMMENT_HIGHLIGHT_CSS;
       (document.head||document.documentElement).appendChild(s);
+    }
+    // Serialize the document without our injected bootstrap or the edit-only
+    // body attributes. Without this, entering edit mode sets contenteditable +
+    // spellcheck on body, and the debounced save would bake those into the
+    // persisted content_html — so every later viewer would load an editable
+    // page with the dashed edit outline. Strip them on every serialize.
+    function serializeClean(){
+      var clone=document.documentElement.cloneNode(true);
+      var junk=clone.querySelectorAll("#__stash_comments_css__, #__stash_resize_script__");
+      for(var i=0;i<junk.length;i++){
+        if(junk[i].parentNode) junk[i].parentNode.removeChild(junk[i]);
+      }
+      var cb=clone.querySelector("body");
+      if(cb){
+        cb.removeAttribute("contenteditable");
+        cb.removeAttribute("spellcheck");
+      }
+      return clone.outerHTML;
     }
     function reportSelection(){
       // While editing, selections are caret moves — don't surface them
@@ -552,7 +576,7 @@ function injectResizeBootstrap(
     function wrapSelection(id){
       var sel=window.getSelection();
       if(!sel||sel.rangeCount===0||sel.isCollapsed){
-        post({type:"stash:html-mutated",html:document.documentElement.outerHTML});
+        post({type:"stash:html-mutated",html:serializeClean()});
         return;
       }
       var range=sel.getRangeAt(0);
@@ -568,7 +592,7 @@ function injectResizeBootstrap(
         range.insertNode(span);
       }
       sel.removeAllRanges();
-      post({type:"stash:html-mutated",html:document.documentElement.outerHTML});
+      post({type:"stash:html-mutated",html:serializeClean()});
     }
     function unwrap(id){
       var match=document.querySelectorAll('[data-comment-id="'+id+'"]');
@@ -580,7 +604,7 @@ function injectResizeBootstrap(
         while(el.firstChild) parent.insertBefore(el.firstChild,el);
         parent.removeChild(el);
       }
-      post({type:"stash:html-mutated",html:document.documentElement.outerHTML});
+      post({type:"stash:html-mutated",html:serializeClean()});
     }
     function applyActive(id){
       var prev=document.querySelectorAll("[data-comment-id].is-active");
@@ -606,7 +630,7 @@ function injectResizeBootstrap(
         if(mutateTimer){
           clearTimeout(mutateTimer);
           mutateTimer=null;
-          post({type:"stash:html-mutated",html:document.documentElement.outerHTML});
+          post({type:"stash:html-mutated",html:serializeClean()});
         }
       }
     }
@@ -615,8 +639,16 @@ function injectResizeBootstrap(
       if(mutateTimer) clearTimeout(mutateTimer);
       mutateTimer=setTimeout(function(){
         mutateTimer=null;
-        post({type:"stash:html-mutated",html:document.documentElement.outerHTML});
+        post({type:"stash:html-mutated",html:serializeClean()});
       },500);
+    }
+    // Heal pages saved by an older build that baked contenteditable/spellcheck
+    // into content_html: the page loads in view mode, so strip the edit-only
+    // attributes up front instead of relying on a set-editable(false) message
+    // that can race ahead of this listener and be dropped.
+    if(document.body){
+      document.body.removeAttribute("contenteditable");
+      document.body.removeAttribute("spellcheck");
     }
     injectStyle();
     new ResizeObserver(postResize).observe(document.documentElement);
@@ -662,8 +694,8 @@ function injectResizeBootstrap(
     });
     postResize();
   })();</script>`;
-  if (/<\/body>/i.test(html)) return html.replace(/<\/body>/i, `${script}</body>`);
-  return html + script;
+  if (/<\/body>/i.test(cleaned)) return cleaned.replace(/<\/body>/i, `${script}</body>`);
+  return cleaned + script;
 }
 
 // Helper: count `data-comment-id` values present in saved HTML. Used by
