@@ -28,6 +28,7 @@ import {
   uploadFile,
   workspaceFileDownloadUrl,
 } from "../../lib/api";
+import { openInNewTab, shouldOpenInNewTab } from "../../lib/linkNavigation";
 
 const AUTOSAVE_DEBOUNCE_MS = 1500;
 const ANCHOR_CONTEXT_CHARS = 32;
@@ -159,10 +160,11 @@ export default function MarkdownEditor({
     () => colorFromId(collaborationUser.id),
     [collaborationUser.id],
   );
+  const canEdit = !!collaboration && !readOnly;
 
   const editor = useEditor({
     immediatelyRender: false,
-    editable: !!collaboration && !readOnly,
+    editable: canEdit,
     extensions: [
       StarterKit.configure({
         blockquote: false,
@@ -247,7 +249,9 @@ export default function MarkdownEditor({
     editorProps: {
       attributes: {
         class:
-          "prose prose-sm max-w-none min-h-[200px] focus:outline-none file-page-body",
+          "prose prose-sm max-w-none min-h-full px-12 pt-10 pb-24 focus:outline-none file-page-body" +
+          (canEdit ? " cursor-text" : ""),
+        spellcheck: "false",
       },
       handleDOMEvents: {
         paste: (_view, event) => {
@@ -292,13 +296,17 @@ export default function MarkdownEditor({
 
           if (isStashAbsolute || isRouteRelative) {
             event.preventDefault();
-            onNavigateInternal?.(href);
+            if (shouldOpenInNewTab(event)) {
+              openInNewTab(href);
+            } else {
+              onNavigateInternal?.(href);
+            }
             return true;
           }
 
           if (hasScheme) {
             event.preventDefault();
-            window.open(href, "_blank", "noopener,noreferrer");
+            openInNewTab(href);
             return true;
           }
 
@@ -321,7 +329,7 @@ export default function MarkdownEditor({
         saveMarkdownRef.current(md);
       }, AUTOSAVE_DEBOUNCE_MS);
     },
-  }, [collaboration, collaborationUser.name, collaborationUserColor, readOnly]);
+  }, [collaboration, collaborationUser.name, collaborationUserColor, canEdit, readOnly]);
 
   const saveMarkdown = useCallback(
     async (md: string) => {
@@ -535,8 +543,8 @@ export default function MarkdownEditor({
         ref={scrollContainerRef}
         className="relative flex-1 overflow-y-auto bg-background"
       >
-        <div className="mx-auto w-full max-w-[920px] px-12 pt-10 pb-24">
-          <EditorContent editor={editor} className="file-page-content" />
+        <div className="mx-auto min-h-full w-full max-w-[920px]">
+          <EditorContent editor={editor} className="file-page-content min-h-full" />
         </div>
         {composerState && onAddComment && (
           <CommentComposerPopover

@@ -25,6 +25,7 @@ type Props = {
   /** Click on a `[data-comment-id]` span inside the iframe asks the
    *  parent to surface the matching thread. */
   onActivateThread?: (threadId: string) => void;
+  onAnchorTops?: (anchorTops: Record<string, number>) => void;
   /** Wraps the most recently reported selection with a
    *  `<span data-comment-id>` and posts the resulting full HTML back
    *  via `onHtmlMutated`. Called by the parent after the thread is
@@ -65,6 +66,7 @@ export default function HtmlPageView({
   layout = "responsive",
   onSelection,
   onActivateThread,
+  onAnchorTops,
   pendingWrapId,
   onWrapComplete,
   onHtmlMutated,
@@ -136,6 +138,14 @@ export default function HtmlPageView({
         onActivateThread?.(data.id);
         return;
       }
+      if (data.type === "stash:anchor-tops" && data.anchorTops) {
+        const anchorTops: Record<string, number> = {};
+        for (const [id, top] of Object.entries(data.anchorTops)) {
+          if (typeof top === "number") anchorTops[id] = top;
+        }
+        onAnchorTops?.(anchorTops);
+        return;
+      }
       if (data.type === "stash:html-mutated" && typeof data.html === "string") {
         onHtmlMutated?.(data.html);
         onWrapComplete?.();
@@ -157,6 +167,7 @@ export default function HtmlPageView({
     channel,
     onSelection,
     onActivateThread,
+    onAnchorTops,
     onHtmlMutated,
     onWrapComplete,
     onNavigateLink,
@@ -487,7 +498,13 @@ function injectResizeBootstrap(
   channel: string,
   bridgeLinks: boolean,
 ): string {
-  const script = `<script>(function(){
+  // Defensive: a previous save round-trip may have left our bootstrap script
+  // or comment-css style tag embedded in `html`. Strip any prior copies so the
+  // iframe starts with exactly one fresh bootstrap and doesn't accumulate them.
+  const cleaned = html
+    .replace(/<script\s+id=["']__stash_resize_script__["'][\s\S]*?<\/script>/gi, "")
+    .replace(/<style\s+id=["']__stash_comments_css__["'][\s\S]*?<\/style>/gi, "");
+  const script = `<script id="__stash_resize_script__">(function(){
     var c=${JSON.stringify(channel)};
     var BRIDGE_LINKS=${bridgeLinks ? "true" : "false"};
     // Slide-deck HTML (responsive layout with section.slide elements +
@@ -505,6 +522,21 @@ function injectResizeBootstrap(
         document.body ? document.body.scrollHeight : 0
       );
       post({type:"stash:resize",height:h});
+      reportAnchorTops();
+    }
+    function reportAnchorTops(){
+      var anchorTops={};
+      var nodes=document.querySelectorAll("[data-comment-id]");
+      for(var i=0;i<nodes.length;i++){
+        var el=nodes[i];
+        var id=el.getAttribute("data-comment-id");
+        if(!id) continue;
+        var rects=el.getClientRects();
+        var rect=rects[0]||el.getBoundingClientRect();
+        var top=Math.max(0,Math.round(rect.top));
+        if(anchorTops[id]===undefined || top<anchorTops[id]) anchorTops[id]=top;
+      }
+      post({type:"stash:anchor-tops",anchorTops:anchorTops});
     }
     function injectStyle(){
       if(document.getElementById("__stash_comments_css__")) return;
@@ -512,6 +544,24 @@ function injectResizeBootstrap(
       s.id="__stash_comments_css__";
       s.textContent=COMMENT_HIGHLIGHT_CSS;
       (document.head||document.documentElement).appendChild(s);
+    }
+    // Serialize the document without our injected bootstrap or the edit-only
+    // body attributes. Without this, entering edit mode sets contenteditable +
+    // spellcheck on body, and the debounced save would bake those into the
+    // persisted content_html — so every later viewer would load an editable
+    // page with the dashed edit outline. Strip them on every serialize.
+    function serializeClean(){
+      var clone=document.documentElement.cloneNode(true);
+      var junk=clone.querySelectorAll("#__stash_comments_css__, #__stash_resize_script__");
+      for(var i=0;i<junk.length;i++){
+        if(junk[i].parentNode) junk[i].parentNode.removeChild(junk[i]);
+      }
+      var cb=clone.querySelector("body");
+      if(cb){
+        cb.removeAttribute("contenteditable");
+        cb.removeAttribute("spellcheck");
+      }
+      return clone.outerHTML;
     }
     function reportSelection(){
       // While editing, selections are caret moves — don't surface them
@@ -552,7 +602,7 @@ function injectResizeBootstrap(
     function wrapSelection(id){
       var sel=window.getSelection();
       if(!sel||sel.rangeCount===0||sel.isCollapsed){
-        post({type:"stash:html-mutated",html:document.documentElement.outerHTML});
+        post({type:"stash:html-mutated",html:serializeClean()});
         return;
       }
       var range=sel.getRangeAt(0);
@@ -568,7 +618,8 @@ function injectResizeBootstrap(
         range.insertNode(span);
       }
       sel.removeAllRanges();
-      post({type:"stash:html-mutated",html:document.documentElement.outerHTML});
+      reportAnchorTops();
+      post({type:"stash:html-mutated",html:serializeClean()});
     }
     function unwrap(id){
       var match=document.querySelectorAll('[data-comment-id="'+id+'"]');
@@ -580,7 +631,8 @@ function injectResizeBootstrap(
         while(el.firstChild) parent.insertBefore(el.firstChild,el);
         parent.removeChild(el);
       }
-      post({type:"stash:html-mutated",html:document.documentElement.outerHTML});
+      reportAnchorTops();
+      post({type:"stash:html-mutated",html:serializeClean()});
     }
     function applyActive(id){
       var prev=document.querySelectorAll("[data-comment-id].is-active");
@@ -606,7 +658,7 @@ function injectResizeBootstrap(
         if(mutateTimer){
           clearTimeout(mutateTimer);
           mutateTimer=null;
-          post({type:"stash:html-mutated",html:document.documentElement.outerHTML});
+          post({type:"stash:html-mutated",html:serializeClean()});
         }
       }
     }
@@ -615,8 +667,16 @@ function injectResizeBootstrap(
       if(mutateTimer) clearTimeout(mutateTimer);
       mutateTimer=setTimeout(function(){
         mutateTimer=null;
-        post({type:"stash:html-mutated",html:document.documentElement.outerHTML});
+        post({type:"stash:html-mutated",html:serializeClean()});
       },500);
+    }
+    // Heal pages saved by an older build that baked contenteditable/spellcheck
+    // into content_html: the page loads in view mode, so strip the edit-only
+    // attributes up front instead of relying on a set-editable(false) message
+    // that can race ahead of this listener and be dropped.
+    if(document.body){
+      document.body.removeAttribute("contenteditable");
+      document.body.removeAttribute("spellcheck");
     }
     injectStyle();
     new ResizeObserver(postResize).observe(document.documentElement);
@@ -662,8 +722,8 @@ function injectResizeBootstrap(
     });
     postResize();
   })();</script>`;
-  if (/<\/body>/i.test(html)) return html.replace(/<\/body>/i, `${script}</body>`);
-  return html + script;
+  if (/<\/body>/i.test(cleaned)) return cleaned.replace(/<\/body>/i, `${script}</body>`);
+  return cleaned + script;
 }
 
 // Helper: count `data-comment-id` values present in saved HTML. Used by

@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 
-import { SSR_BACKEND_ORIGIN as BACKEND_ORIGIN } from "@/lib/backendOrigin";
+import { metadataForPublicStash } from "@/lib/stashMetadata";
 
 import CartridgePageClient from "./CartridgePageClient";
 
@@ -10,39 +10,20 @@ export async function generateMetadata({
   params: Promise<{ slug: string }>;
 }): Promise<Metadata> {
   const { slug } = await params;
-  const data = await loadPublicCartridge(slug);
-  if (!data) return { title: "Stash · Stash" };
-  const title = `${data.cartridge.title} · Stash`;
-  const description =
-    data.cartridge.description ||
-    `A cartridge of ${data.items.length} item${data.items.length === 1 ? "" : "s"} from ${data.workspace_name}.`;
+  const metadata = await metadataForPublicStash({
+    slug,
+    path: `/cartridges/${slug}`,
+  });
   return {
-    title,
-    description,
+    ...metadata,
     alternates: {
-      canonical: `/cartridges/${slug}`,
+      ...metadata.alternates,
       types: {
         "text/markdown": `/cartridges/${slug}.md`,
         "application/json": `/cartridges/${slug}.json`,
       },
     },
-    openGraph: {
-      title,
-      description,
-      type: "article",
-      url: `/cartridges/${slug}`,
-      siteName: "Stash",
-    },
-    twitter: { card: "summary_large_image", title, description },
   };
-}
-
-async function loadPublicCartridge(slug: string) {
-  const res = await fetch(`${BACKEND_ORIGIN}/api/v1/cartridges/${slug}`, {
-    cache: "no-store",
-  });
-  if (!res.ok) return null;
-  return res.json();
 }
 
 export default async function CartridgePage({
