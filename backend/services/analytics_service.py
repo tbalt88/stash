@@ -842,7 +842,9 @@ async def get_embedding_projection(
     total_count = 0
     if source is None or source == "pages":
         row = await pool.fetchval(
-            _accessible_pages_cte(ws_idx=content_count_ws_idx, cartridge_idx=content_count_cartridge_idx)
+            _accessible_pages_cte(
+                ws_idx=content_count_ws_idx, cartridge_idx=content_count_cartridge_idx
+            )
             + """
             SELECT COUNT(*) FROM pages np
             WHERE np.id IN (SELECT page_id FROM accessible_pages)
@@ -854,7 +856,9 @@ async def get_embedding_projection(
 
     if source is None or source == "table_rows":
         row = await pool.fetchval(
-            _accessible_tables_cte(ws_idx=content_count_ws_idx, cartridge_idx=content_count_cartridge_idx)
+            _accessible_tables_cte(
+                ws_idx=content_count_ws_idx, cartridge_idx=content_count_cartridge_idx
+            )
             + """
             SELECT COUNT(*) FROM table_rows tr
             WHERE tr.table_id IN (SELECT table_id FROM accessible_tables)
@@ -877,7 +881,9 @@ async def get_embedding_projection(
 
     if source is None or source == "files":
         row = await pool.fetchval(
-            _accessible_files_cte(ws_idx=content_count_ws_idx, cartridge_idx=content_count_cartridge_idx)
+            _accessible_files_cte(
+                ws_idx=content_count_ws_idx, cartridge_idx=content_count_cartridge_idx
+            )
             + """
             SELECT COUNT(*) FROM files f
             WHERE f.id IN (SELECT file_id FROM accessible_files)
@@ -926,7 +932,9 @@ async def get_embedding_projection(
 
     if source is None or source == "pages":
         rows = await pool.fetch(
-            _accessible_pages_cte(ws_idx=content_fetch_ws_idx, cartridge_idx=content_fetch_cartridge_idx)
+            _accessible_pages_cte(
+                ws_idx=content_fetch_ws_idx, cartridge_idx=content_fetch_cartridge_idx
+            )
             + """
             SELECT np.id, np.name AS label, np.embedding, np.created_at
             FROM pages np
@@ -950,7 +958,9 @@ async def get_embedding_projection(
 
     if source is None or source == "table_rows":
         rows = await pool.fetch(
-            _accessible_tables_cte(ws_idx=content_fetch_ws_idx, cartridge_idx=content_fetch_cartridge_idx)
+            _accessible_tables_cte(
+                ws_idx=content_fetch_ws_idx, cartridge_idx=content_fetch_cartridge_idx
+            )
             + """
             SELECT tr.id, t.name AS table_name, tr.embedding, tr.created_at
             FROM table_rows tr
@@ -975,7 +985,10 @@ async def get_embedding_projection(
 
     if source is None or source == "history_events":
         rows = await pool.fetch(
-            _accessible_events_cte(ws_idx=event_fetch_ws_idx, cartridge_idx=event_fetch_cartridge_idx) + """
+            _accessible_events_cte(
+                ws_idx=event_fetch_ws_idx, cartridge_idx=event_fetch_cartridge_idx
+            )
+            + """
             SELECT me.id, me.agent_name, me.event_type, me.embedding, me.created_at
             FROM history_events me
             JOIN accessible_events a ON a.event_id = me.id
@@ -998,7 +1011,9 @@ async def get_embedding_projection(
 
     if source is None or source == "files":
         rows = await pool.fetch(
-            _accessible_files_cte(ws_idx=content_fetch_ws_idx, cartridge_idx=content_fetch_cartridge_idx)
+            _accessible_files_cte(
+                ws_idx=content_fetch_ws_idx, cartridge_idx=content_fetch_cartridge_idx
+            )
             + """
             SELECT f.id, f.name AS label, f.embedding, f.created_at
             FROM files f

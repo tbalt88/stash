@@ -114,7 +114,9 @@ async def test_discover_lists_discoverable_public_product_stashes(client: AsyncC
     assert detail.json()["cartridge"]["owner_name"] == user["name"]
     assert detail.json()["cartridge"]["owner_display_name"] == user["display_name"]
 
-    unlisted_detail = await client.get(f"/api/v1/cartridges/{public_unlisted.json()['cartridge']['slug']}")
+    unlisted_detail = await client.get(
+        f"/api/v1/cartridges/{public_unlisted.json()['cartridge']['slug']}"
+    )
     assert unlisted_detail.status_code == 200
 
 

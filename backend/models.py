@@ -137,7 +137,9 @@ class CartridgeUpdateRequest(BaseModel):
     workspace_permission: CartridgeGeneralPermission | None = Field(
         None, pattern=r"^(none|read|write)$"
     )
-    public_permission: CartridgeGeneralPermission | None = Field(None, pattern=r"^(none|read|write)$")
+    public_permission: CartridgeGeneralPermission | None = Field(
+        None, pattern=r"^(none|read|write)$"
+    )
     discoverable: bool | None = None
     cover_image_url: str | None = None
     icon_url: str | None = None

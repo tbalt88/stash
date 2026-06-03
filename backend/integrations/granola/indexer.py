@@ -65,7 +65,9 @@ def _render_meeting(meeting: dict, transcript: list) -> str:
     if transcript:
         lines += ["## Transcript", ""]
         for entry in transcript:
-            text = (entry.get("text") or "").strip() if isinstance(entry, dict) else str(entry).strip()
+            text = (
+                (entry.get("text") or "").strip() if isinstance(entry, dict) else str(entry).strip()
+            )
             if not text:
                 continue
             speaker = entry.get("speaker") if isinstance(entry, dict) else None

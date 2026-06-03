@@ -39,8 +39,14 @@ class _FakeClient:
 
     def list_cartridge_invites(self):
         self._calls.append(("invites",))
-        return [{"cartridge_title": "Specs", "invited_by_display_name": "Sam",
-                 "permission": "read", "id": "inv1"}]
+        return [
+            {
+                "cartridge_title": "Specs",
+                "invited_by_display_name": "Sam",
+                "permission": "read",
+                "id": "inv1",
+            }
+        ]
 
     def snapshot_source_into_cartridge(self, workspace_id, cartridge_id, source_id, path):
         self._calls.append(("snapshot", workspace_id, cartridge_id, source_id, path))
@@ -81,8 +87,9 @@ def test_cartridge_members_and_invites_and_snapshot(monkeypatch) -> None:
     main.stashes_members("cart-1", as_json=True)
     main.stashes_add_member("cart-1", "u1", permission="admin", as_json=True)
     main.stashes_invites(as_json=True)
-    main.stashes_snapshot_source("cart-1", source="src-1", path="specs/auth.md",
-                                 workspace_id=None, as_json=True)
+    main.stashes_snapshot_source(
+        "cart-1", source="src-1", path="specs/auth.md", workspace_id=None, as_json=True
+    )
     assert ("members", "cart-1") in calls
     assert ("add_member", "cart-1", "u1", "admin") in calls
     assert ("invites",) in calls

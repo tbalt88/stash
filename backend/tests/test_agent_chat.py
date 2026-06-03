@@ -89,9 +89,7 @@ async def test_agent_chat_persists_and_replays_history(client: AsyncClient, monk
     assert seen_histories[1][-1]["content"] == "and the day before?"
 
     # The chat is a stored session: GET returns both turns' messages.
-    got = await client.get(
-        f"/api/v1/workspaces/{ws}/agent-chat/{session_id}", headers=_auth(key)
-    )
+    got = await client.get(f"/api/v1/workspaces/{ws}/agent-chat/{session_id}", headers=_auth(key))
     assert got.status_code == 200
     roles = [m["role"] for m in got.json()["messages"]]
     assert roles == ["user", "assistant", "user", "assistant"]

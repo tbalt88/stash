@@ -148,8 +148,6 @@ async def leave_workspace(
         raise HTTPException(status_code=400, detail="Cannot leave as the last workspace admin")
 
 
-
-
 # ---------------------------------------------------------------------------
 # Magic-link invite tokens (distinct from the workspace.invite_code shared secret)
 # ---------------------------------------------------------------------------

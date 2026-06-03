@@ -73,11 +73,17 @@ async def _discover() -> dict:
     parsed = urlparse(settings.GRANOLA_MCP_URL)
     base = f"{parsed.scheme}://{parsed.netloc}"
     async with httpx.AsyncClient(timeout=15.0, follow_redirects=True) as client:
-        prm = (await client.get(f"{base}/.well-known/oauth-protected-resource")).raise_for_status().json()
+        prm = (
+            (await client.get(f"{base}/.well-known/oauth-protected-resource"))
+            .raise_for_status()
+            .json()
+        )
         auth_server = prm["authorization_servers"][0].rstrip("/")
         asm = (
-            await client.get(f"{auth_server}/.well-known/oauth-authorization-server")
-        ).raise_for_status().json()
+            (await client.get(f"{auth_server}/.well-known/oauth-authorization-server"))
+            .raise_for_status()
+            .json()
+        )
 
     _metadata = {
         "authorization_endpoint": asm["authorization_endpoint"],
@@ -106,9 +112,9 @@ async def _register_client() -> dict:
 
 def _pkce() -> tuple[str, str]:
     verifier = secrets.token_urlsafe(64)
-    challenge = base64.urlsafe_b64encode(
-        hashlib.sha256(verifier.encode()).digest()
-    ).decode().rstrip("=")
+    challenge = (
+        base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).decode().rstrip("=")
+    )
     return verifier, challenge
 
 

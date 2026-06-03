@@ -125,7 +125,9 @@ async def test_cartridge_tools_create_list_and_delete(workspace: UUID, _db_pool)
     workspace_token = agent_runtime._workspace_ctx.set(workspace)
     user_token = agent_runtime._user_ctx.set(user_id)
     try:
-        delete_result = await agent_runtime._delete_cartridge.handler({"cartridge_id": created["id"]})
+        delete_result = await agent_runtime._delete_cartridge.handler(
+            {"cartridge_id": created["id"]}
+        )
     finally:
         agent_runtime._user_ctx.reset(user_token)
         agent_runtime._workspace_ctx.reset(workspace_token)

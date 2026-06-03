@@ -119,7 +119,9 @@ async def test_connected_source_is_user_scoped(client: AsyncClient):
     source_id = UUID(src["id"])
 
     # Owner sees it; the other user does not.
-    assert any(s["id"] == src["id"] for s in await source_service.list_connected_sources(ws, owner_id))
+    assert any(
+        s["id"] == src["id"] for s in await source_service.list_connected_sources(ws, owner_id)
+    )
     assert await source_service.list_connected_sources(ws, other_id) == []
     assert await source_service.get_owned_source(source_id, owner_id) is not None
     assert await source_service.get_owned_source(source_id, other_id) is None
@@ -240,14 +242,10 @@ async def test_source_tools_span_native_and_connected(client: AsyncClient):
         assert {source_service.NATIVE_FILES, source_service.NATIVE_SESSIONS, src["id"]} <= handles
 
         # Navigate the connected source like a file system.
-        listing = _tool_json(
-            await agent_runtime._list_source.handler({"source": src["id"]})
-        )
+        listing = _tool_json(await agent_runtime._list_source.handler({"source": src["id"]}))
         assert any(d["path"] == "specs/auth.md" for d in listing)
         doc = _tool_json(
-            await agent_runtime._read_source.handler(
-                {"source": src["id"], "ref": "specs/auth.md"}
-            )
+            await agent_runtime._read_source.handler({"source": src["id"], "ref": "specs/auth.md"})
         )
         assert "rotate tokens hourly" in doc["content"]
 
@@ -358,7 +356,9 @@ async def test_sync_source_unknown_type_is_noop(client: AsyncClient, monkeypatch
 
 def _slack_sign(secret: str, body: bytes) -> tuple[str, str]:
     ts = str(int(time.time()))
-    digest = hmac.new(secret.encode(), b"v0:" + ts.encode() + b":" + body, hashlib.sha256).hexdigest()
+    digest = hmac.new(
+        secret.encode(), b"v0:" + ts.encode() + b":" + body, hashlib.sha256
+    ).hexdigest()
     return ts, f"v0={digest}"
 
 
@@ -409,12 +409,18 @@ async def test_slack_event_ingest_fans_out_per_owner(client: AsyncClient):
     owner_b_key, owner_b = await _register(client, "b")
     ws = await _create_workspace(client, owner_a_key)
     src_a = await source_service.create_source(
-        workspace_id=ws, owner_user_id=owner_a, source_type="slack",
-        external_ref="T_SHARED", display_name="Acme",
+        workspace_id=ws,
+        owner_user_id=owner_a,
+        source_type="slack",
+        external_ref="T_SHARED",
+        display_name="Acme",
     )
     src_b = await source_service.create_source(
-        workspace_id=ws, owner_user_id=owner_b, source_type="slack",
-        external_ref="T_SHARED", display_name="Acme",
+        workspace_id=ws,
+        owner_user_id=owner_b,
+        source_type="slack",
+        external_ref="T_SHARED",
+        display_name="Acme",
     )
 
     n = await ingest_slack_message(

@@ -132,7 +132,9 @@ def test_vfs_exposes_workspace_sections():
         "cartridges",
         "tables",
     }
-    assert model.read_file(f"{workspace_path}/cartridges/Demo Stash--stash-12.md") == b"# Demo Stash\n"
+    assert (
+        model.read_file(f"{workspace_path}/cartridges/Demo Stash--stash-12.md") == b"# Demo Stash\n"
+    )
     assert b"hello" in model.read_file(
         f"{workspace_path}/sessions/Fix login--session-/transcript.md"
     )

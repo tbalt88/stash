@@ -232,7 +232,9 @@ class CartridgeClient:
     def list_cartridge_members(self, cartridge_id: str) -> list:
         return self._list(f"/api/v1/cartridges/{cartridge_id}/members", "members")
 
-    def add_cartridge_member(self, cartridge_id: str, user_id: str, permission: str = "read") -> dict:
+    def add_cartridge_member(
+        self, cartridge_id: str, user_id: str, permission: str = "read"
+    ) -> dict:
         return self._post(
             f"/api/v1/cartridges/{cartridge_id}/members",
             json={"user_id": user_id, "permission": permission},
@@ -279,9 +281,7 @@ class CartridgeClient:
         )
 
     def list_object_shares(self, object_type: str, object_id: str) -> list:
-        return self._list(
-            "/api/v1/share", "shares", object_type=object_type, object_id=object_id
-        )
+        return self._list("/api/v1/share", "shares", object_type=object_type, object_id=object_id)
 
     # --- Session folders (shareable grouping for sessions) ---
 
@@ -289,9 +289,7 @@ class CartridgeClient:
         return self._list(f"/api/v1/workspaces/{workspace_id}/session-folders", "folders")
 
     def create_session_folder(self, workspace_id: str, name: str) -> dict:
-        return self._post(
-            f"/api/v1/workspaces/{workspace_id}/session-folders", json={"name": name}
-        )
+        return self._post(f"/api/v1/workspaces/{workspace_id}/session-folders", json={"name": name})
 
     def assign_session_folder(
         self, workspace_id: str, session_row_id: str, folder_id: str | None = None

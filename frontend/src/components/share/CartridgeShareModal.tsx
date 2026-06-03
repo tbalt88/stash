@@ -292,7 +292,9 @@ export default function CartridgeShareModal() {
           label_override: sess.label,
         });
       }
-      const finalTitle = title.trim() || defaultTitle;
+      const finalTitle = hasUserEditedTitle.current
+        ? title.trim() || defaultTitle
+        : defaultTitle;
       const cartridge =
         publicPermission !== "none"
           ? (await publishCartridge(workspaceId, finalTitle, items, {

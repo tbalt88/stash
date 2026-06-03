@@ -16,7 +16,9 @@ def test_upload_text_file_detection() -> None:
 def test_cartridge_url_uses_web_app_url(monkeypatch) -> None:
     monkeypatch.setattr(main, "_web_app_url", lambda: "https://app.example")
 
-    assert main._cartridge_url({"slug": "demo-stash"}) == "https://app.example/cartridges/demo-stash"
+    assert (
+        main._cartridge_url({"slug": "demo-stash"}) == "https://app.example/cartridges/demo-stash"
+    )
 
 
 def test_file_app_url_points_to_workspace_file_viewer(monkeypatch) -> None:
@@ -109,7 +111,9 @@ def test_single_text_upload_publishes_only_the_page_item(monkeypatch, tmp_path) 
     monkeypatch.setattr(main, "_resolve_workspace", lambda: "workspace-1")
     monkeypatch.setattr(main, "_client", lambda: FakeClient())
 
-    main.upload(str(uploaded), name="", workspace_id=None, stash="notes", public=True, as_json=False)
+    main.upload(
+        str(uploaded), name="", workspace_id=None, stash="notes", public=True, as_json=False
+    )
 
     assert published_items == [
         {

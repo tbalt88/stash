@@ -615,7 +615,9 @@ class CartridgeFuseOperations:
         opened.dirty = False
 
 
-def mount_cartridge(client: CartridgeClient, mountpoint: Path, workspace_id: str | None = None) -> None:
+def mount_cartridge(
+    client: CartridgeClient, mountpoint: Path, workspace_id: str | None = None
+) -> None:
     FUSE = _load_fuse_class()
     mountpoint.mkdir(parents=True, exist_ok=True)
     model = CartridgeVfsModel(client, workspace_id=workspace_id)

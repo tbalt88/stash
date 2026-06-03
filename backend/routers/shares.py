@@ -60,4 +60,6 @@ async def list_shares(
     object_id: UUID,
     current_user: dict = Depends(get_current_user),
 ):
-    return {"shares": await share_service.list_object_shares(object_type, object_id, current_user["id"])}
+    return {
+        "shares": await share_service.list_object_shares(object_type, object_id, current_user["id"])
+    }

@@ -20,6 +20,7 @@ from backend.services import source_service
 from .conftest import unique_name
 
 REDIRECT_URI = "https://app.example.com/api/v1/integrations/granola/callback"
+TEST_FERNET_KEY = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
 
 
 def _async(value):
@@ -38,6 +39,7 @@ async def _register(client: AsyncClient) -> tuple[str, UUID]:
 
 
 def _mock_oauth_server(monkeypatch):
+    monkeypatch.setattr(oauth.settings, "INTEGRATIONS_ENCRYPTION_KEY", TEST_FERNET_KEY)
     monkeypatch.setattr(oauth.settings, "GRANOLA_OAUTH_REDIRECT_URI", REDIRECT_URI)
     monkeypatch.setattr(
         oauth,
@@ -142,7 +144,12 @@ async def test_indexer_pulls_meetings_and_transcripts(client: AsyncClient, monke
     routes = {
         "list_meetings": lambda args: {
             "meetings": [
-                {"id": "mtg_1", "title": "Q3 Planning", "attendees": [{"name": "Sam"}], "summary": "Budget approved."},
+                {
+                    "id": "mtg_1",
+                    "title": "Q3 Planning",
+                    "attendees": [{"name": "Sam"}],
+                    "summary": "Budget approved.",
+                },
                 {"id": "mtg_2", "title": "Standup"},
             ]
         },

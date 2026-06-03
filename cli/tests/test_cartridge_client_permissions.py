@@ -31,7 +31,9 @@ def test_cartridge_permissions_for_access() -> None:
 def test_create_cartridge_uses_permission_fields() -> None:
     client, calls = _post_stub_client()
 
-    client.create_cartridge("WS", "Launch notes", items=[{"object_type": "folder", "object_id": "F1"}])
+    client.create_cartridge(
+        "WS", "Launch notes", items=[{"object_type": "folder", "object_id": "F1"}]
+    )
 
     assert calls == [
         (
@@ -51,7 +53,9 @@ def test_create_cartridge_uses_permission_fields() -> None:
 def test_publish_cartridge_uses_public_permission_fields() -> None:
     client, calls = _post_stub_client()
 
-    client.publish_cartridge("WS", "Launch notes", items=[{"object_type": "folder", "object_id": "F1"}])
+    client.publish_cartridge(
+        "WS", "Launch notes", items=[{"object_type": "folder", "object_id": "F1"}]
+    )
 
     assert calls == [
         (

@@ -314,6 +314,51 @@ _AGENT_BINARY = {
     "opencode": "opencode",
 }
 
+_CODEX_HOME_MARKERS = (
+    "sessions",
+    "config.toml",
+    "auth.json",
+    ".codex-global-state.json",
+    "state_5.sqlite",
+)
+
+_CODEX_MACOS_DESKTOP_MARKERS = (
+    "Library/Application Support/Codex",
+    "Library/Caches/com.openai.codex",
+    "Library/Logs/com.openai.codex",
+    "Library/Preferences/com.openai.codex.plist",
+)
+
+_CODEX_LINUX_DESKTOP_MARKERS = (
+    ".config/Codex",
+    ".cache/com.openai.codex",
+)
+
+_CODEX_WINDOWS_DESKTOP_MARKERS = (
+    "AppData/Roaming/Codex",
+    "AppData/Local/Codex",
+    "AppData/Local/com.openai.codex",
+)
+
+
+def _codex_present() -> bool:
+    home = Path.home()
+    codex_home = home / ".codex"
+    if any((codex_home / marker).exists() for marker in _CODEX_HOME_MARKERS):
+        return True
+
+    if sys.platform == "darwin":
+        return any((home / marker).exists() for marker in _CODEX_MACOS_DESKTOP_MARKERS)
+    if sys.platform.startswith("linux"):
+        return any((home / marker).exists() for marker in _CODEX_LINUX_DESKTOP_MARKERS)
+    if sys.platform.startswith("win"):
+        if any((home / marker).exists() for marker in _CODEX_WINDOWS_DESKTOP_MARKERS):
+            return True
+        packages = home / "AppData" / "Local" / "Packages"
+        return packages.is_dir() and any(packages.glob("OpenAI.Codex_*"))
+
+    return False
+
 
 def _agent_present(agent: str) -> bool:
     """True if the agent is usable on this machine (binary on PATH or config dir exists)."""
@@ -322,7 +367,7 @@ def _agent_present(agent: str) -> bool:
     if shutil.which(_AGENT_BINARY[agent]):
         return True
     if agent == "codex":
-        return (Path.home() / ".codex" / "sessions").is_dir()
+        return _codex_present()
     if agent == "cursor":
         return (Path.home() / ".cursor").is_dir()
     return False
@@ -1589,7 +1634,9 @@ def stashes_update(
 
 @stashes_app.command("default")
 def stashes_default(
-    cartridge_id: str = typer.Argument("", help="Stash ID to receive this repo's streamed sessions."),
+    cartridge_id: str = typer.Argument(
+        "", help="Stash ID to receive this repo's streamed sessions."
+    ),
     clear: bool = typer.Option(False, "--clear", help="Clear this repo's default Stash."),
     workspace_id: str = typer.Option("", "--workspace", help="Workspace ID; falls back to .stash."),
 ):
@@ -1765,7 +1812,9 @@ def stashes_dismiss_invite(invite_id: str = typer.Argument(...)):
 @stashes_app.command("snapshot-source")
 def stashes_snapshot_source(
     cartridge_id: str = typer.Argument(...),
-    source: str = typer.Option(..., "--source", help="Connected-source id (from `stash sources ls`)."),
+    source: str = typer.Option(
+        ..., "--source", help="Connected-source id (from `stash sources ls`)."
+    ),
     path: str = typer.Option(..., "--path", help="Document path within the source."),
     workspace_id: str = typer.Option(None, "--ws"),
     as_json: bool = typer.Option(False, "--json"),
@@ -2832,7 +2881,9 @@ def sources_add(
     ws = workspace_id or _resolve_workspace()
     with _client() as c:
         try:
-            data = c.add_source(ws, source_type, external_ref=ref or None, display_name=name or None)
+            data = c.add_source(
+                ws, source_type, external_ref=ref or None, display_name=name or None
+            )
         except CartridgeError as e:
             _err(e)
     if _use_json(as_json):
@@ -3976,7 +4027,7 @@ Run `stash prompts agent-guidance` to reprint this rule mid-session.
 Use `stash vfs` when you want to browse Stash like a filesystem without mounting anything into the OS:
 - `stash vfs ls /`
 - `stash vfs "find /workspaces -maxdepth 3 -type f"`
-- `stash vfs "rg \"query\" /workspaces"`
+- `stash vfs "rg 'query' /workspaces"`
 - `stash vfs "cat '/workspaces/<workspace>/README.md' | sed -n '1,80p'"`
 
 Common reads (all support `--json`):
@@ -5123,6 +5174,18 @@ Commands to reach for
 - `stash share <session_id>` — wrap a coding session (transcript + the
   files it touched) into a Stash. Sessions are inherently a bundle, so
   this is the right unit.
+
+Browsing Stash
+--------------
+
+Use `stash vfs` when you want to browse Stash like a filesystem without
+mounting anything into the OS. It accepts bash-shaped commands over the
+virtual Stash tree:
+
+- `stash vfs ls /`
+- `stash vfs "find /workspaces -maxdepth 3 -type f"`
+- `stash vfs "rg 'query' /workspaces"`
+- `stash vfs "cat '/workspaces/<workspace>/README.md' | sed -n '1,80p'"`
 
 Anti-pattern: minting one Stash per file you happen to share. Cartridges
 exist to group related things; one item per Stash defeats the model and

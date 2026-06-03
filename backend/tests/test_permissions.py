@@ -202,7 +202,12 @@ async def _share(pool, ws_id, object_type, object_id, user_id, permission="read"
     await pool.execute(
         "INSERT INTO shares (workspace_id, object_type, object_id, principal_type, "
         "principal_id, permission, created_by) VALUES ($1,$2,$3,'user',$4,$5,$6)",
-        ws_id, object_type, object_id, user_id, permission, by or user_id,
+        ws_id,
+        object_type,
+        object_id,
+        user_id,
+        permission,
+        by or user_id,
     )
 
 
@@ -295,7 +300,8 @@ async def test_share_then_unshare_revokes(pool):
     assert await permission_service.check_access("page", page, friend)
     await pool.execute(
         "DELETE FROM shares WHERE object_type='page' AND object_id=$1 AND principal_id=$2",
-        page, friend,
+        page,
+        friend,
     )
     assert not await permission_service.check_access("page", page, friend)
 
@@ -308,7 +314,8 @@ async def test_session_folder_share_cascades_to_sessions(pool):
     folder = await pool.fetchval(
         "INSERT INTO session_folders (workspace_id, owner_user_id, name) "
         "VALUES ($1, $2, 'launch') RETURNING id",
-        ws, owner,
+        ws,
+        owner,
     )
     session_row = await _make_session(pool, ws, owner, session_id="s-folder-1")
     await pool.execute(
@@ -367,6 +374,156 @@ async def test_share_by_email_grants_page_read_over_http(client: AsyncClient, po
     # The share grants the non-member read access; the stranger is still denied.
     assert (await client.get(page_url, headers=_auth(grantee_key))).status_code == 200
     assert (await client.get(page_url, headers=_auth(stranger_key))).status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_folder_share_by_email_allows_non_member_browse_over_http(client: AsyncClient):
+    """Folder shares must let a non-member open the shared folder and see the
+    readable children; otherwise the folder cascade only works for known child
+    URLs, which is not a usable share."""
+    owner_key, _ = await _register(client)
+    ws = (await client.get("/api/v1/workspaces/mine", headers=_auth(owner_key))).json()[
+        "workspaces"
+    ][0]["id"]
+    folder_id = (
+        await client.post(
+            f"/api/v1/workspaces/{ws}/folders",
+            json={"name": "Specs"},
+            headers=_auth(owner_key),
+        )
+    ).json()["id"]
+    subfolder_id = (
+        await client.post(
+            f"/api/v1/workspaces/{ws}/folders",
+            json={"name": "Archive", "parent_folder_id": folder_id},
+            headers=_auth(owner_key),
+        )
+    ).json()["id"]
+    page_id = (
+        await client.post(
+            f"/api/v1/workspaces/{ws}/pages/new",
+            json={"folder_id": folder_id, "name": "Roadmap", "content": "Q3 plan"},
+            headers=_auth(owner_key),
+        )
+    ).json()["id"]
+    grantee_key, _ = await _register_with_email(client, "folder-grantee@example.com")
+
+    folder_url = f"/api/v1/workspaces/{ws}/folders/{folder_id}"
+    contents_url = f"{folder_url}/contents"
+    assert (await client.get(folder_url, headers=_auth(grantee_key))).status_code == 404
+
+    share = await client.post(
+        "/api/v1/share",
+        json={
+            "object_type": "folder",
+            "object_id": folder_id,
+            "email": "folder-grantee@example.com",
+            "permission": "read",
+        },
+        headers=_auth(owner_key),
+    )
+    assert share.status_code == 200
+
+    folder = await client.get(folder_url, headers=_auth(grantee_key))
+    assert folder.status_code == 200
+    contents = await client.get(contents_url, headers=_auth(grantee_key))
+    assert contents.status_code == 200
+    assert {p["id"] for p in contents.json()["pages"]} == {page_id}
+    assert {f["id"] for f in contents.json()["subfolders"]} == {subfolder_id}
+
+
+@pytest.mark.asyncio
+async def test_write_share_by_email_allows_non_member_page_update_over_http(
+    client: AsyncClient,
+):
+    """A write share should authorize the object write route directly; workspace
+    membership is ownership, not a prerequisite for a user share."""
+    owner_key, _ = await _register(client)
+    ws = (await client.get("/api/v1/workspaces/mine", headers=_auth(owner_key))).json()[
+        "workspaces"
+    ][0]["id"]
+    page_id = (
+        await client.post(
+            f"/api/v1/workspaces/{ws}/pages/new",
+            json={"name": "Draft", "content": "before"},
+            headers=_auth(owner_key),
+        )
+    ).json()["id"]
+    writer_key, _ = await _register_with_email(client, "writer@example.com")
+
+    share = await client.post(
+        "/api/v1/share",
+        json={
+            "object_type": "page",
+            "object_id": page_id,
+            "email": "writer@example.com",
+            "permission": "write",
+        },
+        headers=_auth(owner_key),
+    )
+    assert share.status_code == 200
+
+    update = await client.patch(
+        f"/api/v1/workspaces/{ws}/pages/{page_id}",
+        json={"content": "after"},
+        headers=_auth(writer_key),
+    )
+    assert update.status_code == 200
+    assert update.json()["content_markdown"] == "after"
+
+
+@pytest.mark.asyncio
+async def test_session_folder_share_by_email_lists_for_non_member(client: AsyncClient):
+    owner_key, _ = await _register(client)
+    ws = (await client.get("/api/v1/workspaces/mine", headers=_auth(owner_key))).json()[
+        "workspaces"
+    ][0]["id"]
+    folder_id = (
+        await client.post(
+            f"/api/v1/workspaces/{ws}/session-folders",
+            json={"name": "Deploys"},
+            headers=_auth(owner_key),
+        )
+    ).json()["id"]
+    session = await client.post(
+        f"/api/v1/workspaces/{ws}/sessions",
+        json={"session_id": "deploy-1", "agent_name": "codex"},
+        headers=_auth(owner_key),
+    )
+    assert session.status_code == 201
+    assigned = await client.post(
+        f"/api/v1/workspaces/{ws}/session-folders/assign",
+        json={"session_row_id": session.json()["id"], "folder_id": folder_id},
+        headers=_auth(owner_key),
+    )
+    assert assigned.status_code == 200
+
+    grantee_key, _ = await _register_with_email(client, "session-folder-grantee@example.com")
+    before = await client.get(
+        f"/api/v1/workspaces/{ws}/session-folders",
+        headers=_auth(grantee_key),
+    )
+    assert before.status_code == 200
+    assert before.json()["folders"] == []
+
+    share = await client.post(
+        "/api/v1/share",
+        json={
+            "object_type": "session_folder",
+            "object_id": folder_id,
+            "email": "session-folder-grantee@example.com",
+            "permission": "read",
+        },
+        headers=_auth(owner_key),
+    )
+    assert share.status_code == 200
+
+    after = await client.get(
+        f"/api/v1/workspaces/{ws}/session-folders",
+        headers=_auth(grantee_key),
+    )
+    assert after.status_code == 200
+    assert after.json()["folders"] == [{"id": folder_id, "name": "Deploys", "session_count": 1}]
 
 
 @pytest.mark.asyncio

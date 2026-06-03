@@ -41,6 +41,12 @@ def _item_target_condition(object_type: str, object_alias: str, item_alias: str)
     """Does a (object_type, object_id) row in `item_alias` (shares OR cartridge_items)
     target the object at `object_alias`? Page/file also match a share/item on any
     ancestor folder (inheritance)."""
+    if object_type == "folder":
+        folder_chain = _folder_chain_sql(f"{object_alias}.id")
+        return (
+            f"({item_alias}.object_type = 'folder' "
+            f"AND {item_alias}.object_id IN ({folder_chain}))"
+        )
     if object_type in ("page", "file"):
         folder_chain = _folder_chain_sql(f"{object_alias}.folder_id")
         return (
@@ -143,8 +149,24 @@ async def _folder_chain_for_file(file_id: UUID) -> list[UUID]:
     return [row["id"] for row in rows]
 
 
+async def _folder_chain_for_folder(folder_id: UUID) -> list[UUID]:
+    pool = get_pool()
+    rows = await pool.fetch(
+        "WITH RECURSIVE chain AS ("
+        "  SELECT id, parent_folder_id FROM folders WHERE id = $1"
+        "  UNION ALL"
+        "  SELECT f.id, f.parent_folder_id FROM folders f "
+        "  JOIN chain c ON f.id = c.parent_folder_id"
+        ") SELECT id FROM chain",
+        folder_id,
+    )
+    return [row["id"] for row in rows]
+
+
 async def _object_targets(object_type: str, object_id: UUID) -> list[tuple[str, UUID]]:
     """The object itself plus any ancestor folders (for inheritance)."""
+    if object_type == "folder":
+        return [("folder", fid) for fid in await _folder_chain_for_folder(object_id)]
     if object_type == "page":
         return [("page", object_id)] + [
             ("folder", fid) for fid in await _folder_chain_for_page(object_id)
@@ -231,8 +253,10 @@ async def check_access(
         workspace_id = await resolve_workspace_id(object_type, object_id)
 
     # Owner = the (single) workspace member. Full read/write.
-    if user_id is not None and workspace_id is not None and await is_workspace_member(
-        workspace_id, user_id
+    if (
+        user_id is not None
+        and workspace_id is not None
+        and await is_workspace_member(workspace_id, user_id)
     ):
         return True
 

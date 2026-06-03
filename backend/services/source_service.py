@@ -263,12 +263,28 @@ async def upsert_content_document(
         return "unchanged"
 
     cols = [
-        "source_id", "workspace_id", "path", "name", "kind", "content",
-        "content_hash", "external_ref", "external_updated_at", "embed_stale",
+        "source_id",
+        "workspace_id",
+        "path",
+        "name",
+        "kind",
+        "content",
+        "content_hash",
+        "external_ref",
+        "external_updated_at",
+        "embed_stale",
     ]
     vals = [
-        source_id, workspace_id, path, name, kind, content,
-        new_hash, external_ref, external_updated_at, True,
+        source_id,
+        workspace_id,
+        path,
+        name,
+        kind,
+        content,
+        new_hash,
+        external_ref,
+        external_updated_at,
+        True,
     ]
     for col, val in (extra or {}).items():
         cols.append(col)
@@ -429,8 +445,7 @@ async def search_documents(
         tables = [table]
         source_id = UUID(source["id"])
 
-    parts = [
-        f"""
+    parts = [f"""
         SELECT d.source_id, d.path, d.name, LEFT(d.content, 400) AS snippet,
                ts_rank(to_tsvector('english', coalesce(d.content, '')),
                        websearch_to_tsquery('english', $3)) AS rank
@@ -440,9 +455,7 @@ async def search_documents(
           AND ($4::uuid IS NULL OR d.source_id = $4)
           AND to_tsvector('english', coalesce(d.content, ''))
               @@ websearch_to_tsquery('english', $3)
-        """
-        for t in tables
-    ]
+        """ for t in tables]
     union = " UNION ALL ".join(parts)
     rows = await get_pool().fetch(
         f"SELECT u.source_id, ws.display_name AS source_name, u.path, u.name, u.snippet "

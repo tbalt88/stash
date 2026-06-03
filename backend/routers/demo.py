@@ -207,7 +207,9 @@ async def create_session(request: Request, req: DemoSessionCreate = Body(...)) -
 
 @router.post("/cartridges", status_code=201)
 @limiter.limit(_POST_LIMIT)
-async def create_cartridge(request: Request, req: DemoCartridgeCreate = Body(...)) -> dict[str, Any]:
+async def create_cartridge(
+    request: Request, req: DemoCartridgeCreate = Body(...)
+) -> dict[str, Any]:
     workspace_id, owner_id = await demo_service.get_demo_workspace()
 
     items = list(req.items)

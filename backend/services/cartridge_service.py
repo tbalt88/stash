@@ -99,6 +99,9 @@ def agent_install_pitch(stash_url: str) -> str:
         '"$HOME/.local/bin/stash" connect\n'
         f'"$HOME/.local/bin/stash" read {stash_url}\n'
         "```\n\n"
+        "After setup, use `stash vfs` to browse workspace context like a "
+        "filesystem without mounting anything into the OS, for example "
+        '`stash vfs "find /workspaces -maxdepth 3 -type f"`.\n\n'
         "If Stash is already installed, run:\n\n"
         "```bash\n"
         "stash signin --no-browser\n"
@@ -176,7 +179,9 @@ def _item_value(item, name: str):
     return getattr(item, name) if hasattr(item, name) else item[name]
 
 
-async def _validate_item_partition(conn, access: str, items: list, cartridge_id: UUID | None) -> None:
+async def _validate_item_partition(
+    conn, access: str, items: list, cartridge_id: UUID | None
+) -> None:
     for item in items:
         object_type = _item_value(item, "object_type")
         object_id = _item_value(item, "object_id")
@@ -1009,7 +1014,9 @@ async def get_public_cartridge(slug: str, viewer_id: UUID | None = None) -> dict
     if not await user_can_read(stash["id"], viewer_id):
         return None
 
-    await pool.execute("UPDATE cartridges SET view_count = view_count + 1 WHERE id = $1", stash["id"])
+    await pool.execute(
+        "UPDATE cartridges SET view_count = view_count + 1 WHERE id = $1", stash["id"]
+    )
 
     ws = await pool.fetchrow(
         "SELECT w.name FROM workspaces w WHERE w.id = $1",
@@ -1530,7 +1537,9 @@ async def user_can_manage(cartridge_id: UUID, user_id: UUID) -> bool:
 
 async def user_can_admin(cartridge_id: UUID, user_id: UUID) -> bool:
     pool = get_pool()
-    row = await pool.fetchrow("SELECT workspace_id, owner_id FROM cartridges WHERE id = $1", cartridge_id)
+    row = await pool.fetchrow(
+        "SELECT workspace_id, owner_id FROM cartridges WHERE id = $1", cartridge_id
+    )
     if not row:
         return False
     if row["owner_id"] == user_id:

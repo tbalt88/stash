@@ -30,15 +30,27 @@ async def create_folder(workspace_id: UUID, owner_user_id: UUID, name: str) -> d
     return _row(r)
 
 
-async def list_folders(workspace_id: UUID, owner_user_id: UUID) -> list[dict]:
+async def list_folders(workspace_id: UUID, user_id: UUID) -> list[dict]:
     rows = await get_pool().fetch(
         "SELECT sf.id, sf.name, "
         "  (SELECT COUNT(*) FROM sessions s WHERE s.session_folder_id = sf.id) AS session_count "
         "FROM session_folders sf "
-        "WHERE sf.workspace_id = $1 AND sf.owner_user_id = $2 "
+        "WHERE sf.workspace_id = $1 "
+        "AND (sf.owner_user_id = $2 "
+        "  OR EXISTS ("
+        "    SELECT 1 FROM workspace_members wm "
+        "    WHERE wm.workspace_id = sf.workspace_id AND wm.user_id = $2"
+        "  ) "
+        "  OR EXISTS ("
+        "    SELECT 1 FROM shares sh "
+        "    WHERE sh.object_type = 'session_folder' "
+        "      AND sh.object_id = sf.id "
+        "      AND sh.principal_type = 'user' "
+        "      AND sh.principal_id = $2"
+        "  )) "
         "ORDER BY sf.name",
         workspace_id,
-        owner_user_id,
+        user_id,
     )
     return [_row(r) for r in rows]
 

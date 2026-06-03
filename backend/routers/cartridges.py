@@ -248,10 +248,14 @@ async def list_cartridge_members(
 ):
     await _require_can_manage_cartridge(cartridge_id, current_user["id"])
     members = await cartridge_service.list_members(cartridge_id)
-    return CartridgeMembersResponse(members=[CartridgeMemberResponse(**member) for member in members])
+    return CartridgeMembersResponse(
+        members=[CartridgeMemberResponse(**member) for member in members]
+    )
 
 
-@public_router.post("/{cartridge_id}/members", response_model=CartridgeMemberResponse, status_code=201)
+@public_router.post(
+    "/{cartridge_id}/members", response_model=CartridgeMemberResponse, status_code=201
+)
 async def add_cartridge_member(
     cartridge_id: UUID,
     req: CartridgeMemberRequest,
@@ -403,7 +407,9 @@ async def add_cartridge_to_workspace(
 ):
     if not await workspace_service.is_member(req.workspace_id, current_user["id"]):
         raise HTTPException(status_code=403, detail="Not a workspace member")
-    stash = await cartridge_service.add_external_cartridge(req.workspace_id, slug, current_user["id"])
+    stash = await cartridge_service.add_external_cartridge(
+        req.workspace_id, slug, current_user["id"]
+    )
     if not stash:
         raise HTTPException(status_code=404, detail="Stash not found")
     return CartridgeResponse(**stash)

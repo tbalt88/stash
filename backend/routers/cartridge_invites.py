@@ -17,7 +17,9 @@ router = APIRouter(prefix="/api/v1/cartridge-invites", tags=["cartridge-invites"
 @router.get("", response_model=CartridgeInviteListResponse)
 async def list_cartridge_invites(current_user: dict = Depends(get_current_user)):
     invites = await cartridge_invite_service.list_pending_invites(current_user["id"])
-    return CartridgeInviteListResponse(invites=[CartridgeInviteResponse(**invite) for invite in invites])
+    return CartridgeInviteListResponse(
+        invites=[CartridgeInviteResponse(**invite) for invite in invites]
+    )
 
 
 @router.post("/{invite_id}/dismiss", status_code=204)

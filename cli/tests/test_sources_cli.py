@@ -22,8 +22,14 @@ class _FakeClient:
 
     def list_sources(self, workspace_id):
         self._calls.append(("list", workspace_id))
-        return [{"source": "files", "type": "native_files", "capability": "navigable",
-                 "display_name": "Files"}]
+        return [
+            {
+                "source": "files",
+                "type": "native_files",
+                "capability": "navigable",
+                "display_name": "Files",
+            }
+        ]
 
     def list_source_entries(self, workspace_id, source, path=""):
         self._calls.append(("entries", workspace_id, source, path))

@@ -970,9 +970,7 @@ def stash_create_session_folder(name: str, workspace_id: str = "") -> str:
 
 
 @mcp.tool()
-def stash_assign_session(
-    session_row_id: str, folder_id: str = "", workspace_id: str = ""
-) -> str:
+def stash_assign_session(session_row_id: str, folder_id: str = "", workspace_id: str = "") -> str:
     """Move a session into a session folder, or pass an empty folder_id to move
     it back to the ungrouped root."""
     client, default_ws = _client()

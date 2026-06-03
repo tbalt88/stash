@@ -39,7 +39,6 @@ async def create_folder(
 
 @router.get("")
 async def list_folders(workspace_id: UUID, current_user: dict = Depends(get_current_user)):
-    await _require_member(workspace_id, current_user["id"])
     return {"folders": await session_folder_service.list_folders(workspace_id, current_user["id"])}
 
 

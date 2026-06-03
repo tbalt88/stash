@@ -239,8 +239,6 @@ async def rename_workspace_session(
     body: SessionTitleRequest,
     current_user: dict = Depends(get_current_user),
 ):
-    if not await workspace_service.can_write(workspace_id, current_user["id"]):
-        raise HTTPException(status_code=403, detail="Viewers can read but not modify sessions")
     if not await memory_service.can_read_session(workspace_id, session_id, current_user["id"]):
         raise HTTPException(status_code=404, detail="Session not found")
 
@@ -275,8 +273,6 @@ async def _check_session_write(
     Returns the raw row (including trashed). The trash flows need to
     operate on rows the live-only `get_session_by_id` won't return.
     """
-    if not await workspace_service.can_write(workspace_id, user_id):
-        raise HTTPException(status_code=403, detail="Viewers can read but not modify sessions")
     pool = get_pool()
     row = await pool.fetchrow(
         "SELECT id, workspace_id FROM sessions WHERE id = $1",

@@ -45,10 +45,12 @@ async def _resolve_slack_source(user_id) -> tuple[str, str]:
 
 
 async def _resolve_granola_source(user_id) -> tuple[str, str]:
-    """Granola is API-key scoped (one connection per user), so the external_ref
-    is a constant — the key itself defines what's visible. We still require a
-    stored key so a source isn't created before the user connects Granola."""
-    await integration_storage.get_valid_token(user_id, "granola")
+    """Granola is one connection per user, so the external_ref is a constant.
+    Use Granola's MCP OAuth token path because it refreshes with the stored
+    Dynamic Client Registration info."""
+    from ..integrations.granola.oauth import get_valid_access_token
+
+    await get_valid_access_token(user_id)
     return "granola", "Granola"
 
 
