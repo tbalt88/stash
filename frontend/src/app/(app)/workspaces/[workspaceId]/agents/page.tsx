@@ -75,13 +75,14 @@ export default function AgentsPage() {
 
   return (
     <div className="scroll-thin flex-1 overflow-y-auto">
-      <div className="mx-auto w-full max-w-3xl px-8 py-8">
-        <h1 className="font-display text-[26px] font-bold tracking-tight text-foreground">Agents</h1>
-        <p className="mt-1 text-[13px] text-muted">
-          Use Stash through your own agent. Connect once, then ask it anything about your company data.
-        </p>
-
-        <div className="mt-5 flex items-center gap-1 border-b border-border">
+      <div
+        className={
+          // Chats want room to breathe (ChatGPT-style); the Connect guide reads
+          // better narrow.
+          "mx-auto w-full px-8 py-8 " + (active === "connect" ? "max-w-3xl" : "max-w-5xl")
+        }
+      >
+        <div className="flex items-center gap-1 border-b border-border">
           <button
             type="button"
             onClick={() => setActive("connect")}
@@ -166,8 +167,29 @@ function Code({ children }: { children: string }) {
 function ConnectGuide() {
   return (
     <div className="rounded-xl border border-border bg-base p-5">
+      <div className="mb-5 rounded-lg border border-border bg-surface/60 p-4 text-[13px] text-dim">
+        <div className="text-[13.5px] font-semibold text-foreground">What this sets up</div>
+        <p className="mt-1.5">
+          Installing the CLI adds a small <strong>plugin with hooks</strong> to your coding agent
+          (Claude Code, Codex, and friends). It works in two directions:
+        </p>
+        <ul className="mt-2 list-disc space-y-1.5 pl-5">
+          <li>
+            <strong>Push (hooks)</strong> — as your agent runs, the hooks automatically stream each
+            session&rsquo;s transcript, the files it touches, and the artifacts it produces into your
+            Stash. Nothing to remember to save; your history lands in{" "}
+            <strong>Agent Sessions</strong> on its own.
+          </li>
+          <li>
+            <strong>Pull (search &amp; query)</strong> — everything in your Stash (sessions, files,
+            pages, tables, connected sources) is indexed, so your agent can search it and answer
+            questions grounded on your own work.
+          </li>
+        </ul>
+      </div>
       <Step n={1} title="Install the Stash CLI">
-        The CLI is the preferred way for your agent to reach Stash.
+        The CLI is the preferred way for your agent to reach Stash — it installs the plugin and hooks
+        above.
         <Code>{`bash -c "$(curl -fsSL https://joinstash.ai/install)"`}</Code>
       </Step>
       <Step n={2} title="Sign in">
