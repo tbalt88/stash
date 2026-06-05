@@ -18,13 +18,27 @@ import logging
 from uuid import UUID
 
 from ...services import source_service
-from .client import call_tool_json, granola_session
+from .client import call_tool_data, granola_session
 from .oauth import get_valid_access_token
 
 logger = logging.getLogger(__name__)
 
 # Granola rate-limits; a transcript fetch per meeting can add up, so cap a sync.
 MAX_MEETINGS = 1000
+
+# Granola's MCP tool names aren't a stable public contract, so we discover them
+# at runtime (tools/list) and match by intent rather than hardcoding a guess.
+_LIST_HINTS = ("list_meeting", "list_document", "list_note", "recent", "meeting", "document", "search")
+_TRANSCRIPT_HINTS = ("transcript", "get_meeting", "get_document", "get_note", "detail", "content")
+
+
+def _pick_tool(names: list[str], hints: tuple[str, ...]) -> str | None:
+    lower = {n.lower(): n for n in names}
+    for hint in hints:
+        for low, original in lower.items():
+            if hint in low:
+                return original
+    return None
 
 
 def _as_list(result, *keys) -> list:
@@ -86,17 +100,40 @@ async def index_granola(source: dict) -> str | None:
     present: list[str] = []
 
     async with granola_session(access_token) as session:
-        meetings_result = await call_tool_json(session, "list_meetings")
-        meetings = _as_list(meetings_result, "meetings", "results", "items")
+        tools = (await session.list_tools()).tools
+        names = [t.name for t in tools]
+        # Log the real tool surface — names aren't documented, so this is how we
+        # learn (and adjust) what Granola actually exposes.
+        logger.info("granola MCP tools: %s", names)
+
+        list_tool = _pick_tool(names, _LIST_HINTS)
+        if not list_tool:
+            logger.warning("granola: no meetings-list tool among %s", names)
+            return None
+        transcript_tool = _pick_tool([n for n in names if n != list_tool], _TRANSCRIPT_HINTS)
+
+        data = await call_tool_data(session, list_tool)
+        meetings = _as_list(data, "meetings", "results", "items", "documents", "notes")
+        logger.info(
+            "granola: '%s' returned %d meeting(s); transcript tool=%s",
+            list_tool,
+            len(meetings),
+            transcript_tool,
+        )
 
         for meeting in meetings[:MAX_MEETINGS]:
+            if not isinstance(meeting, dict):
+                continue
             meeting_id = _meeting_id(meeting)
             if not meeting_id:
                 continue
-            transcript_result = await call_tool_json(
-                session, "get_meeting_transcript", {"meeting_id": meeting_id}
-            )
-            transcript = _as_list(transcript_result, "transcript", "segments", "entries")
+            transcript: list = []
+            if transcript_tool:
+                try:
+                    td = await call_tool_data(session, transcript_tool, {"meeting_id": meeting_id})
+                    transcript = _as_list(td, "transcript", "segments", "entries")
+                except Exception:
+                    logger.info("granola: transcript fetch failed for %s", meeting_id)
             await source_service.upsert_content_document(
                 table="granola_notes",
                 source_id=source_id,
