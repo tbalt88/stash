@@ -15,7 +15,16 @@ export type IntegrationProvider =
   | "slack"
   | "granola"
   | "jira"
-  | "asana";
+  | "asana"
+  | "gong"
+  | "snowflake";
+
+export type CredentialField = {
+  name: string;
+  label: string;
+  secret: boolean;
+  placeholder: string;
+};
 
 export type IntegrationStatus = {
   provider: string;
@@ -28,8 +37,11 @@ export type IntegrationStatus = {
   account_display_name: string | null;
   expires_at: string | null;
   connected_at: string | null;
-  // "oauth" (redirect flow) or "mcp_oauth" (DCR+PKCE via an MCP server, e.g. Granola).
-  auth_kind: "oauth" | "mcp_oauth";
+  // "oauth" (redirect flow), "mcp_oauth" (DCR+PKCE via an MCP server, e.g.
+  // Granola), or "api_key" (pasted credentials, e.g. Gong).
+  auth_kind: "oauth" | "mcp_oauth" | "api_key";
+  // Present only for api_key providers — the fields to render in the connect form.
+  credential_fields: CredentialField[] | null;
 };
 
 export type IntegrationsList = {
@@ -62,6 +74,20 @@ export async function startConnect(
 
 export async function disconnectIntegration(provider: IntegrationProvider): Promise<void> {
   await apiFetch(`/api/v1/integrations/${provider}/disconnect`, { method: "POST" });
+}
+
+/**
+ * Connect an api_key provider (e.g. Gong) by POSTing the pasted credential
+ * values. The backend validates them upstream and stores them encrypted.
+ */
+export async function submitCredentials(
+  provider: IntegrationProvider,
+  values: Record<string, string>,
+): Promise<void> {
+  await apiFetch(`/api/v1/integrations/${provider}/credentials`, {
+    method: "POST",
+    body: JSON.stringify(values),
+  });
 }
 
 export type GitHubRepoSummary = {

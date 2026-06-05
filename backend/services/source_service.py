@@ -41,6 +41,7 @@ DEFAULT_SYNC_INTERVAL_S = {
     "granola": 21600,
     "jira_project": 1800,
     "asana_project": 1800,
+    "gong_calls": 21600,
 }
 
 # Which capability each connected source type exposes.
@@ -52,6 +53,10 @@ SOURCE_CAPABILITY = {
     "granola": "searchable",
     "jira_project": "searchable",
     "asana_project": "navigable",
+    "gong_calls": "searchable",
+    # Queryable sources run live read-only SQL; they have no document table or
+    # indexer (see source_entries / query_source).
+    "snowflake": "queryable",
 }
 
 
@@ -226,6 +231,7 @@ SOURCE_TABLE = {
     "granola": "granola_notes",
     "jira_project": "jira_documents",
     "asana_project": "asana_documents",
+    "gong_calls": "gong_documents",
 }
 
 # Tables that COPY content (FTS + embeddings live in them). The rest are
@@ -236,6 +242,7 @@ CONTENT_TABLES = {
     "granola_notes",
     "jira_documents",
     "asana_documents",
+    "gong_documents",
 }
 
 
@@ -561,6 +568,11 @@ async def source_entries(
     connected = await _resolve_connected(source, user_id)
     if connected is None:
         return None
+    if connected["capability"] == "queryable":
+        # A queryable source (Snowflake) has no document table — list its tables.
+        from ..integrations.snowflake.client import list_tables
+
+        return await list_tables(connected)
     return await list_documents(connected, prefix=prefix)
 
 
@@ -595,7 +607,31 @@ async def source_document(
     connected = await _resolve_connected(source, user_id)
     if connected is None:
         return False, None
+    if connected["capability"] == "queryable":
+        # Reading a "document" from a queryable source means describing a table.
+        from ..integrations.snowflake.client import describe_table
+
+        return True, await describe_table(connected, ref)
     return True, await read_document(connected, ref)
+
+
+async def query_source(
+    workspace_id: UUID, user_id: UUID, source: str, sql: str, limit: int = 200
+) -> dict | None:
+    """Run a read-only SQL query against a queryable source (Snowflake). Returns
+    None when the handle is unknown / not owned, or an error dict when the source
+    isn't queryable or the SQL is rejected."""
+    connected = await _resolve_connected(source, user_id)
+    if connected is None:
+        return None
+    if connected["capability"] != "queryable":
+        return {"error": "source is not queryable"}
+    from ..integrations.snowflake.client import run_query
+
+    try:
+        return await run_query(connected, sql, limit)
+    except ValueError as e:
+        return {"error": str(e)}
 
 
 async def search_all(
