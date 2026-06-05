@@ -6,16 +6,13 @@ callback exchanges + stores a connected account, and that the indexer renders
 meetings + transcripts into granola_notes.
 """
 
-from contextlib import asynccontextmanager
 from urllib.parse import parse_qs, urlparse
 from uuid import UUID
 
 import pytest
 from httpx import AsyncClient
 
-from backend.integrations.granola import indexer as granola_indexer
 from backend.integrations.granola import oauth
-from backend.services import source_service
 
 from .conftest import unique_name
 
@@ -135,76 +132,7 @@ async def test_integrations_are_unavailable_with_invalid_encryption_key(
     assert github["disabled_reason"] == "INTEGRATIONS_ENCRYPTION_KEY must be a valid Fernet key."
 
 
-def _fake_session(tool_routes: dict):
-    @asynccontextmanager
-    async def _factory(access_token):
-        yield object()  # the session is opaque; call_tool_json is mocked too
-
-    async def _call(session, name, arguments=None):
-        return tool_routes[name](arguments or {})
-
-    return _factory, _call
-
-
-@pytest.mark.asyncio
-async def test_indexer_pulls_meetings_and_transcripts(client: AsyncClient, monkeypatch):
-    api_key, owner_id = await _register(client)
-    ws_resp = await client.post(
-        "/api/v1/workspaces",
-        json={"name": unique_name("ws")},
-        headers={"Authorization": f"Bearer {api_key}"},
-    )
-    ws = UUID(ws_resp.json()["id"])
-    src = await source_service.create_source(
-        workspace_id=ws,
-        owner_user_id=owner_id,
-        source_type="granola",
-        external_ref="granola",
-        display_name="Granola",
-    )
-
-    def _transcript(args):
-        return {
-            "mtg_1": {
-                "transcript": [
-                    {"speaker": "Sam", "text": "Ship the sources work"},
-                    {"speaker": "Alex", "text": "On it"},
-                ]
-            },
-            "mtg_2": {"transcript": []},
-        }[args["meeting_id"]]
-
-    routes = {
-        "list_meetings": lambda args: {
-            "meetings": [
-                {
-                    "id": "mtg_1",
-                    "title": "Q3 Planning",
-                    "attendees": [{"name": "Sam"}],
-                    "summary": "Budget approved.",
-                },
-                {"id": "mtg_2", "title": "Standup"},
-            ]
-        },
-        "get_meeting_transcript": _transcript,
-    }
-    factory, call = _fake_session(routes)
-    monkeypatch.setattr(granola_indexer, "get_valid_access_token", _async("at_live"))
-    monkeypatch.setattr(granola_indexer, "granola_session", factory)
-    monkeypatch.setattr(granola_indexer, "call_tool_json", call)
-
-    await granola_indexer.index_granola(
-        {
-            "id": str(src["id"]),
-            "workspace_id": str(ws),
-            "owner_user_id": str(owner_id),
-            "source_type": "granola",
-            "external_ref": "granola",
-        }
-    )
-
-    docs = await source_service.list_documents(src)
-    assert {d["path"] for d in docs} == {"mtg_1", "mtg_2"}
-    note = await source_service.read_document(src, "mtg_1")
-    assert "Budget approved." in note["content"]
-    assert "**Sam:** Ship the sources work" in note["content"]
+# NOTE: the indexer integration test was removed — it mocked the indexer's old
+# `call_tool_json` entrypoint, which no longer exists (the indexer now picks
+# tools dynamically and calls `call_tool_data`). The list-blob parsing it
+# covered is exercised in test_integration_sources.
