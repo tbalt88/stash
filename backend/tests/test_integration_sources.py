@@ -243,3 +243,23 @@ def test_parse_dt_accepts_iso_dates():
     assert source_service._parse_dt("2026-01-01").year == 2026
     assert source_service._parse_dt("2026-01-01T08:00:00Z").hour == 8
     assert source_service._parse_dt(None) is None
+
+
+def test_granola_parses_xml_meeting_blob():
+    # Granola's list_meetings returns an XML-ish text blob, not JSON. The
+    # participant email contains raw <>, so it isn't valid XML — regex-parsed.
+    from backend.integrations.granola.indexer import _parse_meetings_text, _render_meeting
+
+    blob = (
+        '<meetings_data count="1">'
+        '<meeting id="abc-123" title="Standup" date="Jun 5, 2026">'
+        "<known_participants> Sam <sam@x.com> </known_participants>"
+        "</meeting></meetings_data>"
+    )
+    meetings = _parse_meetings_text(blob)
+    assert len(meetings) == 1
+    assert meetings[0]["id"] == "abc-123"
+    assert meetings[0]["title"] == "Standup"
+    assert "sam@x.com" in meetings[0]["participants"]  # email preserved
+    text = _render_meeting(meetings[0], "we shipped the thing")
+    assert "# Standup" in text and "we shipped the thing" in text

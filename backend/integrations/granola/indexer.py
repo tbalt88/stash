@@ -15,6 +15,7 @@ spot to adjust against a live account.
 from __future__ import annotations
 
 import logging
+import re
 from uuid import UUID
 
 from ...services import source_service
@@ -57,8 +58,36 @@ def _meeting_id(meeting: dict) -> str | None:
     return meeting.get("id") or meeting.get("meeting_id") or meeting.get("document_id")
 
 
-def _render_meeting(meeting: dict, transcript: list) -> str:
-    """A meeting's markdown: title + attendees + the speaker-labelled transcript."""
+# Granola's list_meetings returns an XML-ish text blob (not JSON):
+#   <meetings_data ...><meeting id=".." title=".." date="..">…</meeting>…
+# It isn't valid XML (participant emails contain raw <>), so parse with a regex.
+_MEETING_RE = re.compile(
+    r'<meeting\s+id="(?P<id>[^"]+)"\s+title="(?P<title>[^"]*)"\s+date="(?P<date>[^"]*)"\s*>'
+    r"(?P<body>.*?)</meeting>",
+    re.DOTALL,
+)
+
+
+def _parse_meetings_text(text: str) -> list[dict]:
+    meetings = []
+    for m in _MEETING_RE.finditer(text):
+        body = m.group("body")
+        participants = re.sub(r"</?known_participants>", "", body)
+        participants = " ".join(participants.split())
+        meetings.append(
+            {
+                "id": m.group("id"),
+                "title": m.group("title") or "Untitled meeting",
+                "date": m.group("date"),
+                "participants": participants,
+            }
+        )
+    return meetings
+
+
+def _render_meeting(meeting: dict, transcript) -> str:
+    """A meeting's markdown: title + participants + the transcript. `transcript`
+    may be a plain string (Granola returns text) or a list of segments."""
     title = meeting.get("title") or "Untitled meeting"
     lines = [f"# {title}", ""]
 
@@ -66,17 +95,23 @@ def _render_meeting(meeting: dict, transcript: list) -> str:
     if when:
         lines += [f"_{when}_", ""]
 
-    attendees = meeting.get("attendees") or meeting.get("people") or []
-    names = [a.get("name") or a.get("email") if isinstance(a, dict) else str(a) for a in attendees]
-    names = [n for n in names if n]
-    if names:
-        lines += [f"**Attendees:** {', '.join(names)}", ""]
+    participants = meeting.get("participants")
+    if isinstance(participants, str) and participants.strip():
+        lines += [f"**Participants:** {participants.strip()}", ""]
+    else:
+        attendees = meeting.get("attendees") or meeting.get("people") or []
+        names = [a.get("name") or a.get("email") if isinstance(a, dict) else str(a) for a in attendees]
+        names = [n for n in names if n]
+        if names:
+            lines += [f"**Attendees:** {', '.join(names)}", ""]
 
     notes = meeting.get("notes") or meeting.get("summary")
     if notes:
         lines += [notes.strip(), ""]
 
-    if transcript:
+    if isinstance(transcript, str) and transcript.strip():
+        lines += ["## Transcript", "", transcript.strip()]
+    elif isinstance(transcript, list) and transcript:
         lines += ["## Transcript", ""]
         for entry in transcript:
             text = (
@@ -85,8 +120,7 @@ def _render_meeting(meeting: dict, transcript: list) -> str:
             if not text:
                 continue
             speaker = entry.get("speaker") if isinstance(entry, dict) else None
-            label = speaker or "speaker"
-            lines.append(f"**{label}:** {text}")
+            lines.append(f"**{speaker or 'speaker'}:** {text}")
 
     return "\n".join(lines).strip()
 
@@ -113,14 +147,13 @@ async def index_granola(source: dict) -> str | None:
         transcript_tool = _pick_tool([n for n in names if n != list_tool], _TRANSCRIPT_HINTS)
 
         data = await call_tool_data(session, list_tool, {"limit": MAX_MEETINGS})
-        meetings = _as_list(data, "meetings", "results", "items", "documents", "notes", "data")
-        logger.info(
-            "granola: '%s' returned %d meeting(s); transcript tool=%s; raw=%s",
-            list_tool,
-            len(meetings),
-            transcript_tool,
-            repr(data)[:500],
-        )
+        # Granola returns an XML-ish text blob; other shapes (JSON list/dict) are
+        # handled too for resilience.
+        if isinstance(data, str):
+            meetings = _parse_meetings_text(data)
+        else:
+            meetings = _as_list(data, "meetings", "results", "items", "documents", "notes", "data")
+        logger.info("granola: '%s' returned %d meeting(s)", list_tool, len(meetings))
 
         for meeting in meetings[:MAX_MEETINGS]:
             if not isinstance(meeting, dict):
@@ -128,11 +161,11 @@ async def index_granola(source: dict) -> str | None:
             meeting_id = _meeting_id(meeting)
             if not meeting_id:
                 continue
-            transcript: list = []
+            transcript = ""
             if transcript_tool:
                 try:
                     td = await call_tool_data(session, transcript_tool, {"meeting_id": meeting_id})
-                    transcript = _as_list(td, "transcript", "segments", "entries")
+                    transcript = td if isinstance(td, str) else _as_list(td, "transcript", "segments", "entries")
                 except Exception:
                     logger.info("granola: transcript fetch failed for %s", meeting_id)
             await source_service.upsert_content_document(
