@@ -1962,23 +1962,17 @@ export interface SharedWithMeItem {
   permission: "read" | "write";
 }
 
-export interface SharedSession {
-  id: string;
-  workspace_id: string;
-  session_id: string;
-  agent_name: string;
-  title: string | null;
-  started_at: string | null;
-  finished_at: string | null;
-}
-
 export async function listSharedWithMe(): Promise<SharedWithMeItem[]> {
   const res = await apiFetch<{ items: SharedWithMeItem[] }>("/api/v1/share/with-me");
   return res.items;
 }
 
-export async function listSharedSessionFolderSessions(folderId: string): Promise<SharedSession[]> {
-  const res = await apiFetch<{ sessions: SharedSession[] }>(
+// Sessions inside a folder shared with you, in SessionSummary shape so the
+// shared view renders the same chronological/filter browser as your own.
+export async function listSharedSessionFolderSessions(
+  folderId: string,
+): Promise<SessionSummary[]> {
+  const res = await apiFetch<{ sessions: SessionSummary[] }>(
     `/api/v1/share/session-folders/${folderId}/sessions`
   );
   return res.sessions;
