@@ -136,6 +136,21 @@ async def read_source_doc(
     return doc
 
 
+@router.get("/{source_id}/status")
+async def source_status(
+    workspace_id: UUID,
+    source_id: UUID,
+    current_user: dict = Depends(get_current_user),
+):
+    """Sync/index status for one connected source (for the integration page):
+    sync_status, last_synced_at, sync_error, and how many items are indexed."""
+    await _require_member(workspace_id, current_user["id"])
+    source = await source_service.get_owned_source(source_id, current_user["id"])
+    if source is None:
+        raise HTTPException(status_code=404, detail="Source not found")
+    return {**source, "item_count": await source_service.source_item_count(source)}
+
+
 class QuerySourceRequest(BaseModel):
     sql: str
     limit: int = 200

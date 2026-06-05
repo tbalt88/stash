@@ -594,9 +594,28 @@ async def list_sources(workspace_id: UUID, user_id: UUID) -> list[dict]:
                 "type": s["source_type"],
                 "capability": s["capability"],
                 "display_name": s["display_name"],
+                # Sync bookkeeping for the per-integration page (the sidebar
+                # ignores these). Already on the row — no extra query.
+                "external_ref": s["external_ref"],
+                "sync_status": s["sync_status"],
+                "sync_error": s["sync_error"],
+                "last_synced_at": s["last_synced_at"],
             }
         )
     return sources
+
+
+async def source_item_count(source: dict) -> int | None:
+    """How many live documents a source has indexed. None for queryable sources
+    (Snowflake) — they have no document table."""
+    table = SOURCE_TABLE.get(source["source_type"])
+    if table is None:
+        return None
+    row = await get_pool().fetchrow(
+        f"SELECT count(*) AS n FROM {table} WHERE source_id = $1 AND deleted_at IS NULL",
+        UUID(source["id"]),
+    )
+    return int(row["n"]) if row else 0
 
 
 # --- unified VFS over native + connected sources ----------------------------
