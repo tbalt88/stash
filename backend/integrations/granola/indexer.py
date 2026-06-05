@@ -112,13 +112,14 @@ async def index_granola(source: dict) -> str | None:
             return None
         transcript_tool = _pick_tool([n for n in names if n != list_tool], _TRANSCRIPT_HINTS)
 
-        data = await call_tool_data(session, list_tool)
-        meetings = _as_list(data, "meetings", "results", "items", "documents", "notes")
+        data = await call_tool_data(session, list_tool, {"limit": MAX_MEETINGS})
+        meetings = _as_list(data, "meetings", "results", "items", "documents", "notes", "data")
         logger.info(
-            "granola: '%s' returned %d meeting(s); transcript tool=%s",
+            "granola: '%s' returned %d meeting(s); transcript tool=%s; raw=%s",
             list_tool,
             len(meetings),
             transcript_tool,
+            repr(data)[:500],
         )
 
         for meeting in meetings[:MAX_MEETINGS]:
