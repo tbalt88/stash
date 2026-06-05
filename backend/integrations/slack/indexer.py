@@ -54,11 +54,18 @@ async def index_slack(source: dict) -> str | None:
         for channel in channels_payload.get("channels", []):
             channel_id = channel["id"]
             channel_name = channel.get("name") or channel_id
-            history = await _slack_get(
-                client,
-                CONVERSATIONS_HISTORY_URL,
-                {"channel": channel_id, "limit": MAX_MESSAGES_PER_CHANNEL},
-            )
+            # A channel we can't read (not a member, archived, …) must not abort
+            # the whole backfill — skip it and continue. conversations.history
+            # returns most-recent-first, so this bootstraps recent messages.
+            try:
+                history = await _slack_get(
+                    client,
+                    CONVERSATIONS_HISTORY_URL,
+                    {"channel": channel_id, "limit": MAX_MESSAGES_PER_CHANNEL},
+                )
+            except RuntimeError as e:
+                logger.info("slack: skipping channel %s (%s)", channel_name, e)
+                continue
             for msg in history.get("messages", []):
                 if msg.get("type") != "message" or not msg.get("ts"):
                     continue
