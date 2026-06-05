@@ -595,6 +595,43 @@ async def test_fetch_history_routes_to_provider_and_rejects_unsupported(client, 
 
 
 @pytest.mark.asyncio
+async def test_list_sources_carries_status_and_status_endpoint_counts(client: AsyncClient):
+    """The per-integration page needs sync status + item counts: list_sources now
+    carries the status fields, and /status reports the indexed-doc count (None for
+    queryable sources with no table)."""
+    api_key, owner_id = await _register(client)
+    ws = await _create_workspace(client, api_key)
+    src = await source_service.create_source(
+        workspace_id=ws, owner_user_id=owner_id, source_type="github_repo",
+        external_ref="acme/widgets", display_name="acme/widgets",
+    )
+    await source_service.upsert_content_document(
+        table="github_documents", source_id=UUID(src["id"]), workspace_id=ws,
+        path="README.md", name="README.md", content="hi",
+    )
+
+    listing = await client.get(f"/api/v1/workspaces/{ws}/sources", headers=_auth(api_key))
+    connected = next(s for s in listing.json()["sources"] if s["source"] == src["id"])
+    assert "sync_status" in connected and "last_synced_at" in connected
+
+    status = await client.get(
+        f"/api/v1/workspaces/{ws}/sources/{src['id']}/status", headers=_auth(api_key)
+    )
+    assert status.status_code == 200
+    assert status.json()["item_count"] == 1
+
+    # A queryable source (snowflake) has no document table → count is None.
+    sf = await source_service.create_source(
+        workspace_id=ws, owner_user_id=owner_id, source_type="snowflake",
+        external_ref="acct", display_name="Snowflake",
+    )
+    sf_status = await client.get(
+        f"/api/v1/workspaces/{ws}/sources/{sf['id']}/status", headers=_auth(api_key)
+    )
+    assert sf_status.json()["item_count"] is None
+
+
+@pytest.mark.asyncio
 async def test_read_source_rejects_unowned_connected_source(client: AsyncClient):
     owner_key, owner_id = await _register(client, "owner")
     _, other_id = await _register(client, "other")
