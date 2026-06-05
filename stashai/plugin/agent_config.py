@@ -61,6 +61,7 @@ def get_config(client: str) -> dict:
         "api_key": api_key,
         "agent_name": cli.get("username", ""),
         "workspace_id": (manifest or {}).get("workspace_id", ""),
+        "session_folder_id": (manifest or {}).get("session_folder_id", ""),
         "client": client,
     }
 

@@ -1,4 +1,10 @@
-"""Session-folder endpoints: create, list, and assign sessions."""
+"""Session-folder endpoints.
+
+Folders are the shareable unit for sessions (same access model as cartridges).
+`ws_router` is the authenticated management surface; `public_router` serves a
+folder by slug to anyone the access rules allow (including anonymous viewers of
+a public folder), rendered by the same session viewer.
+"""
 
 from __future__ import annotations
 
@@ -7,12 +13,15 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
-from ..auth import get_current_user
+from ..auth import get_current_user, get_current_user_optional
 from ..services import permission_service, session_folder_service
 
-router = APIRouter(
+ws_router = APIRouter(
     prefix="/api/v1/workspaces/{workspace_id}/session-folders", tags=["session-folders"]
 )
+public_router = APIRouter(prefix="/api/v1/session-folders", tags=["session-folders"])
+
+GeneralPermission = str  # 'none' | 'read' | 'write' (validated in the service)
 
 
 async def _require_member(workspace_id: UUID, user_id: UUID) -> None:
@@ -22,30 +31,95 @@ async def _require_member(workspace_id: UUID, user_id: UUID) -> None:
 
 class CreateFolderRequest(BaseModel):
     name: str
+    workspace_permission: GeneralPermission = "read"
+    public_permission: GeneralPermission = "none"
+    discoverable: bool = False
+
+
+class UpdateFolderRequest(BaseModel):
+    name: str | None = None
+    workspace_permission: GeneralPermission | None = None
+    public_permission: GeneralPermission | None = None
+    discoverable: bool | None = None
+    cover_image_url: str | None = None
 
 
 class AssignRequest(BaseModel):
-    session_row_id: UUID
+    session_row_ids: list[UUID]
     folder_id: UUID | None = None
 
 
-@router.post("")
+@ws_router.post("")
 async def create_folder(
     workspace_id: UUID, body: CreateFolderRequest, current_user: dict = Depends(get_current_user)
 ):
     await _require_member(workspace_id, current_user["id"])
-    return await session_folder_service.create_folder(workspace_id, current_user["id"], body.name)
+    try:
+        return await session_folder_service.create_folder(
+            workspace_id,
+            current_user["id"],
+            body.name,
+            workspace_permission=body.workspace_permission,
+            public_permission=body.public_permission,
+            discoverable=body.discoverable,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
 
 
-@router.get("")
+@ws_router.get("")
 async def list_folders(workspace_id: UUID, current_user: dict = Depends(get_current_user)):
+    # Non-members may still see folders shared with them, so this isn't gated on
+    # membership. Members get a Default folder lazily ensured on first listing.
+    if await permission_service.is_workspace_member(workspace_id, current_user["id"]):
+        await session_folder_service.ensure_default_folder(workspace_id, current_user["id"])
     return {"folders": await session_folder_service.list_folders(workspace_id, current_user["id"])}
 
 
-@router.post("/assign")
-async def assign_session(
+@ws_router.patch("/{folder_id}")
+async def update_folder(
+    workspace_id: UUID,
+    folder_id: UUID,
+    body: UpdateFolderRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    try:
+        folder = await session_folder_service.update_folder(
+            folder_id, current_user["id"], body.model_dump(exclude_unset=True)
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    if not folder:
+        raise HTTPException(status_code=404, detail="Folder not found")
+    return folder
+
+
+@ws_router.delete("/{folder_id}", status_code=204)
+async def delete_folder(
+    workspace_id: UUID, folder_id: UUID, current_user: dict = Depends(get_current_user)
+):
+    deleted = await session_folder_service.delete_folder(folder_id, current_user["id"])
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Folder not found or can't be deleted")
+
+
+@ws_router.post("/assign")
+async def assign_sessions(
     workspace_id: UUID, body: AssignRequest, current_user: dict = Depends(get_current_user)
 ):
     await _require_member(workspace_id, current_user["id"])
-    await session_folder_service.assign_session(body.session_row_id, body.folder_id)
-    return {"ok": True}
+    for session_row_id in body.session_row_ids:
+        await session_folder_service.assign_session(session_row_id, body.folder_id)
+    return {"ok": True, "moved": len(body.session_row_ids)}
+
+
+@public_router.get("/{slug}")
+async def get_public_folder(
+    slug: str, current_user: dict | None = Depends(get_current_user_optional)
+):
+    viewer_id = current_user["id"] if current_user else None
+    folder = await session_folder_service.get_public_folder(slug, viewer_id=viewer_id)
+    if not folder:
+        raise HTTPException(status_code=404, detail="Folder not found")
+    sessions = await session_folder_service.list_folder_sessions(UUID(folder["id"]))
+    return {"folder": folder, "sessions": sessions}

@@ -261,6 +261,24 @@ async def _cartridge_open(cartridge: dict, user_id: UUID | None) -> bool:
     return await _cartridge_member_permission(cartridge["id"], user_id) is not None
 
 
+async def _session_folder_open(
+    folder: dict, folder_id: UUID, user_id: UUID | None, require_write: bool
+) -> bool:
+    """Can the user access this session folder? Mirrors _cartridge_open: public
+    link, owner, or an explicit user share. Workspace members are granted earlier
+    in check_access (the workspace is the trust boundary)."""
+    public = folder["public_permission"]
+    if not require_write and public != "none":
+        return True
+    if require_write and public == "write":
+        return True
+    if user_id is None:
+        return False
+    if folder["owner_user_id"] == user_id:
+        return True
+    return await _user_share_grants("session_folder", folder_id, user_id, require_write)
+
+
 async def check_access(
     object_type: str,
     object_id: UUID,
@@ -292,11 +310,17 @@ async def check_access(
             return row["owner_id"] == user_id
         return await _cartridge_open(dict(row), user_id)
 
-    # A session folder is shareable like a file folder (no cartridge containment).
+    # A session folder is a shareable bundle: public link, owner, or user share.
     if object_type == "session_folder":
-        return user_id is not None and await _user_share_grants(
-            "session_folder", object_id, user_id, require_write
+        pool = get_pool()
+        row = await pool.fetchrow(
+            "SELECT owner_user_id, public_permission, workspace_permission "
+            "FROM session_folders WHERE id = $1",
+            object_id,
         )
+        if not row:
+            return False
+        return await _session_folder_open(dict(row), object_id, user_id, require_write)
 
     if object_type not in _CONTENT_TYPES:
         return False
@@ -306,6 +330,18 @@ async def check_access(
         object_type, object_id, user_id, require_write
     ):
         return True
+
+    # Read-only access via a public / shared session folder that contains it.
+    if object_type == "session" and not require_write:
+        pool = get_pool()
+        frow = await pool.fetchrow(
+            "SELECT sf.id, sf.owner_user_id, sf.public_permission, sf.workspace_permission "
+            "FROM sessions s JOIN session_folders sf ON sf.id = s.session_folder_id "
+            "WHERE s.id = $1",
+            object_id,
+        )
+        if frow and await _session_folder_open(dict(frow), frow["id"], user_id, False):
+            return True
 
     # Read-only access via a cartridge that contains the object.
     if not require_write:

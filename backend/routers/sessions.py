@@ -20,6 +20,7 @@ from ..services import (
     linear_ticket_service,
     memory_service,
     permission_service,
+    session_folder_service,
     session_service,
     session_title_service,
     storage_service,
@@ -37,6 +38,7 @@ class SessionUpsertRequest(BaseModel):
     agent_name: str = Field("", max_length=64)
     cwd: str | None = Field(None, max_length=1024)
     files_touched: list[str] = Field(default_factory=list)
+    session_folder_id: UUID | None = None
 
 
 def _session_response(row: dict, title: str | None = None) -> dict:
@@ -189,12 +191,22 @@ async def upsert_workspace_session(
     if not await workspace_service.is_member(workspace_id, current_user["id"]):
         raise HTTPException(status_code=403, detail="Not a workspace member")
 
+    # A session always lands in a folder: the one it was pushed to, or the
+    # workspace's Default folder (chat-UI + un-targeted CLI sessions).
+    folder_id = req.session_folder_id
+    if folder_id is None:
+        default_folder = await session_folder_service.ensure_default_folder(
+            workspace_id, current_user["id"]
+        )
+        folder_id = UUID(default_folder["id"])
+
     row = await session_service.upsert_session(
         workspace_id=workspace_id,
         session_id=req.session_id,
         agent_name=req.agent_name,
         cwd=req.cwd,
         created_by=current_user["id"],
+        session_folder_id=folder_id,
     )
     if req.files_touched:
         await session_service.set_files_touched(row["id"], req.files_touched)

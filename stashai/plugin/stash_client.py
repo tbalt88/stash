@@ -282,16 +282,18 @@ class StashClient:
     def create_session(
         self, workspace_id: str, session_id: str, agent_name: str,
         cwd: str | None = None, files_touched: list[str] | None = None,
+        session_folder_id: str | None = None,
     ) -> dict:
-        return self._post(
-            f"/api/v1/workspaces/{workspace_id}/sessions",
-            json={
-                "session_id": session_id,
-                "agent_name": agent_name,
-                "cwd": cwd or "",
-                "files_touched": files_touched or [],
-            },
-        )
+        body = {
+            "session_id": session_id,
+            "agent_name": agent_name,
+            "cwd": cwd or "",
+            "files_touched": files_touched or [],
+        }
+        # Omit when unset so the backend routes the session to the Default folder.
+        if session_folder_id:
+            body["session_folder_id"] = session_folder_id
+        return self._post(f"/api/v1/workspaces/{workspace_id}/sessions", json=body)
 
     def upload_session_artifact(
         self, workspace_id: str, session_row_id: str, file_path: str, content: bytes,

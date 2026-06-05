@@ -19,25 +19,30 @@ async def upsert_session(
     agent_name: str = "",
     cwd: str | None = None,
     created_by: UUID | None = None,
+    session_folder_id: UUID | None = None,
 ) -> dict:
     """Idempotent: return the session row, creating it if missing.
 
-    The CLI calls this lazily — first event for a session writes the row.
+    The CLI calls this lazily — first event for a session writes the row. The
+    folder is set once and never re-homed by a later upsert, so a manual move
+    sticks even if the agent keeps streaming.
     """
     pool = get_pool()
     row = await pool.fetchrow(
-        "INSERT INTO sessions (workspace_id, session_id, agent_name, cwd, created_by) "
-        "VALUES ($1, $2, $3, $4, $5) "
+        "INSERT INTO sessions (workspace_id, session_id, agent_name, cwd, created_by, session_folder_id) "
+        "VALUES ($1, $2, $3, $4, $5, $6) "
         "ON CONFLICT (workspace_id, session_id) DO UPDATE SET "
         "  agent_name = COALESCE(NULLIF(EXCLUDED.agent_name, ''), sessions.agent_name), "
         "  cwd = COALESCE(EXCLUDED.cwd, sessions.cwd), "
-        "  created_by = COALESCE(sessions.created_by, EXCLUDED.created_by) "
+        "  created_by = COALESCE(sessions.created_by, EXCLUDED.created_by), "
+        "  session_folder_id = COALESCE(sessions.session_folder_id, EXCLUDED.session_folder_id) "
         f"RETURNING {_SELECT_COLS}",
         workspace_id,
         session_id,
         agent_name,
         cwd,
         created_by,
+        session_folder_id,
     )
     return dict(row)
 

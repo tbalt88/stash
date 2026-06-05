@@ -347,8 +347,9 @@ async def test_session_folder_share_cascades_to_sessions(pool):
     friend = await _make_user(pool)
     ws = await _make_workspace(pool, owner)
     folder = await pool.fetchval(
-        "INSERT INTO session_folders (workspace_id, owner_user_id, name) "
-        "VALUES ($1, $2, 'launch') RETURNING id",
+        "INSERT INTO session_folders (workspace_id, owner_user_id, name, slug) "
+        "VALUES ($1, $2, 'launch', 'launch-' || left(replace(gen_random_uuid()::text, '-', ''), 8)) "
+        "RETURNING id",
         ws,
         owner,
     )
@@ -550,7 +551,7 @@ async def test_session_folder_share_by_email_lists_for_non_member(client: AsyncC
     assert session.status_code == 201
     assigned = await client.post(
         f"/api/v1/workspaces/{ws}/session-folders/assign",
-        json={"session_row_id": session.json()["id"], "folder_id": folder_id},
+        json={"session_row_ids": [session.json()["id"]], "folder_id": folder_id},
         headers=_auth(owner_key),
     )
     assert assigned.status_code == 200
@@ -580,7 +581,11 @@ async def test_session_folder_share_by_email_lists_for_non_member(client: AsyncC
         headers=_auth(grantee_key),
     )
     assert after.status_code == 200
-    assert after.json()["folders"] == [{"id": folder_id, "name": "Deploys", "session_count": 1}]
+    folders = after.json()["folders"]
+    assert len(folders) == 1
+    assert folders[0]["id"] == folder_id
+    assert folders[0]["name"] == "Deploys"
+    assert folders[0]["session_count"] == 1
 
 
 @pytest.mark.asyncio
@@ -666,8 +671,9 @@ async def test_shared_session_folder_sessions_gated_on_share(pool):
     stranger = await _make_user(pool)
     ws = await _make_workspace(pool, owner)
     sf = await pool.fetchval(
-        "INSERT INTO session_folders (workspace_id, owner_user_id, name) "
-        "VALUES ($1, $2, 'SF') RETURNING id",
+        "INSERT INTO session_folders (workspace_id, owner_user_id, name, slug) "
+        "VALUES ($1, $2, 'SF', 'sf-' || left(replace(gen_random_uuid()::text, '-', ''), 8)) "
+        "RETURNING id",
         ws,
         owner,
     )

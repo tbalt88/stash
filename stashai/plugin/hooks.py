@@ -221,6 +221,7 @@ def create_session_record(
             agent_name=cfg["agent_name"],
             cwd=event.cwd,
             files_touched=read_stats(state)["files_touched"],
+            session_folder_id=cfg.get("session_folder_id") or None,
         )
     except Exception as e:
         record_upload_failure(data_dir, "session", e)
