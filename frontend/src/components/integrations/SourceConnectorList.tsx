@@ -37,6 +37,7 @@ import {
   NotionIcon,
   ObsidianIcon,
   SlackIcon,
+  SnowflakeIcon,
 } from "./BrandIcons";
 import ObsidianVaultDropZone from "./ObsidianVaultDropZone";
 
@@ -123,6 +124,14 @@ const CONNECTORS: Connector[] = [
     icon: <GongIcon />,
     kind: "auto",
     blurb: "Call transcripts, kept in sync.",
+  },
+  {
+    provider: "snowflake",
+    label: "Snowflake",
+    sourceType: "snowflake",
+    icon: <SnowflakeIcon />,
+    kind: "auto",
+    blurb: "Run read-only SQL against your warehouse.",
   },
 ];
 
@@ -848,6 +857,7 @@ function labelForSourceType(type: string): string {
   if (type === "jira_project") return "Jira";
   if (type === "asana_project") return "Asana";
   if (type === "gong_calls") return "Gong";
+  if (type === "snowflake") return "Snowflake";
   return type;
 }
 

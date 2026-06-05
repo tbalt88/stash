@@ -16,7 +16,8 @@ export type IntegrationProvider =
   | "granola"
   | "jira"
   | "asana"
-  | "gong";
+  | "gong"
+  | "snowflake";
 
 export type CredentialField = {
   name: string;

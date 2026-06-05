@@ -23,4 +23,5 @@ from . import (
     jira,  # noqa: F401
     notion,  # noqa: F401
     slack,  # noqa: F401
+    snowflake,  # noqa: F401
 )
