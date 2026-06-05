@@ -1056,9 +1056,21 @@ export interface SessionSummary {
   session_folder_name: string | null;
 }
 
+export type GeneralPermission = "none" | "read" | "write";
+export type SessionFolderVisibility = "private" | "workspace" | "public";
+
 export interface SessionFolder {
   id: string;
+  workspace_id: string;
+  slug: string;
   name: string;
+  owner_display_name: string | null;
+  access: SessionFolderVisibility;
+  workspace_permission: GeneralPermission;
+  public_permission: GeneralPermission;
+  discoverable: boolean;
+  is_default: boolean;
+  view_count: number;
   session_count: number;
 }
 
@@ -1079,15 +1091,56 @@ export async function createSessionFolder(
   });
 }
 
+export async function updateSessionFolder(
+  workspaceId: string,
+  folderId: string,
+  data: {
+    name?: string;
+    workspace_permission?: GeneralPermission;
+    public_permission?: GeneralPermission;
+    discoverable?: boolean;
+  },
+): Promise<SessionFolder> {
+  return apiFetch<SessionFolder>(
+    `/api/v1/workspaces/${workspaceId}/session-folders/${folderId}`,
+    { method: "PATCH", body: JSON.stringify(data) },
+  );
+}
+
+export async function deleteSessionFolder(workspaceId: string, folderId: string): Promise<void> {
+  await apiFetch(`/api/v1/workspaces/${workspaceId}/session-folders/${folderId}`, {
+    method: "DELETE",
+  });
+}
+
+// Move one or more sessions into a folder (or out, with folderId null).
 export async function assignSessionFolder(
   workspaceId: string,
-  sessionRowId: string,
+  sessionRowIds: string[],
   folderId: string | null,
 ): Promise<void> {
   await apiFetch(`/api/v1/workspaces/${workspaceId}/session-folders/assign`, {
     method: "POST",
-    body: JSON.stringify({ session_row_id: sessionRowId, folder_id: folderId }),
+    body: JSON.stringify({ session_row_ids: sessionRowIds, folder_id: folderId }),
   });
+}
+
+export interface PublicSessionFolder {
+  folder: SessionFolder;
+  sessions: {
+    id: string;
+    session_id: string;
+    agent_name: string;
+    cwd: string | null;
+    user_name: string | null;
+    event_count: number;
+    started_at: string | null;
+    last_event_at: string | null;
+  }[];
+}
+
+export async function getPublicSessionFolder(slug: string): Promise<PublicSessionFolder> {
+  return apiFetch<PublicSessionFolder>(`/api/v1/session-folders/${slug}`);
 }
 
 export interface LinearTicketLabel {
@@ -1929,6 +1982,54 @@ export async function listSharedSessionFolderSessions(folderId: string): Promise
     `/api/v1/share/session-folders/${folderId}/sessions`
   );
   return res.sessions;
+}
+
+export interface ObjectShare {
+  principal_type: string;
+  principal_id: string | null;
+  label: string;
+  email: string | null;
+  permission: GeneralPermission;
+  pending: boolean;
+}
+
+export async function listObjectShares(
+  objectType: SharedObjectType,
+  objectId: string,
+): Promise<ObjectShare[]> {
+  const res = await apiFetch<{ shares: ObjectShare[] }>(
+    `/api/v1/share?object_type=${objectType}&object_id=${objectId}`,
+  );
+  return res.shares;
+}
+
+export async function shareObjectByEmail(
+  objectType: SharedObjectType,
+  objectId: string,
+  email: string,
+  permission: GeneralPermission = "read",
+): Promise<void> {
+  await apiFetch("/api/v1/share", {
+    method: "POST",
+    body: JSON.stringify({ object_type: objectType, object_id: objectId, email, permission }),
+  });
+}
+
+export async function unshareObject(
+  objectType: SharedObjectType,
+  objectId: string,
+  principalType: string,
+  principalId: string,
+): Promise<void> {
+  await apiFetch("/api/v1/share", {
+    method: "DELETE",
+    body: JSON.stringify({
+      object_type: objectType,
+      object_id: objectId,
+      principal_type: principalType,
+      principal_id: principalId,
+    }),
+  });
 }
 
 // --- Trash ---

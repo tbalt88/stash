@@ -28,6 +28,7 @@ export default function AppGroupLayout({ children }: { children: ReactNode }) {
   const { user, loading, logout } = useAuth();
   const isPublicCartridgeRoute =
     pathname.startsWith("/cartridges/") ||
+    pathname.startsWith("/session-folders/") ||
     (pathname.startsWith("/workspaces/") && searchParams.has("stash"));
 
   useEffect(() => {

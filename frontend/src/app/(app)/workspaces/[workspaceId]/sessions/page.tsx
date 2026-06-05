@@ -13,15 +13,18 @@ import {
   assignSessionFolder,
   createSessionFolder,
   deleteSession,
+  deleteSessionFolder,
   listMySessions,
   listSessionFolders,
   listSharedSessionFolderSessions,
   listSharedWithMe,
   type SessionFolder,
+  type SessionFolderVisibility,
   type SessionSummary,
   type SharedSession,
   type SharedWithMeItem,
 } from "../../../../../lib/api";
+import SessionFolderShareModal from "../../../../../components/share/SessionFolderShareModal";
 import { usePins } from "../../../../../lib/pins";
 import {
   groupSessionsByAgent,
@@ -66,6 +69,7 @@ export default function CartridgeSessionsPage() {
   const [folders, setFolders] = useState<SessionFolder[]>([]);
   const [sharedFolders, setSharedFolders] = useState<SharedWithMeItem[]>([]);
   const [openFolder, setOpenFolder] = useState<OpenFolder | null>(null);
+  const [shareFolder, setShareFolder] = useState<SessionFolder | null>(null);
   const [error, setError] = useState("");
   const [view, setView] = useState<ViewKey>("list");
   const [sort, setSort] = useState<SortKey>("recent");
@@ -183,13 +187,40 @@ export default function CartridgeSessionsPage() {
       }
     }
     try {
-      for (const session of targets) {
-        await assignSessionFolder(workspaceId, session.id!, destination);
-      }
+      await assignSessionFolder(
+        workspaceId,
+        targets.map((s) => s.id!),
+        destination,
+      );
       clearSelection();
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not move sessions");
+    }
+  }
+
+  async function newFolder() {
+    const name = window.prompt("New folder name")?.trim();
+    if (!name) return;
+    try {
+      await createSessionFolder(workspaceId, name);
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not create folder");
+    }
+  }
+
+  async function removeFolder(folder: SessionFolder) {
+    const yes = window.confirm(
+      `Delete folder "${folder.name}"? Sessions inside become unfiled (not deleted).`,
+    );
+    if (!yes) return;
+    try {
+      await deleteSessionFolder(workspaceId, folder.id);
+      setOpenFolder(null);
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not delete folder");
     }
   }
 
@@ -223,55 +254,36 @@ export default function CartridgeSessionsPage() {
           </section>
         )}
 
+        {/* Folder-first: the landing is the set of folders (Default catches
+            chat + un-targeted sessions); the chronological/filter views live
+            inside a folder once you drill in. */}
         {openFolder ? (
           <FolderDrill
             folder={openFolder}
             sessions={sorted ?? []}
+            folders={folders}
+            view={view}
+            sort={sort}
             workspaceId={workspaceId}
             onBack={() => setOpenFolder(null)}
+            onChangeView={setViewPersisted}
+            onChangeSort={setSort}
+            onShare={(f) => setShareFolder(f)}
+            onDelete={removeFolder}
             isPinned={pins.isPinned}
             onTogglePin={pins.toggle}
             selectedIds={selectedIds}
             onToggleSelect={toggleSelect}
           />
         ) : (
-          <>
-            <FoldersSection
-              ownFolders={folders}
-              sharedFolders={sharedFolders}
-              workspaceId={workspaceId}
-              onOpen={setOpenFolder}
-            />
-
-            {/* Toolbar: View · Sort. Drives the rendering below. */}
-            <div className="mb-3 flex flex-wrap items-center gap-3 border-b border-border pb-2.5">
-              <SegmentedControl
-                label="View"
-                value={view}
-                options={VIEWS}
-                onChange={(v) => setViewPersisted(v as ViewKey)}
-              />
-              <SegmentedControl
-                label="Sort"
-                value={sort}
-                options={SORTS}
-                onChange={(v) => setSort(v as SortKey)}
-              />
-            </div>
-
-            {sorted && (
-              <SessionsView
-                view={view}
-                sessions={sorted}
-                folders={folders}
-                workspaceId={workspaceId}
-                isPinned={pins.isPinned}
-                onTogglePin={pins.toggle}
-                selectedIds={selectedIds}
-                onToggleSelect={toggleSelect}
-              />
-            )}
-          </>
+          <FoldersSection
+            ownFolders={folders}
+            sharedFolders={sharedFolders}
+            workspaceId={workspaceId}
+            onOpen={setOpenFolder}
+            onNewFolder={newFolder}
+            onShare={(f) => setShareFolder(f)}
+          />
         )}
       </div>
 
@@ -291,7 +303,6 @@ export default function CartridgeSessionsPage() {
             >
               <option value="">Move to folder…</option>
               <option value="__new__">+ New folder</option>
-              <option value="__none__">Unfiled</option>
               {folders.map((f) => (
                 <option key={f.id} value={f.id}>
                   {f.name}
@@ -315,6 +326,15 @@ export default function CartridgeSessionsPage() {
             </button>
           </div>
         </div>
+      )}
+
+      {shareFolder && (
+        <SessionFolderShareModal
+          folder={shareFolder}
+          workspaceId={workspaceId}
+          onClose={() => setShareFolder(null)}
+          onChanged={load}
+        />
       )}
     </div>
   );
@@ -806,40 +826,75 @@ function formatDate(iso: string | null): string {
 
 // --- Session folders as navigable "vaults" (own + shared-with-me) ---
 
-type OpenFolder = { id: string; name: string; workspaceId: string; shared: boolean };
+// `folder` is the full record for own folders (enables Share/Delete + access
+// badge); shared-with-me folders only carry the id/name/workspace.
+type OpenFolder = {
+  id: string;
+  name: string;
+  workspaceId: string;
+  shared: boolean;
+  folder?: SessionFolder;
+};
+
+const VIS_DOT: Record<SessionFolderVisibility, string> = {
+  public: "#22C55E",
+  private: "#9CA3AF",
+  workspace: "var(--color-brand-500)",
+};
+
+function FolderAccessBadge({ access }: { access: SessionFolderVisibility }) {
+  return (
+    <span className="inline-flex items-center gap-1 text-[11px] capitalize text-muted">
+      <span
+        className="inline-block h-[7px] w-[7px] rounded-full"
+        style={{ background: VIS_DOT[access] }}
+      />
+      {access}
+    </span>
+  );
+}
 
 function FoldersSection({
   ownFolders,
   sharedFolders,
   workspaceId,
   onOpen,
+  onNewFolder,
+  onShare,
 }: {
   ownFolders: SessionFolder[];
   sharedFolders: SharedWithMeItem[];
   workspaceId: string;
   onOpen: (f: OpenFolder) => void;
+  onNewFolder: () => void;
+  onShare: (f: SessionFolder) => void;
 }) {
-  if (ownFolders.length === 0 && sharedFolders.length === 0) return null;
   return (
-    <section className="mb-5">
-      <h2 className="m-0 mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted">
-        Folders
-      </h2>
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4">
+    <section>
+      <div className="mb-3 flex items-center justify-between border-b border-border pb-2.5">
+        <h2 className="m-0 font-display text-[15px] font-semibold text-foreground">Folders</h2>
+        <button
+          type="button"
+          onClick={onNewFolder}
+          className="rounded-md border border-border bg-base px-2.5 py-1 text-[12.5px] font-medium text-foreground hover:bg-raised"
+        >
+          + New folder
+        </button>
+      </div>
+      <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-3">
         {ownFolders.map((f) => (
           <FolderCard
             key={f.id}
-            name={f.name}
-            subtitle={`${f.session_count} session${f.session_count === 1 ? "" : "s"}`}
-            onClick={() => onOpen({ id: f.id, name: f.name, workspaceId, shared: false })}
+            folder={f}
+            onClick={() => onOpen({ id: f.id, name: f.name, workspaceId, shared: false, folder: f })}
+            onShare={() => onShare(f)}
           />
         ))}
         {sharedFolders.map((f) => (
-          <FolderCard
+          <SharedFolderCard
             key={f.object_id}
             name={f.name}
-            subtitle={f.shared_by ? `shared by ${f.shared_by}` : "shared"}
-            shared
+            subtitle={f.shared_by ? `shared by ${f.shared_by}` : "shared with you"}
             onClick={() =>
               onOpen({ id: f.object_id, name: f.name, workspaceId: f.workspace_id, shared: true })
             }
@@ -851,28 +906,79 @@ function FoldersSection({
 }
 
 function FolderCard({
+  folder,
+  onClick,
+  onShare,
+}: {
+  folder: SessionFolder;
+  onClick: () => void;
+  onShare: () => void;
+}) {
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={onClick}
+      onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && onClick()}
+      className="group flex cursor-pointer items-start gap-2.5 rounded-lg border border-border bg-surface/50 px-3 py-3 text-left transition hover:border-[var(--color-brand-300)] hover:bg-raised/50"
+    >
+      <span aria-hidden className="mt-0.5 text-[18px]">
+        {folder.is_default ? "🗃️" : "📁"}
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="flex items-center gap-1.5">
+          <span className="min-w-0 truncate text-[13.5px] font-semibold text-foreground">
+            {folder.name}
+          </span>
+          {folder.is_default && (
+            <span className="shrink-0 rounded-full border border-border bg-base px-1.5 py-px text-[9.5px] uppercase tracking-wide text-muted">
+              Default
+            </span>
+          )}
+        </span>
+        <span className="mt-1 flex items-center gap-2">
+          <span className="text-[11.5px] text-muted">
+            {folder.session_count} session{folder.session_count === 1 ? "" : "s"}
+          </span>
+          <span aria-hidden className="text-muted">·</span>
+          <FolderAccessBadge access={folder.access} />
+        </span>
+      </span>
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          onShare();
+        }}
+        className="shrink-0 rounded-md px-2 py-0.5 text-[11.5px] font-medium text-muted opacity-0 transition group-hover:opacity-100 hover:bg-base hover:text-foreground"
+      >
+        Share
+      </button>
+    </div>
+  );
+}
+
+function SharedFolderCard({
   name,
   subtitle,
-  shared = false,
   onClick,
 }: {
   name: string;
   subtitle: string;
-  shared?: boolean;
   onClick: () => void;
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
-      className="flex items-center gap-2.5 rounded-lg border border-border bg-surface/50 px-3 py-2.5 text-left hover:bg-raised/50"
+      className="flex items-start gap-2.5 rounded-lg border border-border bg-surface/50 px-3 py-3 text-left transition hover:border-[var(--color-brand-300)] hover:bg-raised/50"
     >
-      <span aria-hidden className="text-[16px]">
-        {shared ? "🗂️" : "📁"}
+      <span aria-hidden className="mt-0.5 text-[18px]">
+        🗂️
       </span>
       <span className="min-w-0">
-        <span className="block truncate text-[13px] font-medium text-foreground">{name}</span>
-        <span className="block truncate text-[11px] text-muted">{subtitle}</span>
+        <span className="block truncate text-[13.5px] font-semibold text-foreground">{name}</span>
+        <span className="block truncate text-[11.5px] text-muted">{subtitle}</span>
       </span>
     </button>
   );
@@ -881,8 +987,15 @@ function FolderCard({
 function FolderDrill({
   folder,
   sessions,
+  folders,
+  view,
+  sort,
   workspaceId,
   onBack,
+  onChangeView,
+  onChangeSort,
+  onShare,
+  onDelete,
   isPinned,
   onTogglePin,
   selectedIds,
@@ -890,8 +1003,15 @@ function FolderDrill({
 }: {
   folder: OpenFolder;
   sessions: SessionSummary[];
+  folders: SessionFolder[];
+  view: ViewKey;
+  sort: SortKey;
   workspaceId: string;
   onBack: () => void;
+  onChangeView: (v: ViewKey) => void;
+  onChangeSort: (s: SortKey) => void;
+  onShare: (f: SessionFolder) => void;
+  onDelete: (f: SessionFolder) => void;
   isPinned: (sessionId: string) => boolean;
   onTogglePin: (sessionId: string) => void;
   selectedIds: Set<string>;
@@ -911,6 +1031,7 @@ function FolderDrill({
   const ownSessions = folder.shared
     ? []
     : sessions.filter((s) => s.session_folder_id === folder.id);
+  const ownFolder = folder.folder;
 
   return (
     <div>
@@ -919,13 +1040,52 @@ function FolderDrill({
         onClick={onBack}
         className="mb-3 inline-flex items-center gap-1 text-[12.5px] text-muted hover:text-foreground"
       >
-        ← Sessions
+        ← All folders
       </button>
-      <h2 className="m-0 mb-3 flex items-center gap-2 font-display text-[18px] font-semibold text-foreground">
-        <span aria-hidden>{folder.shared ? "🗂️" : "📁"}</span>
-        {folder.name}
-      </h2>
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+        <h2 className="m-0 flex items-center gap-2 font-display text-[18px] font-semibold text-foreground">
+          <span aria-hidden>{folder.shared ? "🗂️" : ownFolder?.is_default ? "🗃️" : "📁"}</span>
+          {folder.name}
+          {ownFolder && <FolderAccessBadge access={ownFolder.access} />}
+        </h2>
+        {ownFolder && (
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => onShare(ownFolder)}
+              className="rounded-md bg-[var(--color-brand-600)] px-2.5 py-1 text-[12.5px] font-medium text-white hover:bg-[var(--color-brand-700)]"
+            >
+              Share
+            </button>
+            {!ownFolder.is_default && (
+              <button
+                type="button"
+                onClick={() => onDelete(ownFolder)}
+                className="rounded-md border border-border px-2.5 py-1 text-[12.5px] text-muted hover:text-rose-500"
+              >
+                Delete
+              </button>
+            )}
+          </div>
+        )}
+      </div>
       {error ? <p className="text-[13px] text-rose-500">{error}</p> : null}
+      {!folder.shared && (
+        <div className="mb-3 flex flex-wrap items-center gap-3 border-b border-border pb-2.5">
+          <SegmentedControl
+            label="View"
+            value={view}
+            options={VIEWS}
+            onChange={(v) => onChangeView(v as ViewKey)}
+          />
+          <SegmentedControl
+            label="Sort"
+            value={sort}
+            options={SORTS}
+            onChange={(v) => onChangeSort(v as SortKey)}
+          />
+        </div>
+      )}
       {folder.shared ? (
         shared === null ? (
           <p className="text-[12.5px] text-muted">Loading…</p>
@@ -950,9 +1110,11 @@ function FolderDrill({
           </div>
         )
       ) : (
-        <SessionsTable
-          workspaceId={workspaceId}
+        <SessionsView
+          view={view}
           sessions={ownSessions}
+          folders={folders}
+          workspaceId={workspaceId}
           isPinned={isPinned}
           onTogglePin={onTogglePin}
           selectedIds={selectedIds}
