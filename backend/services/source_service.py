@@ -41,6 +41,7 @@ DEFAULT_SYNC_INTERVAL_S = {
     "granola": 21600,
     "jira_project": 1800,
     "asana_project": 1800,
+    "gong_calls": 21600,
 }
 
 # Which capability each connected source type exposes.
@@ -52,6 +53,7 @@ SOURCE_CAPABILITY = {
     "granola": "searchable",
     "jira_project": "searchable",
     "asana_project": "navigable",
+    "gong_calls": "searchable",
 }
 
 
@@ -226,6 +228,7 @@ SOURCE_TABLE = {
     "granola": "granola_notes",
     "jira_project": "jira_documents",
     "asana_project": "asana_documents",
+    "gong_calls": "gong_documents",
 }
 
 # Tables that COPY content (FTS + embeddings live in them). The rest are
@@ -236,6 +239,7 @@ CONTENT_TABLES = {
     "granola_notes",
     "jira_documents",
     "asana_documents",
+    "gong_documents",
 }
 
 

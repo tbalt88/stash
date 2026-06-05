@@ -54,6 +54,13 @@ async def _resolve_granola_source(user_id) -> tuple[str, str]:
     return "granola", "Granola"
 
 
+async def _resolve_gong_source(user_id) -> tuple[str, str]:
+    """Gong is one connection per user (all calls); external_ref is constant.
+    Confirm the credentials exist (raises 401 if not connected)."""
+    await integration_storage.get_valid_token(user_id, "gong")
+    return "calls", "Gong"
+
+
 @router.get("")
 async def list_sources(workspace_id: UUID, current_user: dict = Depends(get_current_user)):
     """Sources this user can see here: native files + sessions, plus their own
@@ -136,6 +143,9 @@ async def add_source(
         display_name = display_name or resolved_name
     elif body.source_type == "granola" and not external_ref:
         external_ref, resolved_name = await _resolve_granola_source(current_user["id"])
+        display_name = display_name or resolved_name
+    elif body.source_type == "gong_calls" and not external_ref:
+        external_ref, resolved_name = await _resolve_gong_source(current_user["id"])
         display_name = display_name or resolved_name
 
     if not external_ref:

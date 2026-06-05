@@ -85,9 +85,11 @@ class ProviderListItem(BaseModel):
     connected: bool
     enabled: bool
     disabled_reason: str | None = None
-    # "oauth" (the default redirect flow) or "mcp_oauth" (DCR+PKCE via an MCP
-    # server, e.g. Granola).
+    # "oauth" (the default redirect flow), "mcp_oauth" (DCR+PKCE via an MCP
+    # server, e.g. Granola), or "api_key" (pasted credentials, e.g. Gong).
     auth_kind: str = "oauth"
+    # For api_key providers: the form fields the frontend should render.
+    credential_fields: list[dict] | None = None
     account_email: str | None = None
     account_display_name: str | None = None
     expires_at: str | None = None
@@ -181,6 +183,11 @@ async def list_integrations(current_user: dict = Depends(get_current_user)):
                 enabled=disabled_reason is None,
                 disabled_reason=disabled_reason,
                 auth_kind=getattr(p, "auth_kind", "oauth"),
+                credential_fields=[
+                    {"name": f.name, "label": f.label, "secret": f.secret, "placeholder": f.placeholder}
+                    for f in getattr(p, "credential_fields", [])
+                ]
+                or None,
                 account_email=conn["account_email"] if conn else None,
                 account_display_name=conn["account_display_name"] if conn else None,
                 expires_at=conn["expires_at"] if conn else None,
@@ -264,6 +271,38 @@ async def integration_disconnect(
     get_provider(provider)  # 404 if unknown
     await storage.revoke_stored(current_user["id"], provider)
     return {"ok": True}
+
+
+class CredentialConnectResponse(BaseModel):
+    connected: bool
+    account_email: str | None
+    account_display_name: str | None
+
+
+@router.post("/{provider}/credentials", response_model=CredentialConnectResponse)
+async def integration_connect_with_credentials(
+    provider: str,
+    values: dict[str, str],
+    current_user: dict = Depends(get_current_user),
+):
+    """Connect an api_key provider (Gong, Snowflake) from pasted credentials.
+    The provider validates them against the upstream and returns the bundle as
+    the stored token; we never echo the secrets back."""
+    p = get_provider(provider)
+    _ensure_provider_enabled(provider)
+    if getattr(p, "auth_kind", "oauth") != "api_key":
+        raise HTTPException(status_code=400, detail=f"{provider} does not use credential auth")
+    try:
+        token, account = await p.connect_with_credentials(values)
+    except ValueError as e:
+        # Bad/rejected credentials — a client error, not a server fault.
+        raise HTTPException(status_code=400, detail=str(e))
+    await storage.store_token(current_user["id"], provider, token, account)
+    return CredentialConnectResponse(
+        connected=True,
+        account_email=account.email,
+        account_display_name=account.display_name,
+    )
 
 
 class GooglePickerTokenResponse(BaseModel):

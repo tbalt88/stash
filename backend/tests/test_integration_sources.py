@@ -1,17 +1,21 @@
-"""Jira + Asana source unit tests.
+"""Jira + Asana + Gong source unit tests.
 
 Two things worth pinning that don't need a DB or live OAuth:
 
-1. The rendering helpers decide what text the agent actually reads for an issue
-   or task — so we assert the human-meaningful fields (status, assignee, body,
-   comments) survive into the document.
+1. The rendering helpers decide what text the agent actually reads for an issue,
+   task, or call — so we assert the human-meaningful fields (status, assignee,
+   body, comments, transcript) survive into the document.
 2. A connected source type is only usable if it's wired into EVERY map at once
    (capability, table, content-vs-index, indexer, sync interval). The
    consistency test fails loudly if a future integration wires only some of
    them — the exact bug that makes a source silently un-syncable.
 """
 
+import pytest
+
 from backend.integrations.asana.indexer import _render_task
+from backend.integrations.gong.indexer import _render_call
+from backend.integrations.gong.provider import GongIntegration
 from backend.integrations.jira.indexer import _adf_to_text, _render_issue
 from backend.services import source_service
 from backend.tasks import sources as source_tasks
@@ -122,3 +126,36 @@ def test_jira_and_asana_are_searchable_content_sources():
     assert "asana_documents" in source_service.CONTENT_TABLES
     assert source_service.SOURCE_CAPABILITY["jira_project"] == "searchable"
     assert source_service.SOURCE_CAPABILITY["asana_project"] == "navigable"
+
+
+def test_render_call_labels_speakers_and_keeps_transcript():
+    text = _render_call(
+        {"title": "Q3 sync", "started": "2026-06-01T10:00:00Z"},
+        [
+            {"speakerId": "a", "sentences": [{"text": "hello there"}]},
+            {"speakerId": "b", "sentences": [{"text": "hi"}, {"text": "good to meet you"}]},
+            {"speakerId": "a", "sentences": [{"text": "likewise"}]},
+        ],
+    )
+    assert "# Q3 sync" in text
+    assert "Date: 2026-06-01T10:00:00Z" in text
+    # Stable per-call speaker numbering: first speaker is 1, second is 2.
+    assert "[Speaker 1]: hello there" in text
+    assert "[Speaker 2]: hi good to meet you" in text
+    assert "[Speaker 1]: likewise" in text
+
+
+def test_gong_is_api_key_searchable_source():
+    gong = GongIntegration()
+    assert gong.auth_kind == "api_key"
+    assert [f.name for f in gong.credential_fields] == ["access_key", "access_key_secret"]
+    assert all(f.secret for f in gong.credential_fields)
+    assert source_service.SOURCE_TABLE["gong_calls"] == "gong_documents"
+    assert "gong_documents" in source_service.CONTENT_TABLES
+    assert source_service.SOURCE_CAPABILITY["gong_calls"] == "searchable"
+
+
+@pytest.mark.asyncio
+async def test_gong_rejects_missing_credentials():
+    with pytest.raises(ValueError):
+        await GongIntegration().connect_with_credentials({"access_key": "", "access_key_secret": ""})

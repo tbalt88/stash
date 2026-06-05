@@ -19,6 +19,7 @@ from uuid import UUID
 from ..celery_app import celery
 from ..integrations.asana.indexer import index_asana
 from ..integrations.github.indexer import index_github_repo
+from ..integrations.gong.indexer import index_gong
 from ..integrations.google.indexer import index_google_drive
 from ..integrations.granola.indexer import index_granola
 from ..integrations.jira.indexer import index_jira
@@ -38,6 +39,7 @@ INDEXERS: dict[str, Callable[[dict], Awaitable[str | None]]] = {
     "granola": index_granola,
     "jira_project": index_jira,
     "asana_project": index_asana,
+    "gong_calls": index_gong,
 }
 
 

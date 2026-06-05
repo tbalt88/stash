@@ -83,6 +83,23 @@ export function NotionIcon({ className, size = defaultSize }: Props) {
   );
 }
 
+export function GongIcon({ className, size = defaultSize }: Props) {
+  // Gong mark — a purple ring with a centered dot.
+  return (
+    <svg
+      className={className}
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      aria-hidden
+    >
+      <circle cx="12" cy="12" r="9.2" stroke="#8039DF" strokeWidth="2.2" />
+      <circle cx="12" cy="12" r="3.4" fill="#8039DF" />
+    </svg>
+  );
+}
+
 export function JiraIcon({ className, size = defaultSize }: Props) {
   // Official Jira mark — interlocking chevrons in Jira blue.
   return (

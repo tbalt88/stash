@@ -17,7 +17,9 @@ import {
   listJiraProjects,
   listNotionPages,
   startConnect,
+  submitCredentials,
   type AsanaProjectSummary,
+  type CredentialField,
   type GitHubRepoSummary,
   type IntegrationProvider,
   type IntegrationStatus,
@@ -28,6 +30,7 @@ import {
 import {
   AsanaIcon,
   GitHubIcon,
+  GongIcon,
   GoogleDriveIcon,
   GranolaIcon,
   JiraIcon,
@@ -113,6 +116,14 @@ const CONNECTORS: Connector[] = [
     kind: "auto",
     blurb: "Meeting notes and transcripts.",
   },
+  {
+    provider: "gong",
+    label: "Gong",
+    sourceType: "gong_calls",
+    icon: <GongIcon />,
+    kind: "auto",
+    blurb: "Call transcripts, kept in sync.",
+  },
 ];
 
 export default function SourceConnectorList({
@@ -192,6 +203,22 @@ export default function SourceConnectorList({
     }
   }
 
+  async function submitCreds(connector: Connector, values: Record<string, string>) {
+    setBusy(connector.provider);
+    setError(null);
+    try {
+      await submitCredentials(connector.provider, values);
+      setExpanded(null);
+      await refresh();
+      return true;
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not connect");
+      return false;
+    } finally {
+      setBusy(null);
+    }
+  }
+
   async function syncSource(source: WorkspaceSource) {
     if (!workspaceId) return;
     setBusy(`sync:${source.source}`);
@@ -256,6 +283,7 @@ export default function SourceConnectorList({
                 connector={connector}
                 connected={connected}
                 enabled={enabled}
+                authKind={status?.auth_kind ?? "oauth"}
                 disabledReason={status?.disabled_reason ?? null}
                 busy={busy === connector.provider}
                 workspaceReady={!!workspaceId}
@@ -305,6 +333,16 @@ export default function SourceConnectorList({
                 })}
               />
             )}
+            {expanded === connector.provider &&
+              !connected &&
+              status?.auth_kind === "api_key" &&
+              status.credential_fields && (
+                <CredentialForm
+                  fields={status.credential_fields}
+                  busy={busy === connector.provider}
+                  onSubmit={(values) => submitCreds(connector, values)}
+                />
+              )}
           </div>
         );
       })}
@@ -358,6 +396,7 @@ function ConnectorAction({
   connector,
   connected,
   enabled,
+  authKind,
   disabledReason,
   busy,
   workspaceReady,
@@ -369,6 +408,7 @@ function ConnectorAction({
   connector: Connector;
   connected: boolean;
   enabled: boolean;
+  authKind: IntegrationStatus["auth_kind"];
   disabledReason: string | null;
   busy: boolean;
   workspaceReady: boolean;
@@ -385,6 +425,15 @@ function ConnectorAction({
     );
   }
   if (!connected) {
+    // api_key providers (Gong) reveal an inline credential form instead of
+    // redirecting to an OAuth consent screen.
+    if (authKind === "api_key") {
+      return (
+        <button type="button" onClick={onExpand} disabled={busy} className={primaryButton()}>
+          {expanded ? "Cancel" : "Connect"}
+        </button>
+      );
+    }
     return (
       <button type="button" onClick={onConnect} disabled={busy} className={primaryButton()}>
         {busy ? "Connecting..." : "Connect"}
@@ -679,6 +728,46 @@ function AsanaProjectPicker({
   );
 }
 
+function CredentialForm({
+  fields,
+  busy,
+  onSubmit,
+}: {
+  fields: CredentialField[];
+  busy: boolean;
+  onSubmit: (values: Record<string, string>) => Promise<boolean>;
+}) {
+  const [values, setValues] = useState<Record<string, string>>({});
+  const complete = fields.every((f) => (values[f.name] ?? "").trim().length > 0);
+
+  return (
+    <form
+      className="mt-2.5 space-y-2 rounded-md border border-border bg-base p-2"
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (complete) void onSubmit(values);
+      }}
+    >
+      {fields.map((field) => (
+        <label key={field.name} className="block">
+          <span className="mb-1 block text-[11.5px] text-muted">{field.label}</span>
+          <input
+            type={field.secret ? "password" : "text"}
+            value={values[field.name] ?? ""}
+            placeholder={field.placeholder}
+            autoComplete="off"
+            onChange={(e) => setValues((v) => ({ ...v, [field.name]: e.target.value }))}
+            className="w-full rounded-md border border-border bg-surface px-2 py-1.5 text-[12px] text-foreground placeholder:text-muted focus:border-brand focus:outline-none"
+          />
+        </label>
+      ))}
+      <button type="submit" disabled={!complete || busy} className={primaryButton()}>
+        {busy ? "Connecting..." : "Connect"}
+      </button>
+    </form>
+  );
+}
+
 function PickerShell({
   error,
   loading,
@@ -758,6 +847,7 @@ function labelForSourceType(type: string): string {
   if (type === "granola") return "Granola";
   if (type === "jira_project") return "Jira";
   if (type === "asana_project") return "Asana";
+  if (type === "gong_calls") return "Gong";
   return type;
 }
 
