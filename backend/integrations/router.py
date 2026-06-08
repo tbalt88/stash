@@ -185,7 +185,14 @@ async def list_integrations(current_user: dict = Depends(get_current_user)):
                 disabled_reason=disabled_reason,
                 auth_kind=getattr(p, "auth_kind", "oauth"),
                 credential_fields=[
-                    {"name": f.name, "label": f.label, "secret": f.secret, "placeholder": f.placeholder}
+                    {
+                        "name": f.name,
+                        "label": f.label,
+                        "secret": f.secret,
+                        "placeholder": f.placeholder,
+                        "optional": f.optional,
+                        "help": f.help,
+                    }
                     for f in getattr(p, "credential_fields", [])
                 ]
                 or None,
