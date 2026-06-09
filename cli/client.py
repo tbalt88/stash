@@ -256,17 +256,22 @@ class CartridgeClient:
     # --- Object sharing (grant a person access to a folder/file/session by email) ---
 
     def share_object(
-        self, object_type: str, object_id: str, email: str, permission: str = "read"
+        self,
+        object_type: str,
+        object_id: str,
+        email: str,
+        permission: str = "read",
+        expires_at: str | None = None,
     ) -> dict:
-        return self._post(
-            "/api/v1/share",
-            json={
-                "object_type": object_type,
-                "object_id": object_id,
-                "email": email,
-                "permission": permission,
-            },
-        )
+        body = {
+            "object_type": object_type,
+            "object_id": object_id,
+            "email": email,
+            "permission": permission,
+        }
+        if expires_at:
+            body["expires_at"] = expires_at
+        return self._post("/api/v1/share", json=body)
 
     def unshare_object(
         self, object_type: str, object_id: str, principal_type: str, principal_id: str
@@ -360,6 +365,12 @@ class CartridgeClient:
     def delete_folder(self, workspace_id: str, folder_id: str) -> None:
         self._delete(f"/api/v1/workspaces/{workspace_id}/folders/{folder_id}")
 
+    def copy_folder(
+        self, workspace_id: str, folder_id: str, target_folder_id: str | None = None
+    ) -> dict:
+        body = {"target_folder_id": target_folder_id} if target_folder_id else {}
+        return self._post(f"/api/v1/workspaces/{workspace_id}/folders/{folder_id}/copy", json=body)
+
     def update_folder(
         self,
         workspace_id: str,
@@ -431,6 +442,12 @@ class CartridgeClient:
 
     def purge_page(self, workspace_id: str, page_id: str) -> None:
         self._delete(f"/api/v1/workspaces/{workspace_id}/pages/{page_id}/purge")
+
+    def copy_page(
+        self, workspace_id: str, page_id: str, target_folder_id: str | None = None
+    ) -> dict:
+        body = {"target_folder_id": target_folder_id} if target_folder_id else {}
+        return self._post(f"/api/v1/workspaces/{workspace_id}/pages/{page_id}/copy", json=body)
 
     # --- Session events ---
 
@@ -567,6 +584,32 @@ class CartridgeClient:
 
     def delete_ws_file(self, workspace_id: str, file_id: str) -> None:
         self._delete(f"/api/v1/workspaces/{workspace_id}/files/{file_id}")
+
+    def copy_ws_file(
+        self, workspace_id: str, file_id: str, target_folder_id: str | None = None
+    ) -> dict:
+        body = {"target_folder_id": target_folder_id} if target_folder_id else {}
+        return self._post(f"/api/v1/workspaces/{workspace_id}/files/{file_id}/copy", json=body)
+
+    # --- Batch ops (best-effort move/delete/restore over many items) ---
+
+    def batch_move(
+        self,
+        workspace_id: str,
+        items: list[dict],
+        target_folder_id: str | None = None,
+        move_to_root: bool = False,
+    ) -> dict:
+        body: dict = {"items": items, "move_to_root": move_to_root}
+        if target_folder_id:
+            body["target_folder_id"] = target_folder_id
+        return self._post(f"/api/v1/workspaces/{workspace_id}/batch/move", json=body)
+
+    def batch_delete(self, workspace_id: str, items: list[dict]) -> dict:
+        return self._post(f"/api/v1/workspaces/{workspace_id}/batch/delete", json={"items": items})
+
+    def batch_restore(self, workspace_id: str, items: list[dict]) -> dict:
+        return self._post(f"/api/v1/workspaces/{workspace_id}/batch/restore", json={"items": items})
 
     def restore_ws_file(self, workspace_id: str, file_id: str) -> None:
         self._post(f"/api/v1/workspaces/{workspace_id}/files/{file_id}/restore")

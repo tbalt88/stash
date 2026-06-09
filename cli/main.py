@@ -3023,13 +3023,18 @@ def shares_add(
     object_type: str = typer.Argument(..., help=_SHARE_OBJECT_TYPES),
     object_id: str = typer.Argument(...),
     email: str = typer.Argument(..., help="Recipient email (pending until they sign up)."),
-    permission: str = typer.Option("read", "--permission", help="read | write | admin"),
+    permission: str = typer.Option("read", "--permission", help="read | comment | write"),
+    expires: str = typer.Option(
+        None, "--expires", help="ISO-8601 expiry, e.g. 2026-12-31T00:00:00Z (omit = never)."
+    ),
     as_json: bool = typer.Option(False, "--json"),
 ):
     """Share an object with a person by email."""
     with _client() as c:
         try:
-            data = c.share_object(object_type, object_id, email, permission=permission)
+            data = c.share_object(
+                object_type, object_id, email, permission=permission, expires_at=expires or None
+            )
         except CartridgeError as e:
             _err(e)
     if _use_json(as_json):
@@ -3055,6 +3060,77 @@ def shares_rm(
         except CartridgeError as e:
             _err(e)
     console.print("[green]Access revoked.[/green]")
+
+
+# ===========================================================================
+# Batch ops
+# ===========================================================================
+
+batch_app = typer.Typer(help="Batch — move/delete/restore many items at once.")
+app.add_typer(batch_app, name="batch")
+
+
+def _parse_batch_items(refs: list[str]) -> list[dict]:
+    """Parse `type:id` tokens (e.g. page:abc file:def) into batch items."""
+    items = []
+    for ref in refs:
+        if ":" not in ref:
+            _err(f"Invalid item '{ref}' — use type:id, e.g. page:<id>")
+        object_type, object_id = ref.split(":", 1)
+        items.append({"object_type": object_type, "object_id": object_id})
+    return items
+
+
+@batch_app.command("move")
+def batch_move(
+    refs: list[str] = typer.Argument(..., help="Items as type:id, e.g. page:<id> file:<id>"),
+    workspace_id: str = typer.Option(None, "--ws"),
+    to_folder: str = typer.Option(None, "--to-folder", help="Target folder id"),
+    to_root: bool = typer.Option(False, "--to-root", help="Move to the workspace root"),
+):
+    """Move many items (pages, files, folders, tables) at once."""
+    ws = workspace_id or _resolve_workspace()
+    with _client() as c:
+        try:
+            result = c.batch_move(
+                ws,
+                _parse_batch_items(refs),
+                target_folder_id=to_folder or None,
+                move_to_root=to_root,
+            )
+        except CartridgeError as e:
+            _err(e)
+    output_json(result)
+
+
+@batch_app.command("delete")
+def batch_delete(
+    refs: list[str] = typer.Argument(..., help="Items as type:id (pages/files)"),
+    workspace_id: str = typer.Option(None, "--ws"),
+):
+    """Move many pages/files to the trash at once."""
+    ws = workspace_id or _resolve_workspace()
+    with _client() as c:
+        try:
+            result = c.batch_delete(ws, _parse_batch_items(refs))
+        except CartridgeError as e:
+            _err(e)
+    output_json(result)
+
+
+@batch_app.command("restore")
+def batch_restore(
+    refs: list[str] = typer.Argument(..., help="Items as type:id (pages/files)"),
+    workspace_id: str = typer.Option(None, "--ws"),
+):
+    """Restore many pages/files from the trash at once."""
+    ws = workspace_id or _resolve_workspace()
+    with _client() as c:
+        try:
+            result = c.batch_restore(ws, _parse_batch_items(refs))
+        except CartridgeError as e:
+            _err(e)
+    output_json(result)
 
 
 # ===========================================================================
@@ -3822,6 +3898,54 @@ def files_purge_page(
         except CartridgeError as e:
             _err(e)
     console.print("[green]Page permanently deleted.[/green]")
+
+
+@files_app.command("copy-page")
+def files_copy_page(
+    page_id: str = typer.Argument(...),
+    workspace_id: str = typer.Option(None, "--ws"),
+    to_folder: str = typer.Option(None, "--to-folder", help="Target folder id"),
+):
+    """Duplicate a page as 'Copy of <name>'."""
+    ws = workspace_id or _resolve_workspace()
+    with _client() as c:
+        try:
+            page = c.copy_page(ws, page_id, target_folder_id=to_folder or None)
+        except CartridgeError as e:
+            _err(e)
+    console.print(f"[green]Copied to[/green] {page['name']} ({page['id']})")
+
+
+@files_app.command("copy-folder")
+def files_copy_folder(
+    folder_id: str = typer.Argument(...),
+    workspace_id: str = typer.Option(None, "--ws"),
+    to_folder: str = typer.Option(None, "--to-folder", help="Target parent folder id"),
+):
+    """Deep-duplicate a folder as 'Copy of <name>'."""
+    ws = workspace_id or _resolve_workspace()
+    with _client() as c:
+        try:
+            folder = c.copy_folder(ws, folder_id, target_folder_id=to_folder or None)
+        except CartridgeError as e:
+            _err(e)
+    console.print(f"[green]Copied to[/green] {folder['name']} ({folder['id']})")
+
+
+@files_app.command("copy-file")
+def files_copy_file(
+    file_id: str = typer.Argument(...),
+    workspace_id: str = typer.Option(None, "--ws"),
+    to_folder: str = typer.Option(None, "--to-folder", help="Target folder id"),
+):
+    """Duplicate an uploaded file as 'Copy of <name>'."""
+    ws = workspace_id or _resolve_workspace()
+    with _client() as c:
+        try:
+            f = c.copy_ws_file(ws, file_id, target_folder_id=to_folder or None)
+        except CartridgeError as e:
+            _err(e)
+    console.print(f"[green]Copied to[/green] {f['name']} ({f['id']})")
 
 
 @files_app.command("text")
