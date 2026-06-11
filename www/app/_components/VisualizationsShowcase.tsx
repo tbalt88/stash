@@ -68,10 +68,7 @@ function PageGraphMock() {
       <div className="flex items-center justify-between border-b border-border-subtle bg-surface px-4 py-3">
         <div className="flex items-center gap-2.5">
           <span className="h-2 w-2 rounded-full bg-brand" />
-          <span className="text-[13px] font-semibold text-ink">wiki</span>
-          <span className="font-mono text-[11px] text-muted">
-            wiki · reading-store
-          </span>
+          <span className="text-[13px] font-semibold text-ink">Wiki</span>
         </div>
         <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-dim">
           12 pages · 19 links
@@ -177,10 +174,7 @@ function GrepSearchMock() {
       <div className="flex items-center justify-between border-b border-border-subtle bg-surface px-4 py-3">
         <div className="flex items-center gap-2.5">
           <span className="h-2 w-2 rounded-full bg-brand" />
-          <span className="text-[13px] font-semibold text-ink">grep</span>
-          <span className="font-mono text-[11px] text-muted">
-            files · reading-store
-          </span>
+          <span className="text-[13px] font-semibold text-ink">Grep</span>
         </div>
         <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-dim">
           3 matches · 38 ms
@@ -252,43 +246,36 @@ export default function VisualizationsShowcase() {
         <div className="flex max-w-[880px] flex-col gap-4">
           <EyebrowDot>Best-in-class memory</EyebrowDot>
           <h2 className="font-display text-[clamp(32px,4.2vw,52px)] font-bold leading-[1.05] tracking-[-0.03em] text-ink text-balance">
-            Your team&apos;s brain,
+            Your team&apos;s memory,
             <br />
-            <span className="font-medium text-dim">actually visible.</span>
+            <span className="font-medium text-dim">actually retrievable.</span>
           </h2>
           <p className="max-w-[620px] text-[17px] leading-[1.55] text-dim">
-            Stash memory is hybrid retrieval, three ways. While you sleep, an
-            agent curates your team&apos;s history into a linked wiki — a
-            knowledge graph your agents traverse. Semantic search over
-            embeddings finds knowledge by meaning, not filename. And plain
-            grep over the file system, with search skills, catches the exact
-            matches embeddings miss.
+            Hybrid retrieval, three ways: a curated wiki your agents traverse,
+            vector search that finds knowledge by meaning, and grep for the
+            exact matches embeddings miss.
           </p>
         </div>
         <div className="mt-12 grid grid-cols-1 gap-5 lg:grid-cols-3">
           <div>
             <PageGraphMock />
             <p className="mt-4 text-[13.5px] leading-[1.6] text-dim">
-              <span className="text-ink">Sleep-time curation — the linked
-              graph.</span> While you sleep, an agent curates workspace history
-              into a wiki. Nodes are pages, edges are links — orange nodes are
-              the hubs everything cites.
+              While you sleep, an agent curates your history into linked
+              pages. Orange hubs are what everything cites.
             </p>
           </div>
           <div>
             <EmbeddingProjection3D />
             <p className="mt-4 text-[13.5px] leading-[1.6] text-dim">
-              <span className="text-ink">3D embedding projection — the
-              semantic layer.</span> Sessions, pages, and tables embedded and
-              projected with PCA. Clusters form around topics — not folders.
+              Every session, page, and table embedded. Clusters form around
+              topics — not folders.
             </p>
           </div>
           <div>
             <GrepSearchMock />
             <p className="mt-4 text-[13.5px] leading-[1.6] text-dim">
-              <span className="text-ink">Grep — the exact layer.</span> Agents
-              search the workspace like a repo: file tree, grep, and search
-              skills, for the lookups embeddings miss.
+              Agents search the workspace like a repo — for the exact lookups
+              embeddings miss.
             </p>
           </div>
         </div>
