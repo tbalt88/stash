@@ -219,9 +219,11 @@ export interface WorkspaceSource {
   display_name: string;
   // Present for connected sources (the integration page uses these).
   external_ref?: string | null;
+  sync_enabled?: boolean; // false for search-driven/queryable types (no indexer)
   sync_status?: string | null; // 'idle' | 'syncing' | 'failed'
   sync_error?: string | null;
   last_synced_at?: string | null;
+  search_hint?: string | null;
 }
 
 export interface SourceStatus extends WorkspaceSource {
