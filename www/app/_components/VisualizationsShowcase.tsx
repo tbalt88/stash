@@ -251,9 +251,9 @@ export default function VisualizationsShowcase() {
             <span className="font-medium text-dim">actually retrievable.</span>
           </h2>
           <p className="max-w-[620px] text-[17px] leading-[1.55] text-dim">
-            Hybrid retrieval, three ways: a curated wiki your agents traverse,
-            vector search that finds knowledge by meaning, and grep for the
-            exact matches embeddings miss.
+            Every retrieval method has blind spots, so Stash runs three:
+            a curated wiki, vector search, and grep. Your agents get the
+            best of all worlds.
           </p>
         </div>
         <div className="mt-12 grid grid-cols-1 gap-5 lg:grid-cols-3">
@@ -261,14 +261,14 @@ export default function VisualizationsShowcase() {
             <PageGraphMock />
             <p className="mt-4 text-[13.5px] leading-[1.6] text-dim">
               While you sleep, an agent curates your history into linked
-              pages. Orange hubs are what everything cites.
+              pages — a virtual file system your agents navigate directly.
             </p>
           </div>
           <div>
             <EmbeddingProjection3D />
             <p className="mt-4 text-[13.5px] leading-[1.6] text-dim">
-              Every session, page, and table embedded. Clusters form around
-              topics — not folders.
+              Every session, page, and table embedded, so agents find
+              knowledge by meaning — not filename.
             </p>
           </div>
           <div>
