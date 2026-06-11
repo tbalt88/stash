@@ -280,7 +280,7 @@ function AboutStep({
           First, tell us about you
         </h1>
         <p className="text-sm text-dim max-w-lg">
-          Three quick questions so we can tailor Skill to how you&rsquo;ll use it.
+          Three quick questions so we can tailor Stash to how you&rsquo;ll use it.
         </p>
       </div>
       <Field label="What's your role?">
@@ -299,7 +299,7 @@ function AboutStep({
           />
         )}
       </Field>
-      <Field label="What do you want to use Skill for?" optional>
+      <Field label="What do you want to use Stash for?" optional>
         <textarea
           value={useCase}
           onChange={(e) => onUseCase(e.target.value)}
@@ -392,10 +392,10 @@ function IntroStep() {
     <div className="space-y-5">
       <div className="space-y-2">
         <h1 className="font-display text-[28px] leading-[1.1] font-bold tracking-tight text-foreground">
-          Welcome to Skill
+          Welcome to Stash
         </h1>
         <p className="text-sm text-dim max-w-lg">
-          Skill gives your agents one place to reach everything they need — in the
+          Stash gives your agents one place to reach everything they need — in the
           format they&rsquo;re fluent in.
         </p>
       </div>
@@ -503,7 +503,7 @@ function TryItOutStep({
       </TryOption>
       <TryOption
         badge="Capture"
-        lead="Run this in your terminal — every Claude Code / Codex session streams into Skill automatically."
+        lead="Run this in your terminal — every Claude Code / Codex session streams into Stash automatically."
       >
         <div className="space-y-2">
           <CommandBlock command={CLI_INSTALL_COMMAND} />
