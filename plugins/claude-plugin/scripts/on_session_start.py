@@ -30,7 +30,7 @@ from stashai.plugin.state import load_state, reset_stats, save_state
 CONTEXT = (
     "You have the `stash` CLI on your PATH. Run `stash --help` to see commands. "
     "Your activity in this repo is streamed to your team's Stash workspace.\n\n"
-    "What a Skill is: a *named, curated bundle of related artifacts* (pages, "
+    "What a Skill is: a *special folder* (one containing a SKILL.md) of related "
     "files, sessions, tables) with its own access control and an optional "
     "public URL. A Skill is for a bundle — a project writeup with its "
     "supporting files, a research thread with its sources. It is NOT a "

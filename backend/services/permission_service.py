@@ -2,10 +2,11 @@
 
 Private by default. A user owns everything in their (single, implicit) workspace
 — workspace membership == ownership. Beyond that, access comes from the `shares`
-table: a row grants a principal (a user, or a skill) access to an object.
-Folder / session-folder shares cascade to contents via the recursive folder chain.
-Skills are read-only bundles: anyone who can *open* a skill can read every
-object that skill contains (skill_items), but a skill never grants write.
+table: a row grants a principal access to an object. Folder / session-folder
+shares cascade to contents via the recursive folder chain.
+
+A skill is a published folder: anyone who can *open* the skill (public, owner,
+or skill member) can READ everything in its folder subtree — never write.
 """
 
 from uuid import UUID
@@ -41,48 +42,78 @@ def _folder_chain_sql(folder_id_expr: str) -> str:
     )
 
 
-def _item_target_condition(object_type: str, object_alias: str, item_alias: str) -> str:
-    """Does a (object_type, object_id) row in `item_alias` (shares OR skill_items)
-    target the object at `object_alias`? Page/file also match a share/item on any
+def _share_target_condition(object_type: str, object_alias: str, share_alias: str) -> str:
+    """Does a (object_type, object_id) share row in `share_alias` target the
+    object at `object_alias`? Page/file/table also match a share on any
     ancestor folder (inheritance)."""
     if object_type == "folder":
         folder_chain = _folder_chain_sql(f"{object_alias}.id")
         return (
-            f"({item_alias}.object_type = 'folder' "
-            f"AND {item_alias}.object_id IN ({folder_chain}))"
+            f"({share_alias}.object_type = 'folder' "
+            f"AND {share_alias}.object_id IN ({folder_chain}))"
         )
     if object_type in ("page", "file", "table"):
         folder_chain = _folder_chain_sql(f"{object_alias}.folder_id")
         return (
-            f"(({item_alias}.object_type = '{object_type}' "
-            f"AND {item_alias}.object_id = {object_alias}.id) "
-            f"OR ({item_alias}.object_type = 'folder' "
+            f"(({share_alias}.object_type = '{object_type}' "
+            f"AND {share_alias}.object_id = {object_alias}.id) "
+            f"OR ({share_alias}.object_type = 'folder' "
             f"AND {object_alias}.folder_id IS NOT NULL "
-            f"AND {item_alias}.object_id IN ({folder_chain})))"
+            f"AND {share_alias}.object_id IN ({folder_chain})))"
         )
     if object_type == "session":
-        # A session inherits a share/item on its session folder.
+        # A session inherits a share on its session folder.
         return (
-            f"(({item_alias}.object_type = 'session' "
-            f"AND {item_alias}.object_id = {object_alias}.id) "
-            f"OR ({item_alias}.object_type = 'session_folder' "
+            f"(({share_alias}.object_type = 'session' "
+            f"AND {share_alias}.object_id = {object_alias}.id) "
+            f"OR ({share_alias}.object_type = 'session_folder' "
             f"AND {object_alias}.session_folder_id IS NOT NULL "
-            f"AND {item_alias}.object_id = {object_alias}.session_folder_id))"
+            f"AND {share_alias}.object_id = {object_alias}.session_folder_id))"
         )
     if object_type in _CONTENT_TYPES:
         return (
-            f"({item_alias}.object_type = '{object_type}' "
-            f"AND {item_alias}.object_id = {object_alias}.id)"
+            f"({share_alias}.object_type = '{object_type}' "
+            f"AND {share_alias}.object_id = {object_alias}.id)"
         )
     return "FALSE"
 
 
+def _skill_grant_condition(object_type: str, object_alias: str, user_arg: int) -> str:
+    """A skill whose folder is an ancestor of the object grants READ when the
+    user can open it. Sessions never live in folders, so no skill clause."""
+    if object_type == "folder":
+        folder_chain = _folder_chain_sql(f"{object_alias}.id")
+    elif object_type in ("page", "file", "table"):
+        folder_chain = _folder_chain_sql(f"{object_alias}.folder_id")
+    else:
+        return "FALSE"
+    guard = (
+        f"{object_alias}.folder_id IS NOT NULL AND "
+        if object_type in ("page", "file", "table")
+        else ""
+    )
+    return f"""
+        ({guard}EXISTS (
+          SELECT 1 FROM skills content_skill
+          LEFT JOIN skill_members content_cm
+            ON content_cm.skill_id = content_skill.id
+           AND content_cm.user_id = ${user_arg}
+          WHERE content_skill.folder_id IN ({folder_chain})
+            AND (
+              content_skill.public_permission != 'none'
+              OR content_skill.owner_id = ${user_arg}
+              OR content_cm.user_id IS NOT NULL
+            )
+        ))
+    """
+
+
 def readable_content_condition(object_type: str, object_alias: str, user_arg: int) -> str:
     """SQL predicate: may user ${user_arg} READ the content row at object_alias?
-    Owner (workspace member) OR a user share (direct/ancestor folder) OR the object
-    is in a skill the user can open."""
-    share_target = _item_target_condition(object_type, object_alias, "content_share")
-    ci_target = _item_target_condition(object_type, object_alias, "content_ci")
+    Owner (workspace member) OR a user share (direct/ancestor folder) OR the
+    object sits inside the folder of a skill the user can open."""
+    share_target = _share_target_condition(object_type, object_alias, "content_share")
+    skill_grant = _skill_grant_condition(object_type, object_alias, user_arg)
     return f"""
         (
           EXISTS (
@@ -97,20 +128,7 @@ def readable_content_condition(object_type: str, object_alias: str, user_arg: in
               AND (content_share.expires_at IS NULL OR content_share.expires_at > now())
               AND {share_target}
           )
-          OR EXISTS (
-            SELECT 1
-            FROM skill_items content_ci
-            JOIN skills content_skill ON content_skill.id = content_ci.skill_id
-            LEFT JOIN skill_members content_cm
-              ON content_cm.skill_id = content_skill.id
-             AND content_cm.user_id = ${user_arg}
-            WHERE {ci_target}
-              AND (
-                content_skill.public_permission != 'none'
-                OR content_skill.owner_id = ${user_arg}
-                OR content_cm.user_id IS NOT NULL
-              )
-          )
+          OR {skill_grant}
         )
     """
 
@@ -242,21 +260,23 @@ async def _user_share_grants(
 
 
 async def _containing_skills(object_type: str, object_id: UUID) -> list[dict]:
+    """Skills whose folder is the object or one of its ancestor folders."""
     if object_type not in _CONTENT_TYPES:
         return []
+    ancestor_folder_ids = [
+        target_id
+        for target_type, target_id in await _object_targets(object_type, object_id)
+        if target_type == "folder"
+    ]
+    if not ancestor_folder_ids:
+        return []
     pool = get_pool()
-    rows = []
-    for target_type, target_id in await _object_targets(object_type, object_id):
-        target_rows = await pool.fetch(
-            "SELECT c.id, c.workspace_id, c.owner_id, c.public_permission "
-            "FROM skills c "
-            "JOIN skill_items ci ON ci.skill_id = c.id "
-            "WHERE ci.object_type = $1 AND ci.object_id = $2",
-            target_type,
-            target_id,
-        )
-        rows.extend(dict(row) for row in target_rows)
-    return rows
+    rows = await pool.fetch(
+        "SELECT id, workspace_id, owner_id, public_permission "
+        "FROM skills WHERE folder_id = ANY($1::uuid[])",
+        ancestor_folder_ids,
+    )
+    return [dict(row) for row in rows]
 
 
 async def _skill_member_permission(skill_id: UUID, user_id: UUID) -> str | None:
@@ -318,7 +338,7 @@ async def check_access(
     ):
         return True
 
-    # The skill bundle itself: gated by skill access (read-only).
+    # The skill publish record itself: gated by skill access (read-only).
     if object_type == "skill":
         pool = get_pool()
         row = await pool.fetchrow(

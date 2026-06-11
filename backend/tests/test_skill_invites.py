@@ -21,7 +21,7 @@ def _auth(api_key: str) -> dict:
 
 
 @pytest.mark.asyncio
-async def test_skill_invite_grants_view_access_before_adding(client: AsyncClient):
+async def test_skill_invite_grants_view_access_before_adding(client: AsyncClient, pool):
     owner_key, _owner = await _register(client, "skill_invite_owner")
     recipient_key, recipient = await _register(client, "skill_invite_recipient")
 
@@ -39,21 +39,27 @@ async def test_skill_invite_grants_view_access_before_adding(client: AsyncClient
             headers=_auth(recipient_key),
         )
     ).json()
-    page = (
+    folder = (
         await client.post(
-            f"/api/v1/workspaces/{source_workspace['id']}/pages/new",
-            json={"name": "Partner plan", "content": "private context"},
+            f"/api/v1/workspaces/{source_workspace['id']}/folders",
+            json={"name": "Partner skill"},
             headers=_auth(owner_key),
         )
     ).json()
+    page_created = await client.post(
+        f"/api/v1/workspaces/{source_workspace['id']}/pages/new",
+        json={"name": "Partner plan", "content": "private context", "folder_id": folder["id"]},
+        headers=_auth(owner_key),
+    )
+    assert page_created.status_code == 201
     stash = (
         await client.post(
             f"/api/v1/workspaces/{source_workspace['id']}/skills",
             json={
+                "folder_id": folder["id"],
                 "title": "Partner Stash",
                 "workspace_permission": "none",
                 "public_permission": "none",
-                "items": [{"object_type": "page", "object_id": page["id"]}],
             },
             headers=_auth(owner_key),
         )
@@ -91,9 +97,18 @@ async def test_skill_invite_grants_view_access_before_adding(client: AsyncClient
     )
     assert added.status_code == 201
     fork = added.json()
-    assert fork["is_external"] is True
-    assert fork["workspace_id"] == target_workspace["id"]
-    assert fork["forked_from_skill_id"] == stash["id"]
+    # The fork is a deep folder copy — private, with no publish record minted
+    # in the recipient's workspace.
+    assert fork["name"] == "Partner skill"
+    assert fork["folder_id"] != folder["id"]
+    fork_folder_ws = await pool.fetchval(
+        "SELECT workspace_id FROM folders WHERE id = $1::uuid", fork["folder_id"]
+    )
+    assert str(fork_folder_ws) == target_workspace["id"]
+    publish_record = await pool.fetchval(
+        "SELECT 1 FROM skills WHERE workspace_id = $1::uuid", target_workspace["id"]
+    )
+    assert publish_record is None
 
     remaining = await client.get("/api/v1/skill-invites", headers=_auth(recipient_key))
     assert remaining.json()["invites"] == []
@@ -111,10 +126,10 @@ async def test_skill_invite_can_be_dismissed(client: AsyncClient):
             headers=_auth(owner_key),
         )
     ).json()
-    page = (
+    folder = (
         await client.post(
-            f"/api/v1/workspaces/{workspace['id']}/pages/new",
-            json={"name": "Draft", "content": "hello"},
+            f"/api/v1/workspaces/{workspace['id']}/folders",
+            json={"name": "Dismissable skill"},
             headers=_auth(owner_key),
         )
     ).json()
@@ -122,10 +137,10 @@ async def test_skill_invite_can_be_dismissed(client: AsyncClient):
         await client.post(
             f"/api/v1/workspaces/{workspace['id']}/skills",
             json={
+                "folder_id": folder["id"],
                 "title": "Dismissable Stash",
                 "workspace_permission": "none",
                 "public_permission": "none",
-                "items": [{"object_type": "page", "object_id": page["id"]}],
             },
             headers=_auth(owner_key),
         )

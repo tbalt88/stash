@@ -115,28 +115,20 @@ class WorkspaceListResponse(BaseModel):
     workspaces: list[WorkspaceResponse]
 
 
-# --- Skills (publishable subsets of a workspace) ---
+# --- Skills (special folders + their publish records) ---
 
-SkillObjectType = str  # 'folder' | 'page' | 'table' | 'file' | 'session'
 SkillGeneralPermission = str  # 'none' | 'read' | 'write'
 
 
-class SkillItem(BaseModel):
-    object_type: SkillObjectType = Field(..., pattern=r"^(folder|page|table|file|session)$")
-    object_id: UUID
-    position: int = 0
-    label_override: str | None = Field(None, max_length=160)
-
-
-class SkillCreateRequest(BaseModel):
-    title: str = Field(..., min_length=1, max_length=160)
+class SkillPublishRequest(BaseModel):
+    folder_id: UUID
+    title: str | None = Field(None, min_length=1, max_length=160)
     description: str = Field("", max_length=2000)
     workspace_permission: SkillGeneralPermission = Field("read", pattern=r"^(none|read|write)$")
     public_permission: SkillGeneralPermission = Field("none", pattern=r"^(none|read|write)$")
     discoverable: bool = False
     cover_image_url: str | None = None
     icon_url: str | None = None
-    items: list[SkillItem] = Field(default_factory=list)
 
 
 class SkillUpdateRequest(BaseModel):
@@ -149,12 +141,12 @@ class SkillUpdateRequest(BaseModel):
     discoverable: bool | None = None
     cover_image_url: str | None = None
     icon_url: str | None = None
-    items: list[SkillItem] | None = None
 
 
 class SkillResponse(BaseModel):
     id: UUID
     workspace_id: UUID
+    folder_id: UUID
     slug: str
     title: str
     description: str
@@ -171,16 +163,8 @@ class SkillResponse(BaseModel):
     # Count of people invited to the skill (skill_members). Drives the
     # "Shared · N" visibility label when the skill isn't public.
     share_count: int = 0
-    items: list[SkillItem]
-    is_external: bool = False
-    added_to_workspace_id: UUID | None = None
-    forked_from_skill_id: UUID | None = None
     created_at: datetime
     updated_at: datetime
-
-
-class SkillListResponse(BaseModel):
-    skills: list[SkillResponse]
 
 
 class SkillMemberRequest(BaseModel):
@@ -201,24 +185,15 @@ class SkillMembersResponse(BaseModel):
     members: list[SkillMemberResponse]
 
 
-# Public renderer payload — items are inlined with their content where it
-# makes sense (folders/pages, table rows, file metadata, session events).
-# The shape is intentionally permissive: each entry has the item
-# type/id/label plus an `inline` blob whose contents depend on the type.
-
-
-class SkillItemInlined(BaseModel):
-    object_type: SkillObjectType
-    object_id: UUID
-    position: int
-    label: str
-    inline: dict
+# Public renderer payload — the skill's folder contents, inlined: pages carry
+# their bodies, files presigned URLs, tables columns + rows.
 
 
 class SkillPublicResponse(BaseModel):
     skill: SkillResponse
     workspace_name: str
-    items: list[SkillItemInlined]
+    folder_name: str
+    contents: dict
     can_write: bool = False
 
 
@@ -634,7 +609,6 @@ class HistoryEventCreateRequest(BaseModel):
     event_type: str = Field(..., min_length=1, max_length=64)
     content: str = Field(..., min_length=1)
     session_id: str | None = Field(None, max_length=64)
-    default_skill_id: UUID | None = None
     tool_name: str | None = Field(None, max_length=128)
     metadata: dict = Field(default_factory=dict)
     attachments: list[Attachment] | None = None
@@ -645,7 +619,6 @@ class HistoryEventCreateRequest(BaseModel):
 
 class HistoryEventBatchRequest(BaseModel):
     events: list[HistoryEventCreateRequest] = Field(..., min_length=1, max_length=100)
-    default_skill_id: UUID | None = None
 
 
 class HistoryEventResponse(BaseModel):

@@ -610,9 +610,9 @@ stash vfs "cat '/workspaces/<workspace>/README.md' | sed -n '1,80p'"`}</CodeBloc
 
       <H2>Skills</H2>
       <P>
-        A <strong>Skill</strong> is a shareable bundle of pages, sessions, tables, and files —
-        the unit you publish to a public link or share with specific people. (Skills are what
-        earlier versions called &ldquo;Stashes&rdquo;; the <Code>stash</Code> CLI name is unchanged.)
+        A <strong>Skill</strong> is a special folder — one containing a <Code>SKILL.md</Code> —
+        of pages, files, and tables. Publishing a skill mints a public link you can share with
+        specific people or list in Discover. (The <Code>stash</Code> CLI name is unchanged.)
       </P>
 
       <CommandRef
@@ -626,14 +626,23 @@ stash vfs "cat '/workspaces/<workspace>/README.md' | sed -n '1,80p'"`}</CodeBloc
 
       <CommandRef
         command="stash skills create"
-        args="<title> [--public/--private] [--discover] [--items JSON]"
-        description="Create a Skill. Pass --items as JSON to attach resources up front."
+        args="<name> [--public] [--discover]"
+        description="Create a skill: a folder with a SKILL.md template. Pass --public to publish immediately."
         params={[
-          { name: "<title>", type: "string", desc: "Skill title.", required: true },
-          { name: "--public/--private", type: "flag", desc: "Visibility. --public mints a shareable link." },
-          { name: "--discover", type: "flag", desc: "List a public Skill in the Discover catalog (requires --public)." },
-          { name: "--items", type: "JSON", desc: 'Items as a JSON array of {object_type, object_id}.' },
-          { name: "--ws", type: "string", desc: "Workspace ID override." },
+          { name: "<name>", type: "string", desc: "Skill name (becomes the folder name).", required: true },
+          { name: "--public", type: "flag", desc: "Publish immediately and mint a shareable link." },
+          { name: "--discover", type: "flag", desc: "List the public Skill in the Discover catalog (requires --public)." },
+          { name: "--workspace", type: "string", desc: "Workspace ID override." },
+        ]}
+      />
+
+      <CommandRef
+        command="stash skills publish"
+        args="<folder_id> [--discover]"
+        description="Publish an existing skill folder: mint its share record and print the public URL."
+        params={[
+          { name: "<folder_id>", type: "string", desc: "The skill folder to publish.", required: true },
+          { name: "--discover", type: "flag", desc: "List the public Skill in Discover." },
         ]}
       />
 
@@ -686,7 +695,7 @@ stash vfs "cat '/workspaces/<workspace>/README.md' | sed -n '1,80p'"`}</CodeBloc
       <CommandRef
         command="stash skills snapshot-source"
         args="<skill_id> --source ID --path PATH [--ws ID]"
-        description="Copy a point-in-time snapshot of one connected-source document into the Skill as a page, so the bundle stays self-contained."
+        description="Copy a point-in-time snapshot of one connected-source document into the Skill as a page, so the skill stays self-contained."
         params={[
           { name: "<skill_id>", type: "string", desc: "ID of the Skill.", required: true },
           { name: "--source", type: "string", desc: "Connected-source id (from stash sources ls).", required: true },
@@ -696,21 +705,21 @@ stash vfs "cat '/workspaces/<workspace>/README.md' | sed -n '1,80p'"`}</CodeBloc
       />
 
       <CommandRef
-        command="stash skills add-external"
-        args="<slug> [--ws ID]"
-        description="Fork a public Skill into a workspace by its slug."
+        command="stash skills fork"
+        args="<slug> [--workspace ID]"
+        description="Fork a public Skill: deep-copy its folder into your workspace."
         params={[
           { name: "<slug>", type: "string", desc: "Public Skill slug.", required: true },
-          { name: "--ws", type: "string", desc: "Workspace ID override." },
+          { name: "--workspace", type: "string", desc: "Workspace ID override." },
         ]}
       />
 
       <CommandRef
-        command="stash skills delete"
+        command="stash skills unpublish"
         args="<skill_id>"
-        description="Delete a Skill."
+        description="Stop sharing a Skill: delete its publish record. The folder stays."
         params={[
-          { name: "<skill_id>", type: "string", desc: "ID of the Skill.", required: true },
+          { name: "<skill_id>", type: "string", desc: "ID of the published Skill.", required: true },
         ]}
       />
 
@@ -718,7 +727,7 @@ stash vfs "cat '/workspaces/<workspace>/README.md' | sed -n '1,80p'"`}</CodeBloc
       <P>
         Share a single object — a folder, page, file, session, or table — with a specific person by
         email. If they don&apos;t have an account yet the share is recorded as pending and converts
-        when they sign up. (To share a whole bundle, use a <strong>Skill</strong> above.)
+        when they sign up. (To share a whole folder of related work, convert it to a <strong>Skill</strong>.)
       </P>
 
       <CommandRef

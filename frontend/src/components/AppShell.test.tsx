@@ -15,7 +15,6 @@ import {
   useActiveWorkspaceId,
   useShareAction,
 } from "./ShellChromeContext";
-import { ShareModalProvider } from "../lib/shareModalContext";
 import {
   getCachedWorkspaces,
   readCachedWorkspaces,
@@ -159,11 +158,9 @@ describe("AppShell sidebar collapse", () => {
 
   it("keeps page content in the visible grid column when collapsed", () => {
     render(
-      <ShareModalProvider>
         <AppShell user={user} onLogout={vi.fn()}>
           <div>Page content</div>
         </AppShell>
-      </ShareModalProvider>,
     );
 
     fireEvent.click(screen.getByRole("button", { name: "Toggle sidebar" }));
@@ -179,11 +176,9 @@ describe("AppShell sidebar collapse", () => {
     localStorage.setItem("stash_sidebar_width", "340");
 
     render(
-      <ShareModalProvider>
         <AppShell user={user} onLogout={vi.fn()}>
           <div>Page content</div>
         </AppShell>
-      </ShareModalProvider>,
     );
 
     const grid = screen.getByText("Page content").closest("main")?.parentElement;
@@ -210,14 +205,12 @@ describe("AppShell sidebar collapse", () => {
     const onLogout = vi.fn();
 
     render(
-      <ShareModalProvider>
         <AppShell
           user={{ ...user, email: "henry@example.com" }}
           onLogout={onLogout}
         >
           <div>Page content</div>
         </AppShell>
-      </ShareModalProvider>,
     );
 
     fireEvent.click(screen.getByTitle("henry@example.com"));
@@ -236,12 +229,10 @@ describe("AppShell sidebar collapse", () => {
 
     render(
       <ShellChromeProvider>
-        <ShareModalProvider>
           <AppShell user={user} onLogout={vi.fn()}>
             <PublishActiveWorkspace id="ws-1" />
             <div>Session content</div>
           </AppShell>
-        </ShareModalProvider>
       </ShellChromeProvider>,
     );
 
@@ -258,11 +249,9 @@ describe("AppShell sidebar collapse", () => {
     mockWorkspaceCache();
 
     render(
-      <ShareModalProvider>
         <AppShell user={user} onLogout={vi.fn()}>
           <div>Workspace content</div>
         </AppShell>
-      </ShareModalProvider>,
     );
 
     const home = screen.getByRole("link", { name: "Home" });
@@ -282,11 +271,9 @@ describe("AppShell sidebar collapse", () => {
     mockWorkspaceCache();
 
     render(
-      <ShareModalProvider>
         <AppShell user={user} onLogout={vi.fn()}>
           <div>Workspace content</div>
         </AppShell>
-      </ShareModalProvider>,
     );
 
     await screen.findByText("Workspace content");
@@ -306,12 +293,10 @@ describe("AppShell sidebar collapse", () => {
 
     render(
       <ShellChromeProvider>
-        <ShareModalProvider>
           <AppShell user={user} onLogout={vi.fn()}>
             <PublishActiveWorkspace id="ws-1" />
             <div>File content</div>
           </AppShell>
-        </ShareModalProvider>
       </ShellChromeProvider>,
     );
 
@@ -338,11 +323,9 @@ describe("AppShell sidebar collapse", () => {
 
     render(
       <ShellChromeProvider>
-        <ShareModalProvider>
           <AppShell user={user} onLogout={vi.fn()}>
             <PageWithShareAction />
           </AppShell>
-        </ShareModalProvider>
       </ShellChromeProvider>,
     );
 
@@ -356,11 +339,9 @@ describe("AppShell sidebar collapse", () => {
 
     render(
       <BreadcrumbProvider>
-        <ShareModalProvider>
           <AppShell user={user} onLogout={vi.fn()}>
             <BreadcrumbPage />
           </AppShell>
-        </ShareModalProvider>
       </BreadcrumbProvider>,
     );
 

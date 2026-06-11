@@ -36,6 +36,7 @@ import {
   saveTableView, deleteTableView,
   setTableEmbeddingConfig, backfillTableEmbeddings,
 } from "../../../lib/api";
+import { findInSkillContents } from "../../../lib/localSkill";
 import type { Table, TableColumn, TableRow, TableView } from "../../../lib/types";
 import FileViewerHeader from "../../../components/workspace/FileViewerHeader";
 import { parseCsv, inferColumnType, detectDelimiter } from "../../../lib/csv";
@@ -433,36 +434,29 @@ function TableEditorPageInner() {
   const loadTable = useCallback(async () => {
     try {
       if (skillSlug) {
-        // Synthesize a Table from the skill's inlined item content. The
-        // backend serializes columns + the first 500 rows when the skill
-        // is readable; that's the source of truth in skill mode.
+        // Synthesize a Table from the skill's inlined contents. The backend
+        // serializes columns + the first 500 rows when the skill is readable;
+        // that's the source of truth in skill mode.
         const skill = await getPublicSkill(skillSlug);
         setSkillTitle(skill.skill.title);
-        const item = skill.items.find(
-          (it) => it.object_type === "table" && it.object_id === tableId
-        );
-        if (!item || !item.inline) {
+        const item = findInSkillContents(skill.contents, "table", tableId);
+        if (!item) {
           setError("Table isn't in this Skill.");
           return;
         }
-        const inline = item.inline as {
-          description?: string;
-          columns?: TableColumn[];
-          rows?: { data: Record<string, unknown>; row_order?: number }[];
-        };
         const synth: Table = {
           id: tableId,
           workspace_id: skill.skill.workspace_id,
-          name: item.label || "Table",
-          description: inline.description ?? "",
-          columns: (inline.columns ?? []).map((c) => ({ ...c })),
+          name: item.name || "Table",
+          description: item.description ?? "",
+          columns: (item.columns ?? []).map((c) => ({ ...c })),
           views: [],
           created_at: "",
           updated_at: "",
         } as unknown as Table;
         setResolvedWorkspaceId(skill.skill.workspace_id);
         setTable(synth);
-        const synthRows: TableRow[] = (inline.rows ?? []).map((r, i) => ({
+        const synthRows: TableRow[] = (item.rows ?? []).map((r, i) => ({
           id: `skill-${i}`,
           table_id: tableId,
           data: r.data,

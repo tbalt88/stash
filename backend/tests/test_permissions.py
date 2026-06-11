@@ -5,7 +5,6 @@ import uuid
 import pytest
 from httpx import AsyncClient
 
-from backend.models import SkillItem
 from backend.services import permission_service, share_service, shared_skill_service
 
 from .conftest import unique_name
@@ -163,18 +162,18 @@ async def _make_history_event(
     )
 
 
-async def _make_skill(workspace_id, owner_id, access, object_type, object_id):
+async def _make_skill(workspace_id, owner_id, access, folder_id):
+    """Publish `folder_id` as a skill. Skills are folders now: a publish record
+    grants read on the folder's subtree, so the object under test must already
+    sit inside the folder."""
     workspace_permission, public_permission = _permissions_for_access(access)
-    return await shared_skill_service.create_skill(
-        workspace_id=workspace_id,
-        owner_id=owner_id,
+    return await shared_skill_service.publish_folder(
+        workspace_id,
+        owner_id,
+        folder_id,
         title=f"{access} Skill",
-        description="",
         workspace_permission=workspace_permission,
         public_permission=public_permission,
-        discoverable=False,
-        cover_image_url=None,
-        items=[SkillItem(object_type=object_type, object_id=object_id)],
     )
 
 
@@ -392,8 +391,9 @@ async def test_public_skill_grants_read_only(pool):
     owner = await _make_user(pool)
     stranger = await _make_user(pool)
     ws = await _make_workspace(pool, owner)
-    page = await _make_page(pool, ws, owner)
-    await _make_skill(ws, owner, "public", "page", page)
+    folder = await _make_folder(pool, ws, owner, name="public-skill")
+    page = await _make_page(pool, ws, owner, folder_id=folder)
+    await _make_skill(ws, owner, "public", folder)
     assert await permission_service.check_access("page", page, stranger)
     assert await permission_service.check_access("page", page, None)
     assert not await permission_service.check_access("page", page, stranger, require="write")
@@ -405,8 +405,9 @@ async def test_private_skill_member_reads_contents_not_write(pool):
     member = await _make_user(pool)
     stranger = await _make_user(pool)
     ws = await _make_workspace(pool, owner)
-    page = await _make_page(pool, ws, owner)
-    skill = await _make_skill(ws, owner, "private", "page", page)
+    folder = await _make_folder(pool, ws, owner, name="private-skill")
+    page = await _make_page(pool, ws, owner, folder_id=folder)
+    skill = await _make_skill(ws, owner, "private", folder)
     await _add_skill_member(pool, skill["id"], member, owner, "read")
     assert await permission_service.check_access("page", page, member)
     assert not await permission_service.check_access("page", page, member, require="write")

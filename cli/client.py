@@ -81,7 +81,7 @@ class StashClient:
         data = self._get(url, **params)
         return data.get(key, data) if isinstance(data, dict) else data
 
-    def _upload(self, path: str, file_path: str) -> dict:
+    def _upload(self, path: str, file_path: str, folder_id: str | None = None) -> dict:
         filename = os.path.basename(file_path)
         content_type = mimetypes.guess_type(filename)[0] or "application/octet-stream"
         with open(file_path, "rb") as f:
@@ -89,6 +89,7 @@ class StashClient:
                 "POST",
                 path,
                 files={"file": (filename, f, content_type)},
+                data={"folder_id": folder_id} if folder_id else None,
                 timeout=300,
             )
         return resp.json()
@@ -156,53 +157,31 @@ class StashClient:
     def list_skills(self, workspace_id: str) -> list:
         return self._list(f"/api/v1/workspaces/{workspace_id}/skills", "skills")
 
-    def create_skill(
+    def publish_skill_folder(
         self,
         workspace_id: str,
-        title: str,
+        folder_id: str,
+        title: str | None = None,
         description: str = "",
         workspace_permission: str = "read",
         public_permission: str = "none",
         discoverable: bool = False,
-        items: list | None = None,
     ) -> dict:
-        return self._post(
-            f"/api/v1/workspaces/{workspace_id}/skills",
-            json={
-                "title": title,
-                "description": description,
-                "workspace_permission": workspace_permission,
-                "public_permission": public_permission,
-                "discoverable": discoverable,
-                "items": items or [],
-            },
-        )
-
-    def publish_skill(
-        self,
-        workspace_id: str,
-        title: str,
-        description: str = "",
-        discoverable: bool = False,
-        items: list | None = None,
-    ) -> dict:
-        """Create a public Skill in one atomic call."""
-        return self._post(
-            f"/api/v1/workspaces/{workspace_id}/skills/publish",
-            json={
-                "title": title,
-                "description": description,
-                "workspace_permission": "read",
-                "public_permission": "read",
-                "discoverable": discoverable,
-                "items": items or [],
-            },
-        )
+        body = {
+            "folder_id": folder_id,
+            "description": description,
+            "workspace_permission": workspace_permission,
+            "public_permission": public_permission,
+            "discoverable": discoverable,
+        }
+        if title:
+            body["title"] = title
+        return self._post(f"/api/v1/workspaces/{workspace_id}/skills", json=body)
 
     def update_skill(self, skill_id: str, **fields) -> dict:
         return self._patch(f"/api/v1/skills/{skill_id}", json=fields)
 
-    def delete_skill(self, skill_id: str) -> None:
+    def unpublish_skill(self, skill_id: str) -> None:
         self._delete(f"/api/v1/skills/{skill_id}")
 
     def fork_skill(self, slug: str, workspace_id: str) -> dict:
@@ -210,9 +189,6 @@ class StashClient:
             f"/api/v1/skills/{slug}/add-to-workspace",
             json={"workspace_id": workspace_id},
         )
-
-    def remove_forked_skill(self, workspace_id: str, skill_id: str) -> None:
-        self._delete(f"/api/v1/workspaces/{workspace_id}/external-skills/{skill_id}")
 
     def get_public_skill(self, slug: str) -> dict:
         return self._get(f"/api/v1/skills/{slug}")
@@ -460,7 +436,6 @@ class StashClient:
         event_type: str,
         content: str,
         session_id: str | None = None,
-        default_skill_id: str | None = None,
         tool_name: str | None = None,
         metadata: dict | None = None,
         attachments: list[dict] | None = None,
@@ -469,8 +444,6 @@ class StashClient:
         body: dict = {"agent_name": agent_name, "event_type": event_type, "content": content}
         if session_id:
             body["session_id"] = session_id
-        if default_skill_id:
-            body["default_skill_id"] = default_skill_id
         if tool_name:
             body["tool_name"] = tool_name
         if metadata:
@@ -526,11 +499,8 @@ class StashClient:
         self,
         workspace_id: str,
         events: list[dict],
-        default_skill_id: str | None = None,
     ) -> list:
         body: dict = {"events": events}
-        if default_skill_id:
-            body["default_skill_id"] = default_skill_id
         return self._post(
             f"/api/v1/workspaces/{workspace_id}/sessions/events/batch",
             json=body,
@@ -543,7 +513,6 @@ class StashClient:
         transcript_path: str | Path,
         agent_name: str,
         cwd: str = "",
-        default_skill_id: str | None = None,
         replace: bool = False,
     ) -> dict:
         import gzip as _gzip
@@ -562,7 +531,6 @@ class StashClient:
                 "agent_name": agent_name,
                 "cwd": cwd,
                 "replace": str(replace).lower(),
-                **({"default_skill_id": default_skill_id} if default_skill_id else {}),
             },
             files={"file": (name, body, "application/gzip")},
             timeout=120,
@@ -571,8 +539,10 @@ class StashClient:
 
     # --- Files ---
 
-    def upload_ws_file(self, workspace_id: str, file_path: str) -> dict:
-        return self._upload(f"/api/v1/workspaces/{workspace_id}/files", file_path)
+    def upload_ws_file(
+        self, workspace_id: str, file_path: str, folder_id: str | None = None
+    ) -> dict:
+        return self._upload(f"/api/v1/workspaces/{workspace_id}/files", file_path, folder_id)
 
     def list_ws_files(self, workspace_id: str) -> list:
         return self._list(f"/api/v1/workspaces/{workspace_id}/files", "files")

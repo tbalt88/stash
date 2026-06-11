@@ -15,8 +15,6 @@ import {
 } from "../../../../components/ShellChromeContext";
 import {
   addSkillMember,
-  getActivityTimeline,
-  getEmbeddingProjection,
   getMe,
   getPublicSkill,
   listSkillMembers,
@@ -61,30 +59,15 @@ vi.mock("../../../../lib/api", () => ({
   },
   forkSkill: vi.fn(),
   addSkillMember: vi.fn(),
-  createPage: vi.fn(),
   getMe: vi.fn(),
   getPublicSkill: vi.fn(),
-  listAllPages: vi.fn(),
-  listAllTables: vi.fn(),
-  listFiles: vi.fn(),
-  listMySessions: vi.fn(),
   listSkillMembers: vi.fn(),
+  publishSkillFolder: vi.fn(),
   removeSkillMember: vi.fn(),
   searchUsers: vi.fn(),
   updateSkill: vi.fn(),
   uploadFile: vi.fn(),
-  getActivityTimeline: vi.fn(),
-  getEmbeddingProjection: vi.fn(),
-  // Tests render the authenticated view of the page; pretend the
-  // viewer has a token so insight panels mount as before.
   getToken: vi.fn(() => "test-token"),
-}));
-
-vi.mock("../../../../components/viz/ContributorActivityTimeline", () => ({
-  default: () => null,
-}));
-vi.mock("../../../../components/viz/EmbeddingSpaceExplorer", () => ({
-  default: () => null,
 }));
 
 vi.mock("../../../../hooks/useAuth", () => ({
@@ -116,6 +99,10 @@ function renderSkill(ui: ReactNode) {
   return render(ui, { wrapper: ShellChromeHarness });
 }
 
+function emptyContents(): PublicSkillDetail["contents"] {
+  return { subfolders: [], pages: [], files: [], tables: [] };
+}
+
 function skillDetail(
   skill: Partial<PublicSkillDetail["skill"]> = {},
 ): PublicSkillDetail {
@@ -123,6 +110,7 @@ function skillDetail(
     skill: {
       id: "skill-1",
       workspace_id: "workspace-1",
+      folder_id: "folder-1",
       slug: "shared-skill",
       title: "Shared Skill",
       description: "",
@@ -137,21 +125,18 @@ function skillDetail(
       icon_url: null,
       view_count: 0,
       share_count: 0,
-      items: [],
-      is_external: false,
-      added_to_workspace_id: null,
-      forked_from_skill_id: null,
       created_at: "2026-05-11T00:00:00Z",
       updated_at: "2026-05-11T00:00:00Z",
       ...skill,
     },
     workspace_name: "Demo Workspace",
-    items: [],
+    folder_name: "Shared Skill",
+    contents: emptyContents(),
     can_write: false,
   };
 }
 
-describe("SkillPageClient sharing", () => {
+describe("SkillPageClient", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     authState.user = {
@@ -167,17 +152,11 @@ describe("SkillPageClient sharing", () => {
       configurable: true,
       value: { writeText: vi.fn().mockResolvedValue(undefined) },
     });
-    vi.mocked(getActivityTimeline).mockResolvedValue({
-      contributors: [],
-      buckets: [],
-    });
-    vi.mocked(getEmbeddingProjection).mockResolvedValue({
-      points: [],
-      stats: { total_embeddings: 0, projected: 0 },
-      cached: false,
-    });
     vi.mocked(getMe).mockResolvedValue(authState.user!);
-    vi.mocked(getPublicSkill).mockResolvedValue(skillDetail());
+    vi.mocked(getPublicSkill).mockResolvedValue({
+      ...skillDetail(),
+      can_write: true,
+    });
     vi.mocked(listSkillMembers).mockResolvedValue([
       {
         user_id: "user-2",
@@ -228,7 +207,6 @@ describe("SkillPageClient sharing", () => {
         `${window.location.origin}/skills/shared-skill`,
       ),
     );
-    expect(screen.getByRole("button", { name: "Copied" })).toBeInTheDocument();
   });
 
   it("copies an agent-readable handoff link from the app header", async () => {
@@ -244,9 +222,6 @@ describe("SkillPageClient sharing", () => {
         `${window.location.origin}/api/v1/skills/shared-skill?format=text`,
       ),
     );
-    expect(
-      screen.getByRole("button", { name: "Copy agent handoff link" }),
-    ).toHaveTextContent("Copied");
   });
 
   it("makes private Skills public and unlisted before copying an agent link", async () => {
@@ -276,9 +251,6 @@ describe("SkillPageClient sharing", () => {
     expect(navigator.clipboard.writeText).toHaveBeenCalledWith(
       `${window.location.origin}/api/v1/skills/shared-skill?format=text`,
     );
-    expect(
-      screen.getByRole("button", { name: "Copy agent handoff link" }),
-    ).toHaveTextContent("Copied");
   });
 
   it("can make the Skill private from the Share dropdown", async () => {
@@ -294,9 +266,7 @@ describe("SkillPageClient sharing", () => {
     renderSkill(<SkillPageClient slug="shared-skill" />);
 
     fireEvent.click(await screen.findByRole("button", { name: "Share" }));
-    const dialog = await screen.findByRole("dialog", {
-      name: "Share Shared Skill",
-    });
+    const dialog = await screen.findByRole("dialog", { name: "Share skill" });
     fireEvent.change(within(dialog).getByLabelText("Visibility"), {
       target: { value: "private" },
     });
@@ -323,9 +293,7 @@ describe("SkillPageClient sharing", () => {
     renderSkill(<SkillPageClient slug="shared-skill" />);
 
     fireEvent.click(await screen.findByRole("button", { name: "Share" }));
-    const dialog = await screen.findByRole("dialog", {
-      name: "Share Shared Skill",
-    });
+    const dialog = await screen.findByRole("dialog", { name: "Share skill" });
 
     expect(await within(dialog).findByText("@sam")).toBeInTheDocument();
     expect(listSkillMembers).toHaveBeenCalledWith("skill-1");
@@ -341,63 +309,26 @@ describe("SkillPageClient sharing", () => {
     );
   });
 
-  it("keeps add/create flows behind the single Add things button", async () => {
-    vi.mocked(getPublicSkill).mockResolvedValueOnce({
-      ...skillDetail({
-        access: "private",
-        workspace_permission: "read",
-        public_permission: "none",
-      }),
-      can_write: true,
-    });
-
+  it("shows the settings link for writers and the fork CTA for readers", async () => {
     renderSkill(<SkillPageClient slug="shared-skill" />);
 
     expect(
-      await screen.findByRole("button", { name: "+ Add things" }),
-    ).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Skill settings" })).toHaveAttribute(
-      "href",
-      "/skills/shared-skill/settings",
-    );
+      await screen.findByRole("link", { name: "Skill settings" }),
+    ).toHaveAttribute("href", "/skills/shared-skill/settings");
     expect(
-      screen.queryByPlaceholderText(
-        "Paste a link, type a note, or drop a file",
-      ),
+      screen.queryByRole("button", { name: "Add to my files" }),
     ).not.toBeInTheDocument();
-  });
 
-  it("does not render skill access as a title badge", async () => {
-    vi.mocked(getPublicSkill).mockResolvedValueOnce(
-      skillDetail({
-        access: "private",
-        workspace_permission: "read",
-        public_permission: "none",
-      }),
-    );
-
-    renderSkill(<SkillPageClient slug="shared-skill" />);
-
-    const title = await screen.findByRole("heading", { name: "Shared Skill" });
-
-    expect(title).toHaveTextContent("Shared Skill");
-    expect(title).not.toHaveTextContent("workspace");
-  });
-
-  it("loads only recent activity for the commit graph", async () => {
+    cleanup();
+    vi.mocked(getPublicSkill).mockResolvedValueOnce(skillDetail());
     renderSkill(<SkillPageClient slug="shared-skill" />);
 
     expect(
-      await screen.findByText("Activity in this skill — last 30 days"),
+      await screen.findByRole("button", { name: "Add to my files" }),
     ).toBeInTheDocument();
-    await waitFor(() =>
-      expect(getActivityTimeline).toHaveBeenCalledWith(
-        30,
-        "day",
-        undefined,
-        "skill-1",
-      ),
-    );
+    expect(
+      screen.queryByRole("link", { name: "Skill settings" }),
+    ).not.toBeInTheDocument();
   });
 
   it("shows the skill author in the detail header", async () => {
@@ -410,72 +341,82 @@ describe("SkillPageClient sharing", () => {
     expect(await screen.findByText("by Sam")).toBeInTheDocument();
   });
 
-  it("opens single-file skills directly on the file preview", async () => {
-    // The primary-item shortcut only fires for a skill with exactly one
-    // item. A folder wrapper means "open container" — could grow — so we
-    // render bundle chrome for it. This test pins the strict shape.
-    const detail = skillDetail({
-      description: "<p>One screenshot.</p>",
-    });
-    detail.items = [
-      {
-        object_type: "file",
-        object_id: "file-1",
-        position: 0,
-        label: "shot.png",
-        inline: {
+  it("renders the SKILL.md intro and rows for the rest of the contents", async () => {
+    const detail = skillDetail();
+    detail.contents = {
+      subfolders: [
+        { id: "sub-1", name: "research", parent_folder_id: "folder-1", path: ["research"] },
+      ],
+      pages: [
+        {
+          id: "page-md",
+          name: "SKILL.md",
+          content_type: "markdown",
+          content_markdown: "---\nname: Shared Skill\ndescription: \n---\n\n# How to launch\n",
+          content_html: "",
+          html_layout: "responsive",
+          updated_at: "2026-05-11T00:00:00Z",
+          folder_path: [],
+        },
+        {
+          id: "page-2",
+          name: "Plan",
+          content_type: "markdown",
+          content_markdown: "# Plan",
+          content_html: "",
+          html_layout: "responsive",
+          updated_at: "2026-05-11T00:00:00Z",
+          folder_path: ["research"],
+        },
+      ],
+      files: [
+        {
+          id: "file-1",
           name: "shot.png",
           content_type: "image/png",
           size_bytes: 1234,
           url: "https://files.test/shot.png",
+          created_at: "2026-05-11T00:00:00Z",
+          linked_table_id: null,
+          folder_path: [],
         },
-      },
-    ];
+      ],
+      tables: [
+        {
+          id: "table-1",
+          name: "Budget",
+          description: "",
+          columns: [],
+          rows: [],
+          folder_path: [],
+        },
+      ],
+    };
     vi.mocked(getPublicSkill).mockResolvedValueOnce(detail);
 
     renderSkill(<SkillPageClient slug="shared-skill" />);
 
-    const image = await screen.findByRole("img", { name: "shot.png" });
-    expect(image).toHaveAttribute("src", "https://files.test/shot.png");
-    expect(screen.getByText("1 item")).toBeInTheDocument();
-    expect(screen.queryByRole("heading", { name: "Files" })).not.toBeInTheDocument();
-    expect(getActivityTimeline).not.toHaveBeenCalled();
-    expect(getEmbeddingProjection).not.toHaveBeenCalled();
-  });
+    // SKILL.md body renders as the intro, with frontmatter stripped.
+    expect(
+      await screen.findByRole("heading", { name: "How to launch" }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/name: Shared Skill/)).not.toBeInTheDocument();
+    // SKILL.md itself doesn't get its own row.
+    expect(screen.queryByText("SKILL.md")).not.toBeInTheDocument();
 
-  it("shows bundle chrome for a file-plus-folder skill (no primary shortcut)", async () => {
-    // The folder is an open container — adding more items would invalidate
-    // any "this skill IS the file" promise — so we render the bundle list
-    // and the viz section, not the file preview.
-    const detail = skillDetail({
-      description: "<p>Uploaded from shot.png</p>",
-    });
-    detail.items = [
-      {
-        object_type: "folder",
-        object_id: "folder-1",
-        position: 0,
-        label: "shot",
-        inline: { pages: [], files: [] },
-      },
-      {
-        object_type: "file",
-        object_id: "file-1",
-        position: 1,
-        label: "shot.png",
-        inline: {
-          name: "shot.png",
-          content_type: "image/png",
-          size_bytes: 1234,
-          url: "https://files.test/shot.png",
-        },
-      },
-    ];
-    vi.mocked(getPublicSkill).mockResolvedValueOnce(detail);
-
-    renderSkill(<SkillPageClient slug="shared-skill" />);
-
-    expect(await screen.findByText("2 items")).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Files" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Plan/ })).toHaveAttribute(
+      "href",
+      "/p/page-2?skill=shared-skill",
+    );
+    expect(screen.getByRole("link", { name: /shot\.png/ })).toHaveAttribute(
+      "href",
+      "/f/file-1?skill=shared-skill",
+    );
+    expect(screen.getByRole("link", { name: /Budget/ })).toHaveAttribute(
+      "href",
+      "/tables/table-1?skill=shared-skill",
+    );
+    // Subfolder items group under their folder path.
+    expect(screen.getByRole("heading", { name: "research" })).toBeInTheDocument();
   });
 });

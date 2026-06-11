@@ -77,10 +77,6 @@ vi.mock("../../../components/workspace/FileViewerHeader", () => ({
   default: ({ title }: { title: string }) => <h1>{title}</h1>,
 }));
 
-vi.mock("../../../lib/shareModalContext", () => ({
-  useShareModal: () => ({ open: vi.fn() }),
-}));
-
 vi.mock("../../../lib/api", () => api);
 
 const table = {
@@ -240,18 +236,24 @@ describe("TableEditorPage row creation", () => {
         title: "Shared Skill",
         workspace_id: "ws-1",
       },
-      items: [
-        {
-          object_type: "table",
-          object_id: "table-1",
-          label: "Prospects",
-          inline: {
+      workspace_name: "Demo",
+      folder_name: "Shared Skill",
+      contents: {
+        subfolders: [],
+        pages: [],
+        files: [],
+        tables: [
+          {
+            id: "table-1",
+            name: "Prospects",
             description: "",
             columns: table.columns,
             rows: [{ data: { name: "Alice" }, row_order: 0 }],
+            folder_path: [],
           },
-        },
-      ],
+        ],
+      },
+      can_write: false,
     });
 
     render(<TableEditorPage />);

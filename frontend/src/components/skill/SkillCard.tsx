@@ -5,34 +5,31 @@ import type { ReactNode } from "react";
 
 import { displayVisibility } from "../../lib/api";
 
-// Minimum shape required by the card — accepts both WorkspaceSkill and
-// PublicSkillCard so /discover and /workspaces/[id]/skills can share one
-// component without dragging two type definitions into the union.
+// Minimum shape required by the card — both workspace skill folders and the
+// Discover catalog's PublicSkillCard project into this.
 export interface SkillCardData {
-  id: string;
-  slug: string;
   title: string;
   description: string;
   cover_image_url: string | null;
+  icon_url?: string | null;
   owner_name?: string;
   owner_display_name?: string | null;
   access?: "private" | "public";
   share_count?: number;
-  is_external?: boolean;
   updated_at?: string;
-  item_count?: number;
-  items?: unknown[];
+  file_count?: number;
 }
 
 interface SkillCardProps {
   skill: SkillCardData;
+  href: string;
   cover: string;
-  /** Optional badge in the upper-left of the cover (e.g. trending, EXTERNAL). */
+  /** Optional badge in the upper-left of the cover (e.g. trending). */
   badge?: ReactNode;
   /** Optional action in the upper-right of the cover (e.g. + Save button).
    * Action components own their own click-propagation handling. */
   cornerAction?: ReactNode;
-  /** Custom footer; if omitted, defaults to `/{slug}` + relative-time. */
+  /** Custom footer; if omitted, no footer renders. */
   footer?: ReactNode;
   /** Highlights the card when it's part of a multi-selection. */
   selected?: boolean;
@@ -68,18 +65,18 @@ export function VisibilityBadge({
 
 export default function SkillCard({
   skill,
+  href,
   cover,
   badge,
   cornerAction,
   footer,
   selected,
 }: SkillCardProps) {
-  const itemCount = skill.item_count ?? skill.items?.length ?? 0;
   const author = authorName(skill);
 
   return (
     <Link
-      href={`/skills/${skill.slug}`}
+      href={href}
       className={
         "card group flex min-h-[200px] flex-col overflow-hidden transition " +
         (selected
@@ -103,11 +100,6 @@ export default function SkillCard({
         {cornerAction && (
           <div className="absolute right-2.5 top-2 z-10">{cornerAction}</div>
         )}
-        {skill.is_external && !badge && (
-          <span className="absolute left-3 top-2.5 rounded-full border border-white/50 bg-white/70 px-2 py-0.5 font-mono text-[10.5px] text-foreground backdrop-blur">
-            EXTERNAL
-          </span>
-        )}
         {skill.access && (
           <span className="absolute bottom-2 left-2.5">
             <VisibilityBadge access={skill.access} shareCount={skill.share_count ?? 0} />
@@ -115,15 +107,26 @@ export default function SkillCard({
         )}
       </div>
       <div className="flex flex-1 flex-col p-4">
-        <h3 className="m-0 font-display text-[17px] font-bold leading-tight tracking-[-0.015em] group-hover:text-[var(--color-brand-700)]">
-          {skill.title}
-        </h3>
+        <div className="flex items-center gap-2">
+          {skill.icon_url && (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={skill.icon_url}
+              alt=""
+              className="h-5 w-5 flex-shrink-0 rounded object-cover"
+            />
+          )}
+          <h3 className="m-0 font-display text-[17px] font-bold leading-tight tracking-[-0.015em] group-hover:text-[var(--color-brand-700)]">
+            {skill.title}
+          </h3>
+        </div>
         <p className="mt-2 line-clamp-2 text-[12.5px] leading-[1.55] text-dim">
           {skill.description || "No description."}
         </p>
         <div className="sys-label mt-2.5" style={{ fontSize: 10.5 }}>
           {author && `by ${author} · `}
-          {itemCount} item{itemCount === 1 ? "" : "s"}
+          {skill.file_count !== undefined &&
+            `${skill.file_count} file${skill.file_count === 1 ? "" : "s"}`}
           {skill.updated_at && ` · updated ${relativeTime(skill.updated_at)}`}
         </div>
         <div className="flex-1" />

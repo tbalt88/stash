@@ -991,9 +991,15 @@ async def test_snapshot_source_into_skill_copies_lazy_content(client: AsyncClien
 
     monkeypatch.setattr(indexer, "fetch_drive_content", fake_fetch)
 
+    folder = await client.post(
+        f"/api/v1/workspaces/{ws}/folders",
+        json={"name": "Bundle"},
+        headers=_auth(api_key),
+    )
+    assert folder.status_code == 201
     skill = await client.post(
         f"/api/v1/workspaces/{ws}/skills",
-        json={"title": "Bundle", "public_permission": "read", "items": []},
+        json={"folder_id": folder.json()["id"], "title": "Bundle", "public_permission": "read"},
         headers=_auth(api_key),
     )
     assert skill.status_code == 201
@@ -1010,10 +1016,10 @@ async def test_snapshot_source_into_skill_copies_lazy_content(client: AsyncClien
     # The body was copied in (a point-in-time snapshot), not left as a live ref.
     assert "snapshot body for file-abc" in page["content_markdown"]
 
-    # And the page is now an item in the skill.
+    # And the snapshot page landed inside the skill's folder.
     public = await client.get(f"/api/v1/skills/{skill.json()['slug']}")
-    item_ids = {i["object_id"] for i in public.json()["items"]}
-    assert page["id"] in item_ids
+    page_ids = {p["id"] for p in public.json()["contents"]["pages"]}
+    assert page["id"] in page_ids
 
 
 # --- VFS REST endpoints (browse / read / search) ----------------------------

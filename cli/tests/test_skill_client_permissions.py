@@ -28,41 +28,42 @@ def test_skill_permissions_for_access() -> None:
     }
 
 
-def test_create_skill_uses_permission_fields() -> None:
+def test_publish_skill_folder_sends_permission_fields() -> None:
     client, calls = _post_stub_client()
 
-    client.create_skill("WS", "Launch notes", items=[{"object_type": "folder", "object_id": "F1"}])
+    client.publish_skill_folder(
+        "WS", "F1", title="Launch notes", **skill_permissions_for_access("public")
+    )
 
     assert calls == [
         (
             "/api/v1/workspaces/WS/skills",
             {
-                "title": "Launch notes",
+                "folder_id": "F1",
                 "description": "",
                 "workspace_permission": "read",
-                "public_permission": "none",
+                "public_permission": "read",
                 "discoverable": False,
-                "items": [{"object_type": "folder", "object_id": "F1"}],
+                "title": "Launch notes",
             },
         )
     ]
 
 
-def test_publish_skill_uses_public_permission_fields() -> None:
+def test_publish_skill_folder_defaults_private() -> None:
     client, calls = _post_stub_client()
 
-    client.publish_skill("WS", "Launch notes", items=[{"object_type": "folder", "object_id": "F1"}])
+    client.publish_skill_folder("WS", "F1")
 
     assert calls == [
         (
-            "/api/v1/workspaces/WS/skills/publish",
+            "/api/v1/workspaces/WS/skills",
             {
-                "title": "Launch notes",
+                "folder_id": "F1",
                 "description": "",
                 "workspace_permission": "read",
-                "public_permission": "read",
+                "public_permission": "none",
                 "discoverable": False,
-                "items": [{"object_type": "folder", "object_id": "F1"}],
             },
         )
     ]

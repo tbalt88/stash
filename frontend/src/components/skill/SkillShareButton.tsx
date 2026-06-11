@@ -7,13 +7,15 @@ import {
   ApiError,
   getMe,
   listSkillMembers,
+  publishSkillFolder,
   removeSkillMember,
   searchUsers,
   updateSkill,
-  type PublicSkillDetail,
   type SkillGeneralPermission,
   type SkillMember,
   type SkillMemberPermission,
+  type SkillPublishInfo,
+  type WorkspaceSkill,
 } from "../../lib/api";
 import { resetSkillNavigationCache } from "../../lib/skillNavigationCache";
 import type { UserSearchResult } from "../../lib/types";
@@ -86,22 +88,38 @@ function permissionsForVisibility(
   };
 }
 
+function publishInfoFromRecord(record: WorkspaceSkill): SkillPublishInfo {
+  return {
+    id: record.id,
+    slug: record.slug,
+    access: record.access,
+    workspace_permission: record.workspace_permission,
+    public_permission: record.public_permission,
+    discoverable: record.discoverable,
+    cover_image_url: record.cover_image_url,
+    icon_url: record.icon_url,
+    view_count: record.view_count,
+    share_count: record.share_count,
+  };
+}
+
+// Share button for a skill folder. The publish record is minted lazily: the
+// first Share click creates it, then the popover manages URL, visibility,
+// Discover, and members — all keyed off publish.id.
 export default function SkillShareButton({
-  skill,
-  canWrite,
-  onChanged,
+  workspaceId,
+  folderId,
+  publish: publishProp,
+  onPublishChange,
 }: {
-  skill: PublicSkillDetail["skill"];
-  canWrite: boolean;
-  onChanged: () => Promise<void>;
+  workspaceId: string;
+  folderId: string;
+  publish: SkillPublishInfo | null;
+  onPublishChange?: (publish: SkillPublishInfo) => void;
 }) {
+  const [publish, setPublish] = useState<SkillPublishInfo | null>(publishProp);
   const [open, setOpen] = useState(false);
   const [copied, setCopied] = useState(false);
-  const [workspacePermission, setWorkspacePermission] =
-    useState<SkillGeneralPermission>(skill.workspace_permission);
-  const [publicPermission, setPublicPermission] =
-    useState<SkillGeneralPermission>(skill.public_permission);
-  const [discoverable, setDiscoverable] = useState(skill.discoverable);
   const [saving, setSaving] = useState(false);
   const [shareMessage, setShareMessage] = useState("");
   const [handoffStatus, setHandoffStatus] = useState<HandoffStatus>("idle");
@@ -121,17 +139,32 @@ export default function SkillShareButton({
   useEscapeKey(open, () => setOpen(false));
 
   useEffect(() => {
-    setWorkspacePermission(skill.workspace_permission);
-    setPublicPermission(skill.public_permission);
-    setDiscoverable(skill.discoverable);
-  }, [skill.workspace_permission, skill.public_permission, skill.discoverable]);
+    setPublish(publishProp);
+  }, [publishProp]);
 
-  const loadMembers = useCallback(async () => {
+  function applyPublish(next: SkillPublishInfo) {
+    setPublish(next);
+    onPublishChange?.(next);
+  }
+
+  // Mint the publish record on first share. The new record defaults to
+  // workspace-read / public-none (a private share link).
+  const ensurePublished = useCallback(async (): Promise<SkillPublishInfo> => {
+    if (publish) return publish;
+    const record = await publishSkillFolder(workspaceId, folderId);
+    const info = publishInfoFromRecord(record);
+    setPublish(info);
+    onPublishChange?.(info);
+    resetSkillNavigationCache();
+    return info;
+  }, [publish, workspaceId, folderId, onPublishChange]);
+
+  const loadMembers = useCallback(async (skillId: string) => {
     setMembersLoading(true);
     setMemberMessage("");
     try {
       const [nextMembers, me] = await Promise.all([
-        listSkillMembers(skill.id),
+        listSkillMembers(skillId),
         getMe(),
       ]);
       setMembers(nextMembers);
@@ -147,7 +180,7 @@ export default function SkillShareButton({
     } finally {
       setMembersLoading(false);
     }
-  }, [skill.id]);
+  }, []);
 
   useEffect(() => {
     if (!open) return;
@@ -162,19 +195,33 @@ export default function SkillShareButton({
   }, [open]);
 
   useEffect(() => {
-    if (!open || !canWrite) return;
+    if (!open || !publish) return;
 
     setShareMessage("");
     setMemberMessage("");
     setUserQuery("");
     setUserResults([]);
     setCopied(false);
-    void loadMembers();
-  }, [open, canWrite, loadMembers]);
+    void loadMembers(publish.id);
+  }, [open, publish, loadMembers]);
+
+  async function openShare() {
+    if (open) {
+      setOpen(false);
+      return;
+    }
+    try {
+      await ensurePublished();
+      setOpen(true);
+    } catch (e) {
+      setShareMessage(e instanceof Error ? e.message : "Could not share skill.");
+    }
+  }
 
   async function copyLink() {
+    if (!publish) return;
     try {
-      await navigator.clipboard.writeText(absoluteUrl(`/skills/${skill.slug}`));
+      await navigator.clipboard.writeText(absoluteUrl(`/skills/${publish.slug}`));
       setCopied(true);
       setShareMessage("Link copied.");
       window.setTimeout(() => setCopied(false), 1600);
@@ -188,23 +235,20 @@ export default function SkillShareButton({
     setHandoffStatus("copying");
     setHandoffMessage("");
     try {
-      if (publicPermission === "none") {
-        if (!canWrite) {
-          throw new Error("Only skill editors can create public agent links.");
-        }
-        const updated = await updateSkill(skill.id, {
+      let current = await ensurePublished();
+      if (current.public_permission === "none") {
+        const updated = await updateSkill(current.id, {
           workspace_permission:
-            workspacePermission === "none" ? "read" : workspacePermission,
+            current.workspace_permission === "none" ? "read" : current.workspace_permission,
           public_permission: "read",
           discoverable: false,
         });
-        setWorkspacePermission(updated.workspace_permission);
-        setPublicPermission(updated.public_permission);
-        setDiscoverable(updated.discoverable);
+        current = publishInfoFromRecord(updated);
+        applyPublish(current);
         resetSkillNavigationCache();
       }
 
-      await navigator.clipboard.writeText(agentHandoffUrl(skill.slug));
+      await navigator.clipboard.writeText(agentHandoffUrl(current.slug));
       setHandoffStatus("copied");
       window.setTimeout(() => setHandoffStatus("idle"), 1600);
     } catch (e) {
@@ -221,20 +265,19 @@ export default function SkillShareButton({
     nextWorkspacePermission: SkillGeneralPermission,
     nextPublicPermission: SkillGeneralPermission,
   ) {
-    const nextDiscoverable = nextPublicPermission === "none" ? false : discoverable;
+    if (!publish) return;
+    const nextDiscoverable =
+      nextPublicPermission === "none" ? false : publish.discoverable;
     setSaving(true);
     setShareMessage("");
     try {
-      const updated = await updateSkill(skill.id, {
+      const updated = await updateSkill(publish.id, {
         workspace_permission: nextWorkspacePermission,
         public_permission: nextPublicPermission,
         discoverable: nextDiscoverable,
       });
-      setWorkspacePermission(updated.workspace_permission);
-      setPublicPermission(updated.public_permission);
-      setDiscoverable(updated.discoverable);
+      applyPublish(publishInfoFromRecord(updated));
       resetSkillNavigationCache();
-      await onChanged();
     } catch (e) {
       setShareMessage(e instanceof Error ? e.message : "Could not update visibility.");
     } finally {
@@ -243,19 +286,17 @@ export default function SkillShareButton({
   }
 
   async function toggleDiscoverable(nextDiscoverable: boolean) {
+    if (!publish) return;
     setSaving(true);
     setShareMessage("");
     try {
-      const updated = await updateSkill(skill.id, {
-        workspace_permission: workspacePermission,
-        public_permission: publicPermission,
+      const updated = await updateSkill(publish.id, {
+        workspace_permission: publish.workspace_permission,
+        public_permission: publish.public_permission,
         discoverable: nextDiscoverable,
       });
-      setWorkspacePermission(updated.workspace_permission);
-      setPublicPermission(updated.public_permission);
-      setDiscoverable(updated.discoverable);
+      applyPublish(publishInfoFromRecord(updated));
       resetSkillNavigationCache();
-      await onChanged();
     } catch (e) {
       setShareMessage(e instanceof Error ? e.message : "Could not update Discover.");
     } finally {
@@ -280,11 +321,12 @@ export default function SkillShareButton({
   }
 
   async function addMember(userId: string) {
+    if (!publish) return;
     setMemberBusy(true);
     setMemberMessage("");
     try {
-      await addSkillMember(skill.id, userId, newMemberPermission);
-      await loadMembers();
+      await addSkillMember(publish.id, userId, newMemberPermission);
+      await loadMembers(publish.id);
       setUserQuery("");
       setUserResults([]);
       setMemberMessage("Added.");
@@ -300,11 +342,12 @@ export default function SkillShareButton({
     userId: string,
     permission: SkillMemberPermission,
   ) {
+    if (!publish) return;
     setMemberBusy(true);
     setMemberMessage("");
     try {
-      await addSkillMember(skill.id, userId, permission);
-      await loadMembers();
+      await addSkillMember(publish.id, userId, permission);
+      await loadMembers(publish.id);
       setMemberMessage("Updated.");
       resetSkillNavigationCache();
     } catch (e) {
@@ -315,13 +358,14 @@ export default function SkillShareButton({
   }
 
   async function deleteMember(userId: string) {
+    if (!publish) return;
     if (!confirm("Remove this member from the skill?")) return;
 
     setMemberBusy(true);
     setMemberMessage("");
     try {
-      await removeSkillMember(skill.id, userId);
-      await loadMembers();
+      await removeSkillMember(publish.id, userId);
+      await loadMembers(publish.id);
       resetSkillNavigationCache();
     } catch (e) {
       setMemberMessage(e instanceof Error ? e.message : "Could not remove member.");
@@ -330,14 +374,16 @@ export default function SkillShareButton({
     }
   }
 
-  const ownerLabel = skill.owner_display_name || skill.owner_name;
-  const visibility = visibilityForPermissions(workspacePermission, publicPermission);
+  const visibility = publish
+    ? visibilityForPermissions(publish.workspace_permission, publish.public_permission)
+    : "private";
 
   function applyVisibility(nextVisibility: SkillVisibility) {
+    if (!publish) return;
     const next = permissionsForVisibility(
       nextVisibility,
-      workspacePermission,
-      publicPermission
+      publish.workspace_permission,
+      publish.public_permission
     );
     void applyGeneralAccess(next.workspacePermission, next.publicPermission);
   }
@@ -360,29 +406,29 @@ export default function SkillShareButton({
       </button>
       <button
         type="button"
-        onClick={() => setOpen((o) => !o)}
+        onClick={() => void openShare()}
         aria-haspopup="dialog"
         aria-expanded={open}
         className="rounded-md bg-[var(--color-brand-600)] px-2.5 py-1 text-[12.5px] font-medium text-white hover:bg-[var(--color-brand-700)]"
       >
         Share
       </button>
-      {handoffMessage && !open && (
+      {(handoffMessage || (shareMessage && !open)) && (
         <div className="absolute right-0 top-full z-40 mt-1.5 max-w-[280px] rounded-md border border-border bg-base px-2 py-1.5 text-[12px] text-muted shadow-lg">
-          {handoffMessage}
+          {handoffMessage || shareMessage}
         </div>
       )}
-      {open && (
+      {open && publish && (
         <div
           role="dialog"
-          aria-label={`Share ${skill.title}`}
+          aria-label="Share skill"
           className="absolute right-0 top-full z-40 mt-1.5 w-[360px] rounded-lg border border-border bg-base p-3 shadow-lg"
         >
           <div className="sys-label mb-1">Public URL</div>
           <div className="flex gap-1.5">
             <input
               readOnly
-              value={absoluteUrl(`/skills/${skill.slug}`)}
+              value={absoluteUrl(`/skills/${publish.slug}`)}
               className="min-w-0 flex-1 rounded-md border border-border bg-surface px-2 py-1.5 text-[11.5px] font-mono text-foreground"
             />
             <button
@@ -394,146 +440,141 @@ export default function SkillShareButton({
             </button>
           </div>
 
-          {canWrite && (
-            <>
-              <div className="sys-label mb-1 mt-3">General access</div>
-              <div className="flex flex-col gap-1">
-                <VisibilityAccessRow
-                  label="Visibility"
-                  hint="Choose who can open this skill"
-                  value={visibility}
-                  options={VISIBILITY_OPTIONS}
-                  onChange={applyVisibility}
-                />
-                <GeneralAccessRow
-                  label="Workspace"
-                  hint="Anyone in the owning workspace"
-                  value={workspacePermission}
-                  options={WORKSPACE_PERMISSION_OPTIONS}
-                  onChange={(permission) =>
-                    void applyGeneralAccess(permission, publicPermission)
-                  }
-                />
-                <GeneralAccessRow
-                  label="Public"
-                  hint="Anyone with the URL"
-                  value={publicPermission}
-                  options={PUBLIC_PERMISSION_OPTIONS}
-                  onChange={(permission) =>
-                    void applyGeneralAccess(workspacePermission, permission)
-                  }
-                />
+          <div className="sys-label mb-1 mt-3">General access</div>
+          <div className="flex flex-col gap-1">
+            <VisibilityAccessRow
+              label="Visibility"
+              hint="Choose who can open this skill"
+              value={visibility}
+              options={VISIBILITY_OPTIONS}
+              onChange={applyVisibility}
+            />
+            <GeneralAccessRow
+              label="Workspace"
+              hint="Anyone in the owning workspace"
+              value={publish.workspace_permission}
+              options={WORKSPACE_PERMISSION_OPTIONS}
+              onChange={(permission) =>
+                void applyGeneralAccess(permission, publish.public_permission)
+              }
+            />
+            <GeneralAccessRow
+              label="Public"
+              hint="Anyone with the URL"
+              value={publish.public_permission}
+              options={PUBLIC_PERMISSION_OPTIONS}
+              onChange={(permission) =>
+                void applyGeneralAccess(publish.workspace_permission, permission)
+              }
+            />
+          </div>
+
+          {publish.public_permission !== "none" && (
+            <label className="mt-3 flex cursor-pointer items-center gap-2 rounded-md border border-border bg-surface px-2 py-1.5">
+              <input
+                type="checkbox"
+                checked={publish.discoverable}
+                onChange={(e) => void toggleDiscoverable(e.target.checked)}
+              />
+              <span className="text-[12px] text-foreground">
+                List on Discover
+              </span>
+            </label>
+          )}
+
+          <div className="mt-4 border-t border-border pt-3">
+            <div className="sys-label mb-2">Members</div>
+
+            {membersLoading && (
+              <div className="mt-2 rounded-md border border-border bg-surface px-2 py-1.5 text-[12px] text-muted">
+                Loading members...
               </div>
+            )}
 
-              {publicPermission !== "none" && (
-                <label className="mt-3 flex cursor-pointer items-center gap-2 rounded-md border border-border bg-surface px-2 py-1.5">
-                  <input
-                    type="checkbox"
-                    checked={discoverable}
-                    onChange={(e) => void toggleDiscoverable(e.target.checked)}
-                  />
-                  <span className="text-[12px] text-foreground">
-                    List on Discover
-                  </span>
-                </label>
-              )}
+            {!membersLoading && canManageMembers && (
+              <>
+                <ul className="mt-2 max-h-44 overflow-y-auto pr-1">
+                  {members.map((member) => (
+                    <MemberRow
+                      key={member.user_id}
+                      member={member}
+                      isMe={member.user_id === meId}
+                      busy={memberBusy}
+                      onPermissionChange={(permission) =>
+                        void changeMemberPermission(member.user_id, permission)
+                      }
+                      onRemove={
+                        meId && member.user_id !== meId
+                          ? () => void deleteMember(member.user_id)
+                          : null
+                      }
+                    />
+                  ))}
+                  {members.length === 0 && (
+                    <li className="py-2 text-[12px] text-muted">
+                      No explicit members yet.
+                    </li>
+                  )}
+                </ul>
 
-              <div className="mt-4 border-t border-border pt-3">
-                <div className="sys-label mb-2">Members</div>
-                <OwnerRow label={ownerLabel} username={skill.owner_name} />
-
-                {membersLoading && (
-                  <div className="mt-2 rounded-md border border-border bg-surface px-2 py-1.5 text-[12px] text-muted">
-                    Loading members...
+                <form onSubmit={searchForUsers} className="mt-3">
+                  <div className="sys-label mb-1">Add member</div>
+                  <div className="flex gap-1.5">
+                    <input
+                      value={userQuery}
+                      onChange={(e) => setUserQuery(e.target.value)}
+                      placeholder="Search users"
+                      className="min-w-0 flex-1 rounded-md border border-border bg-surface px-2 py-1.5 text-[12px] text-foreground placeholder:text-muted focus:border-[var(--color-brand-400)] focus:outline-none"
+                    />
+                    <PermissionSelect
+                      value={newMemberPermission}
+                      onChange={setNewMemberPermission}
+                      ariaLabel="New member permission"
+                      disabled={memberBusy}
+                    />
+                    <button
+                      type="submit"
+                      disabled={memberBusy || !userQuery.trim()}
+                      className="rounded-md border border-border bg-base px-2 py-1.5 text-[11.5px] font-medium text-foreground hover:bg-raised disabled:opacity-40"
+                    >
+                      Search
+                    </button>
                   </div>
-                )}
-
-                {!membersLoading && canManageMembers && (
-                  <>
-                    <ul className="mt-2 max-h-44 overflow-y-auto pr-1">
-                      {members.map((member) => (
-                        <MemberRow
-                          key={member.user_id}
-                          member={member}
-                          isMe={member.user_id === meId}
-                          busy={memberBusy}
-                          onPermissionChange={(permission) =>
-                            void changeMemberPermission(member.user_id, permission)
-                          }
-                          onRemove={
-                            meId && member.user_id !== meId
-                              ? () => void deleteMember(member.user_id)
-                              : null
-                          }
-                        />
-                      ))}
-                      {members.length === 0 && (
-                        <li className="py-2 text-[12px] text-muted">
-                          No explicit members yet.
-                        </li>
-                      )}
-                    </ul>
-
-                    <form onSubmit={searchForUsers} className="mt-3">
-                      <div className="sys-label mb-1">Add member</div>
-                      <div className="flex gap-1.5">
-                        <input
-                          value={userQuery}
-                          onChange={(e) => setUserQuery(e.target.value)}
-                          placeholder="Search users"
-                          className="min-w-0 flex-1 rounded-md border border-border bg-surface px-2 py-1.5 text-[12px] text-foreground placeholder:text-muted focus:border-[var(--color-brand-400)] focus:outline-none"
-                        />
-                        <PermissionSelect
-                          value={newMemberPermission}
-                          onChange={setNewMemberPermission}
-                          ariaLabel="New member permission"
-                          disabled={memberBusy}
-                        />
+                  {userResults.length > 0 && (
+                    <div className="mt-2 flex flex-col gap-1">
+                      {userResults.map((result) => (
                         <button
-                          type="submit"
-                          disabled={memberBusy || !userQuery.trim()}
-                          className="rounded-md border border-border bg-base px-2 py-1.5 text-[11.5px] font-medium text-foreground hover:bg-raised disabled:opacity-40"
+                          key={result.id}
+                          type="button"
+                          onClick={() => void addMember(result.id)}
+                          className="flex items-center justify-between rounded-md px-2 py-1.5 text-left hover:bg-raised"
                         >
-                          Search
+                          <span className="min-w-0">
+                            <span className="block truncate text-[13px] font-medium text-foreground">
+                              {result.display_name || result.name}
+                            </span>
+                            <span className="block truncate text-[11.5px] text-muted">
+                              @{result.name}
+                            </span>
+                          </span>
+                          <span className="text-[11.5px] text-muted">Add</span>
                         </button>
-                      </div>
-                      {userResults.length > 0 && (
-                        <div className="mt-2 flex flex-col gap-1">
-                          {userResults.map((result) => (
-                            <button
-                              key={result.id}
-                              type="button"
-                              onClick={() => void addMember(result.id)}
-                              className="flex items-center justify-between rounded-md px-2 py-1.5 text-left hover:bg-raised"
-                            >
-                              <span className="min-w-0">
-                                <span className="block truncate text-[13px] font-medium text-foreground">
-                                  {result.display_name || result.name}
-                                </span>
-                                <span className="block truncate text-[11.5px] text-muted">
-                                  @{result.name}
-                                </span>
-                              </span>
-                              <span className="text-[11.5px] text-muted">Add</span>
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                    </form>
-                  </>
-                )}
+                      ))}
+                    </div>
+                  )}
+                </form>
+              </>
+            )}
 
-                {!membersLoading && !canManageMembers && (
-                  <div className="mt-2 rounded-md border border-border bg-surface px-2 py-1.5 text-[12px] text-muted">
-                    Only skill admins can manage members.
-                  </div>
-                )}
+            {!membersLoading && !canManageMembers && (
+              <div className="mt-2 rounded-md border border-border bg-surface px-2 py-1.5 text-[12px] text-muted">
+                Only skill admins can manage members.
               </div>
+            )}
+          </div>
 
-              {saving && (
-                <div className="mt-2 text-[11px] text-muted">Saving...</div>
-              )}
-            </>
+          {saving && (
+            <div className="mt-2 text-[11px] text-muted">Saving...</div>
           )}
 
           {(shareMessage || memberMessage) && (
@@ -543,21 +584,6 @@ export default function SkillShareButton({
           )}
         </div>
       )}
-    </div>
-  );
-}
-
-function OwnerRow({ label, username }: { label: string; username: string }) {
-  return (
-    <div className="flex items-center gap-2.5 rounded-md border border-border bg-surface px-2 py-1.5 text-[13px]">
-      <Avatar label={label} />
-      <span className="min-w-0 flex-1">
-        <span className="block truncate font-medium text-foreground">{label}</span>
-        <span className="block truncate text-[11.5px] text-muted">@{username}</span>
-      </span>
-      <span className="rounded bg-base px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-muted ring-1 ring-border">
-        admin
-      </span>
     </div>
   );
 }
