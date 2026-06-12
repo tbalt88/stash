@@ -5,7 +5,9 @@ import ConnectTokenClient from "./ConnectTokenClient";
 
 export const dynamic = "force-dynamic";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "https://api.joinstash.ai";
+// Trailing slashes in the env var produce //api/v1/... URLs, which FastAPI
+// 404s without redirecting — strip them so a config typo can't break auth.
+const API_URL = (process.env.NEXT_PUBLIC_API_URL || "https://api.joinstash.ai").replace(/\/+$/, "");
 const AUTH0_ENABLED = process.env.NEXT_PUBLIC_AUTH0_ENABLED === "true";
 
 type Search = { session?: string; device?: string };
@@ -71,15 +73,19 @@ export default async function ConnectTokenPage({
     (session.user?.email as string | undefined) ||
     "your account";
 
+  // The connecting client names itself via ?device= (the CLI sends the
+  // hostname, the Chrome extension sends "Chrome extension").
+  const deviceLabel = device?.trim() || "the Stash CLI";
+
   return (
     <Shell>
       <p className="font-mono text-[11px] uppercase tracking-[0.14em] text-muted">
         Signed in as {userName}
       </p>
-      <Heading>Authorize the Stash CLI?</Heading>
+      <Heading>Authorize {deviceLabel}?</Heading>
       <Body>
-        A new API key scoped to this terminal will be minted and handed to your CLI.
-        You can revoke it anytime from account settings.
+        A new API key for {deviceLabel} will be minted and handed to it. You can
+        revoke it anytime from account settings.
       </Body>
       <ConnectTokenClient
         apiUrl={API_URL}
