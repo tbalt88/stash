@@ -238,3 +238,13 @@ async def revoke_invite_token(
     ok = await invite_token_service.revoke_token(token_id, workspace_id)
     if not ok:
         raise HTTPException(status_code=404, detail="Token not found or already revoked")
+    await security_audit_service.record_event(
+        action="workspace.invite_token_revoked",
+        actor_user_id=current_user["id"],
+        workspace_id=workspace_id,
+        target_type="workspace",
+        target_id=str(workspace_id),
+        metadata={
+            "invite_token_id_hash": security_audit_service.hash_value(str(token_id)),
+        },
+    )

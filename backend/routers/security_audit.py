@@ -15,18 +15,6 @@ router = APIRouter(
 )
 
 
-async def _require_workspace_admin(workspace_id: UUID, user_id: UUID) -> None:
-    role = await workspace_service.get_member_role(workspace_id, user_id)
-    if role is None:
-        # Match the sibling workspace routers: never confirm a workspace's
-        # existence to non-members.
-        raise HTTPException(status_code=404, detail="Workspace not found")
-    if role not in workspace_service.ROLES_ADMIN:
-        raise HTTPException(
-            status_code=403, detail="Only workspace admins can read security events"
-        )
-
-
 @router.get("")
 async def list_security_events(
     workspace_id: UUID,
@@ -34,7 +22,34 @@ async def list_security_events(
     limit: int = Query(100, ge=1, le=500),
     current_user: dict = Depends(get_current_user),
 ):
-    await _require_workspace_admin(workspace_id, current_user["id"])
+    role = await workspace_service.get_member_role(workspace_id, current_user["id"])
+    if role is None:
+        # Match the sibling workspace routers: never confirm a workspace's
+        # existence to non-members.
+        raise HTTPException(status_code=404, detail="Workspace not found")
+    metadata = {
+        "action_filter_hash": security_audit_service.hash_value(action),
+        "limit": limit,
+    }
+    if role not in workspace_service.ROLES_ADMIN:
+        await security_audit_service.record_event(
+            action="security_audit.read_denied",
+            actor_user_id=current_user["id"],
+            workspace_id=workspace_id,
+            target_type="security_audit_log",
+            metadata={**metadata, "role": role},
+        )
+        raise HTTPException(
+            status_code=403, detail="Only workspace admins can read security events"
+        )
+
+    await security_audit_service.record_event(
+        action="security_audit.read",
+        actor_user_id=current_user["id"],
+        workspace_id=workspace_id,
+        target_type="security_audit_log",
+        metadata=metadata,
+    )
     events = await security_audit_service.list_workspace_events(
         workspace_id=workspace_id,
         action=action,

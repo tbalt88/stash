@@ -17,7 +17,7 @@ from uuid import UUID
 from fastapi import HTTPException
 
 from ..database import get_pool
-from . import permission_service, workspace_service
+from . import permission_service, security_audit_service, workspace_service
 
 _SHAREABLE = {"file", "page", "folder", "session", "session_folder", "table"}
 _PERMISSIONS = {"read", "comment", "write"}
@@ -29,6 +29,25 @@ async def _require_owner(object_type: str, object_id: UUID, user_id: UUID) -> UU
     if workspace_id is None or not await workspace_service.is_owner(workspace_id, user_id):
         raise HTTPException(status_code=404, detail="Not found")
     return workspace_id
+
+
+async def _record_share_event(
+    *,
+    action: str,
+    actor_user_id: UUID,
+    workspace_id: UUID,
+    object_type: str,
+    object_id: UUID,
+    metadata: dict,
+) -> None:
+    await security_audit_service.record_event(
+        action=action,
+        actor_user_id=actor_user_id,
+        workspace_id=workspace_id,
+        target_type=object_type,
+        target_id=str(object_id),
+        metadata=metadata,
+    )
 
 
 async def share_with_user_by_email(
@@ -45,9 +64,13 @@ async def share_with_user_by_email(
     if permission not in _PERMISSIONS:
         raise HTTPException(status_code=400, detail="permission must be read, comment, or write")
     workspace_id = await _require_owner(object_type, object_id, owner_id)
+    normalized_email = email.strip().lower()
 
     pool = get_pool()
-    user = await pool.fetchrow("SELECT id FROM users WHERE lower(email) = lower($1)", email)
+    user = await pool.fetchrow(
+        "SELECT id FROM users WHERE lower(email) = $1",
+        normalized_email,
+    )
     if not user:
         # No user with that email yet — stash a pending invite that converts on
         # their signup. We can't validate the address, so this never fails the
@@ -63,12 +86,23 @@ async def share_with_user_by_email(
             workspace_id,
             object_type,
             object_id,
-            email,
+            normalized_email,
             permission,
             owner_id,
             expires_at,
         )
-        return {"pending": True, "email": email.lower()}
+        await _record_share_event(
+            action="share.invited",
+            actor_user_id=owner_id,
+            workspace_id=workspace_id,
+            object_type=object_type,
+            object_id=object_id,
+            metadata={
+                "permission": permission,
+                "recipient_email_hash": security_audit_service.hash_value(normalized_email),
+            },
+        )
+        return {"pending": True, "email": normalized_email}
     if user["id"] == owner_id:
         raise HTTPException(status_code=400, detail="You already own this")
     row = await pool.fetchrow(
@@ -88,6 +122,18 @@ async def share_with_user_by_email(
         owner_id,
         expires_at,
     )
+    await _record_share_event(
+        action="share.granted",
+        actor_user_id=owner_id,
+        workspace_id=workspace_id,
+        object_type=object_type,
+        object_id=object_id,
+        metadata={
+            "permission": permission,
+            "principal_type": "user",
+            "recipient_user_hash": security_audit_service.hash_value(str(user["id"])),
+        },
+    )
     return {"id": str(row["id"]), "principal_type": "user", "principal_id": str(user["id"])}
 
 
@@ -98,8 +144,15 @@ async def convert_pending_invites(user_id: UUID, email: str | None) -> int:
     if not email:
         return 0
     pool = get_pool()
+    # An invite that expired before signup must not grant anything — drop it.
+    await pool.execute(
+        "DELETE FROM share_invites WHERE lower(email) = lower($1) "
+        "AND expires_at IS NOT NULL AND expires_at <= now()",
+        email,
+    )
     invites = await pool.fetch(
-        "SELECT id, workspace_id, object_type, object_id, permission, created_by "
+        "SELECT id, workspace_id, object_type, object_id, email, permission, created_by, "
+        "expires_at "
         "FROM share_invites WHERE lower(email) = lower($1)",
         email,
     )
@@ -108,13 +161,15 @@ async def convert_pending_invites(user_id: UUID, email: str | None) -> int:
         if inv["created_by"] == user_id:
             await pool.execute("DELETE FROM share_invites WHERE id = $1", inv["id"])
             continue
+        # The converted share keeps the invite's time bound; permission_service
+        # enforces shares.expires_at at read time.
         await pool.execute(
             """
             INSERT INTO shares (workspace_id, object_type, object_id, principal_type,
-                                principal_id, permission, created_by)
-            VALUES ($1, $2, $3, 'user', $4, $5, $6)
+                                principal_id, permission, created_by, expires_at)
+            VALUES ($1, $2, $3, 'user', $4, $5, $6, $7)
             ON CONFLICT (object_type, object_id, principal_type, principal_id)
-            DO UPDATE SET permission = EXCLUDED.permission
+            DO UPDATE SET permission = EXCLUDED.permission, expires_at = EXCLUDED.expires_at
             """,
             inv["workspace_id"],
             inv["object_type"],
@@ -122,8 +177,21 @@ async def convert_pending_invites(user_id: UUID, email: str | None) -> int:
             user_id,
             inv["permission"],
             inv["created_by"],
+            inv["expires_at"],
         )
         await pool.execute("DELETE FROM share_invites WHERE id = $1", inv["id"])
+        await _record_share_event(
+            action="share.invite_converted",
+            actor_user_id=inv["created_by"],
+            workspace_id=inv["workspace_id"],
+            object_type=inv["object_type"],
+            object_id=inv["object_id"],
+            metadata={
+                "permission": inv["permission"],
+                "recipient_email_hash": security_audit_service.hash_value(inv["email"]),
+                "recipient_user_hash": security_audit_service.hash_value(str(user_id)),
+            },
+        )
         converted += 1
     return converted
 
@@ -131,15 +199,61 @@ async def convert_pending_invites(user_id: UUID, email: str | None) -> int:
 async def unshare(
     *, object_type: str, object_id: UUID, principal_type: str, principal_id: UUID, owner_id: UUID
 ) -> None:
-    await _require_owner(object_type, object_id, owner_id)
-    await get_pool().execute(
+    workspace_id = await _require_owner(object_type, object_id, owner_id)
+    removed = await get_pool().fetchrow(
         "DELETE FROM shares WHERE object_type = $1 AND object_id = $2 "
-        "AND principal_type = $3 AND principal_id = $4",
+        "AND principal_type = $3 AND principal_id = $4 "
+        "RETURNING permission",
         object_type,
         object_id,
         principal_type,
         principal_id,
     )
+    if removed:
+        hash_key = "recipient_user_hash" if principal_type == "user" else "principal_id_hash"
+        await _record_share_event(
+            action="share.revoked",
+            actor_user_id=owner_id,
+            workspace_id=workspace_id,
+            object_type=object_type,
+            object_id=object_id,
+            metadata={
+                "permission": removed["permission"],
+                "principal_type": principal_type,
+                hash_key: security_audit_service.hash_value(str(principal_id)),
+            },
+        )
+
+
+async def revoke_pending_invite_by_email(
+    *,
+    object_type: str,
+    object_id: UUID,
+    email: str,
+    owner_id: UUID,
+) -> None:
+    workspace_id = await _require_owner(object_type, object_id, owner_id)
+    normalized_email = email.strip().lower()
+    removed = await get_pool().fetchrow(
+        "DELETE FROM share_invites "
+        "WHERE object_type = $1 AND object_id = $2 AND lower(email) = $3 "
+        "RETURNING permission",
+        object_type,
+        object_id,
+        normalized_email,
+    )
+    if removed:
+        await _record_share_event(
+            action="share.invite_revoked",
+            actor_user_id=owner_id,
+            workspace_id=workspace_id,
+            object_type=object_type,
+            object_id=object_id,
+            metadata={
+                "permission": removed["permission"],
+                "recipient_email_hash": security_audit_service.hash_value(normalized_email),
+            },
+        )
 
 
 async def list_object_shares(object_type: str, object_id: UUID, owner_id: UUID) -> list[dict]:

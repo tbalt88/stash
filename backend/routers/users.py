@@ -1,6 +1,6 @@
 import secrets
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 
 from ..auth import create_api_key, get_current_user
 from ..config import settings
@@ -16,7 +16,6 @@ from ..models import (
     UserProfile,
     UserRegisterRequest,
     UserRegisterResponse,
-    UserSearchResult,
     UserUpdateRequest,
 )
 from ..services import invite_token_service, user_service
@@ -115,25 +114,6 @@ async def update_me(req: UserUpdateRequest, current_user: dict = Depends(get_cur
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
     return UserProfile(**updated)
-
-
-@router.get("/search", response_model=list[UserSearchResult])
-async def search_users(
-    q: str = Query(..., min_length=1, max_length=64),
-    current_user: dict = Depends(get_current_user),
-):
-    """Search for users by name or display name."""
-    from ..database import get_pool
-
-    pool = get_pool()
-    rows = await pool.fetch(
-        "SELECT id, name, display_name FROM users "
-        "WHERE (name ILIKE $1 OR display_name ILIKE $1) AND id != $2 "
-        "LIMIT 20",
-        f"%{q}%",
-        current_user["id"],
-    )
-    return [UserSearchResult(**dict(r)) for r in rows]
 
 
 # ---------------------------------------------------------------------------

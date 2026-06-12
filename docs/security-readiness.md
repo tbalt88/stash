@@ -22,6 +22,9 @@ It is intentionally operational: do not use this as marketing copy. Use it to ve
 - Configured managed OAuth redirect URIs must be HTTPS callback URLs without path params, query strings, or fragments.
 - Browser clients must use Auth0 access tokens for managed API calls. They must not carry long-lived Stash API keys.
 - Managed Auth0 deployments must not expose or accept legacy permanent workspace invite codes; use hashed, TTL-bounded invite tokens instead.
+- User search must be scoped to a workspace where the requester is already a member; it must not enumerate users across tenants.
+- Aggregate session lists must require current workspace access for workspace sessions; event authorship alone must not preserve access after a user leaves or is removed from a workspace.
+- User-wide analytics visualizations must not serve cached workspace-derived labels or topics after membership changes; only explicit workspace-scoped visualization results may use persistent caches.
 - Workspace writes must require editor or owner membership. Viewer access is read-only.
 - Public links must not create write-capable paths for Stashes, session folders, files, pages, tables, or collaboration documents.
 - Export workers must re-check page/file access server-side and must block outbound network access during export rendering.
@@ -45,6 +48,11 @@ It is intentionally operational: do not use this as marketing copy. Use it to ve
 - Integration token encryption must fail closed on missing or invalid managed keyrings and support rotation through the Fernet keyring.
 - Disconnect and hard-delete paths must purge copied documents, stored files, and generated artifacts.
 - Sensitive integration and source actions must emit workspace security audit events that only admins can read.
+- Security audit log reads and denied member read attempts must themselves emit security audit events with hashed filter metadata.
+- Shared-token admin endpoint access must emit global security audit events without storing tokens, client IPs, or raw query strings.
+- Workspace invite token creation/revocation and member join/leave events must emit workspace security audit events without storing raw invite tokens, member names, emails, or workspace names in event metadata.
+- Explicit Stash member grants and removals must emit workspace security audit events without storing recipient names, emails, or customer content in event metadata.
+- Explicit object share grants, email invites, pending invite revocations, invite conversions, and share revocations must emit workspace security audit events without storing recipient names, emails, or customer content in event metadata.
 - Page, file, and session delete/restore/permanent-purge actions must emit workspace security audit events without storing customer content, object names, or storage keys in event metadata.
 - Credentialed CORS must reject wildcard origins.
 - API and Next.js responses must include baseline security headers.

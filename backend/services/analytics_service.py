@@ -664,18 +664,22 @@ async def get_knowledge_density(
 ) -> dict:
     """Topic clusters for the key topics treemap.
 
-    Reads from knowledge_density_cache (migration 0017/0018). Rows are keyed
-    by (user_id, workspace_id) with NULLS NOT DISTINCT, so user-wide and
-    per-workspace caches share the same table."""
+    Reads from knowledge_density_cache (migration 0017/0018) only for explicit
+    workspace scopes. User-wide results depend on the user's current workspace
+    memberships, so they are recomputed to avoid serving stale customer data
+    after offboarding."""
     pool = get_pool()
     max_clusters = min(max_clusters, 50)
 
-    cached = await pool.fetchrow(
-        "SELECT clusters, source_signature, computed_at FROM knowledge_density_cache "
-        "WHERE user_id = $1 AND workspace_id IS NOT DISTINCT FROM $2",
-        user_id,
-        workspace_id,
-    )
+    cached = None
+    use_cache = workspace_id is not None
+    if use_cache:
+        cached = await pool.fetchrow(
+            "SELECT clusters, source_signature, computed_at FROM knowledge_density_cache "
+            "WHERE user_id = $1 AND workspace_id IS NOT DISTINCT FROM $2",
+            user_id,
+            workspace_id,
+        )
     now = datetime.now(UTC)
 
     if cached and now - cached["computed_at"] < _DENSITY_CACHE_TTL:
@@ -684,20 +688,21 @@ async def get_knowledge_density(
             return {"clusters": cached["clusters"][:max_clusters]}
 
     clusters, signature = await compute_knowledge_density(user_id, workspace_id=workspace_id)
-    await pool.execute(
-        """
-        INSERT INTO knowledge_density_cache (user_id, workspace_id, clusters, source_signature, computed_at)
-        VALUES ($1, $2, $3, $4, now())
-        ON CONFLICT (user_id, workspace_id)
-        DO UPDATE SET clusters = EXCLUDED.clusters,
-                      source_signature = EXCLUDED.source_signature,
-                      computed_at = EXCLUDED.computed_at
-        """,
-        user_id,
-        workspace_id,
-        clusters,
-        signature,
-    )
+    if use_cache:
+        await pool.execute(
+            """
+            INSERT INTO knowledge_density_cache (user_id, workspace_id, clusters, source_signature, computed_at)
+            VALUES ($1, $2, $3, $4, now())
+            ON CONFLICT (user_id, workspace_id)
+            DO UPDATE SET clusters = EXCLUDED.clusters,
+                          source_signature = EXCLUDED.source_signature,
+                          computed_at = EXCLUDED.computed_at
+            """,
+            user_id,
+            workspace_id,
+            clusters,
+            signature,
+        )
     return {"clusters": clusters[:max_clusters]}
 
 
@@ -709,7 +714,10 @@ async def get_embedding_projection(
 ) -> dict:
     """3D PCA projection of embeddings for the space explorer.
 
-    Pass ``workspace_id`` to scope to one workspace."""
+    Pass ``workspace_id`` to scope to one workspace.
+
+    Only explicit workspace-scoped requests use the embedding_projections cache.
+    User-wide results depend on current workspace memberships."""
     pool = get_pool()
     max_points = min(max_points, 2000)
 
@@ -726,16 +734,20 @@ async def get_embedding_projection(
         event_count_args.append(workspace_id)
         event_ws_idx = 2
 
-    # Cache row keyed by (user_id, source_type, workspace_id) — NULL workspace
-    # is the user-wide row (migration 0018, NULLS NOT DISTINCT).
-    cache = await pool.fetchrow(
-        "SELECT points, embedding_count, computed_at FROM embedding_projections "
-        "WHERE user_id = $1 AND source_type = $2 "
-        "AND workspace_id IS NOT DISTINCT FROM $3",
-        user_id,
-        source_key,
-        workspace_id,
-    )
+    # Cache row keyed by (user_id, source_type, workspace_id), workspace
+    # scopes only: user-wide results depend on the user's current memberships
+    # and must be recomputed (offboarding).
+    cache = None
+    use_cache = workspace_id is not None
+    if use_cache:
+        cache = await pool.fetchrow(
+            "SELECT points, embedding_count, computed_at FROM embedding_projections "
+            "WHERE user_id = $1 AND source_type = $2 "
+            "AND workspace_id IS NOT DISTINCT FROM $3",
+            user_id,
+            source_key,
+            workspace_id,
+        )
 
     # Count current embeddings
     total_count = 0
@@ -943,20 +955,21 @@ async def get_embedding_projection(
             }
         )
 
-    await pool.execute(
-        "INSERT INTO embedding_projections "
-        "(user_id, source_type, workspace_id, points, embedding_count, computed_at) "
-        "VALUES ($1, $2, $3, $4, $5, NOW()) "
-        "ON CONFLICT (user_id, source_type, workspace_id) "
-        "DO UPDATE SET points = EXCLUDED.points, "
-        "              embedding_count = EXCLUDED.embedding_count, "
-        "              computed_at = NOW()",
-        user_id,
-        source_key,
-        workspace_id,
-        points,
-        total_count,
-    )
+    if use_cache:
+        await pool.execute(
+            "INSERT INTO embedding_projections "
+            "(user_id, source_type, workspace_id, points, embedding_count, computed_at) "
+            "VALUES ($1, $2, $3, $4, $5, NOW()) "
+            "ON CONFLICT (user_id, source_type, workspace_id) "
+            "DO UPDATE SET points = EXCLUDED.points, "
+            "              embedding_count = EXCLUDED.embedding_count, "
+            "              computed_at = NOW()",
+            user_id,
+            source_key,
+            workspace_id,
+            points,
+            total_count,
+        )
 
     return {
         "points": points,
