@@ -964,6 +964,34 @@ async def test_twitter_source_reads_live_ref_without_cache(client, monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_twitter_live_read_failure_returns_generic_error_doc(client, monkeypatch):
+    """A Twitter provider failure gets the same redaction as every other lazy
+    source read: a generic error document, never a raw exception/500 that
+    could leak provider details."""
+    from backend.integrations.twitter import indexer as twitter_indexer
+
+    api_key, owner_id = await _register(client)
+    ws = await _create_workspace(client, api_key)
+    src = await _create_twitter_source(ws, owner_id)
+
+    async def fail_fetch(owner, account_id, ref):
+        raise RuntimeError("token=secret-token X API exploded")
+
+    monkeypatch.setattr(twitter_indexer, "fetch_twitter_content", fail_fetch)
+
+    doc = await source_service.read_document(src, "bookmarks")
+
+    assert doc == {
+        "path": "bookmarks",
+        "name": "Bookmarks",
+        "kind": "feed",
+        "content": "",
+        "error": "source document fetch failed",
+    }
+    assert "secret-token" not in json.dumps(doc)
+
+
+@pytest.mark.asyncio
 async def test_scoped_search_maps_provider_errors_to_http_errors(client, monkeypatch):
     """Scoped provider failures must become structured HTTP errors: an X 429
     is a 429 (not an opaque 500), and a provider 401 must NOT surface as OUR
@@ -1676,6 +1704,81 @@ async def test_slack_event_ingest_fans_out_per_owner(client: AsyncClient):
 
 
 @pytest.mark.asyncio
+async def test_slack_event_ingest_requires_active_member_and_enabled_source(
+    client: AsyncClient,
+    pool,
+):
+    from backend.integrations.slack.indexer import ingest_slack_message
+
+    active_key, active_owner = await _register(client, "active_slack")
+    stale_key, stale_owner = await _register(client, "stale_slack")
+    disabled_key, disabled_owner = await _register(client, "disabled_slack")
+    active_ws = await _create_workspace(client, active_key)
+    stale_ws = await _create_workspace(client, stale_key)
+    disabled_ws = await _create_workspace(client, disabled_key)
+    active_source = await source_service.create_source(
+        workspace_id=active_ws,
+        owner_user_id=active_owner,
+        source_type="slack",
+        external_ref="T_WEBFLOW",
+        display_name="Webflow Slack",
+        settings={"allowed_channel_ids": ["C_CONFIDENTIAL"]},
+    )
+    stale_source = await source_service.create_source(
+        workspace_id=stale_ws,
+        owner_user_id=stale_owner,
+        source_type="slack",
+        external_ref="T_WEBFLOW",
+        display_name="Webflow Slack",
+        settings={"allowed_channel_ids": ["C_CONFIDENTIAL"]},
+    )
+    disabled_source = await source_service.create_source(
+        workspace_id=disabled_ws,
+        owner_user_id=disabled_owner,
+        source_type="slack",
+        external_ref="T_WEBFLOW",
+        display_name="Webflow Slack",
+        settings={"allowed_channel_ids": ["C_CONFIDENTIAL"]},
+    )
+    await pool.execute(
+        "DELETE FROM workspace_members WHERE workspace_id = $1 AND user_id = $2",
+        stale_ws,
+        stale_owner,
+    )
+    await pool.execute(
+        "UPDATE workspace_sources SET sync_enabled = false WHERE id = $1",
+        UUID(disabled_source["id"]),
+    )
+
+    ingested = await ingest_slack_message(
+        "T_WEBFLOW",
+        {
+            "type": "message",
+            "channel": "C_CONFIDENTIAL",
+            "ts": "1717.0002",
+            "text": "Webflow confidential Slack event",
+        },
+    )
+
+    counts = {
+        "active": await pool.fetchval(
+            "SELECT COUNT(*) FROM slack_messages WHERE source_id = $1",
+            UUID(active_source["id"]),
+        ),
+        "stale": await pool.fetchval(
+            "SELECT COUNT(*) FROM slack_messages WHERE source_id = $1",
+            UUID(stale_source["id"]),
+        ),
+        "disabled": await pool.fetchval(
+            "SELECT COUNT(*) FROM slack_messages WHERE source_id = $1",
+            UUID(disabled_source["id"]),
+        ),
+    }
+    assert ingested == 1
+    assert counts == {"active": 1, "stale": 0, "disabled": 0}
+
+
+@pytest.mark.asyncio
 async def test_slack_event_ingest_deletes_removed_messages(client: AsyncClient, pool):
     from backend.integrations.slack.indexer import ingest_slack_message
 
@@ -1979,6 +2082,70 @@ async def test_federated_search_logs_only_failure_metadata(client: AsyncClient, 
 
 
 @pytest.mark.asyncio
+async def test_lazy_source_read_failure_logs_only_failure_metadata(
+    client: AsyncClient, monkeypatch
+):
+    from backend.integrations.jira import indexer
+
+    api_key, owner_id = await _register(client)
+    ws = await _create_workspace(client, api_key)
+    src = await source_service.create_source(
+        workspace_id=ws,
+        owner_user_id=owner_id,
+        source_type="jira_project",
+        external_ref="cloud-1:PROJ",
+        display_name="PROJ",
+    )
+    await source_service.upsert_index_row(
+        table="jira_documents",
+        source_id=UUID(src["id"]),
+        workspace_id=ws,
+        path="PROJ-9",
+        name="PROJ-9: confidential login bug",
+        kind="issue",
+        external_ref="cloud-1:PROJ-9",
+    )
+    captured_logs: list[tuple[str, tuple]] = []
+    site_url_called = False
+
+    async def fail_fetch(owner, external_ref):
+        raise RuntimeError(f"token=secret-token external_ref={external_ref} customer transcript")
+
+    async def site_url(source):
+        nonlocal site_url_called
+        site_url_called = True
+        return None
+
+    def capture_warning(message, *args, **kwargs):
+        captured_logs.append((message, args))
+
+    monkeypatch.setattr(indexer, "fetch_jira_content", fail_fetch)
+    monkeypatch.setattr(indexer, "site_url", site_url)
+    monkeypatch.setattr(source_service.logger, "warning", capture_warning)
+
+    source_ok, doc = await source_service.source_document(ws, owner_id, src["id"], "PROJ-9")
+
+    assert source_ok is True
+    assert doc == {
+        "path": "PROJ-9",
+        "name": "PROJ-9: confidential login bug",
+        "kind": "issue",
+        "content": "",
+        "error": "source document fetch failed",
+    }
+    assert site_url_called is False
+    assert captured_logs == [
+        (
+            "source document fetch failed source=%s source_type=%s exception_type=%s",
+            (src["id"], "jira_project", "RuntimeError"),
+        )
+    ]
+    assert "secret-token" not in str(captured_logs)
+    assert "cloud-1:PROJ-9" not in str(captured_logs)
+    assert "customer transcript" not in str(captured_logs)
+
+
+@pytest.mark.asyncio
 async def test_jira_deep_link_logs_only_failure_metadata(client: AsyncClient, monkeypatch):
     from backend.integrations.jira import indexer
 
@@ -2073,6 +2240,47 @@ async def test_fetch_history_routes_to_provider_and_rejects_unsupported(client, 
     # GitHub copies the full tree — no time-window history fetch.
     bad = await source_service.fetch_history(ws, owner_id, github["id"], "2026-01-01")
     assert "error" in bad
+
+
+@pytest.mark.asyncio
+async def test_fetch_history_provider_failures_are_redacted(client, monkeypatch):
+    from backend.integrations.slack import indexer
+
+    api_key, owner_id = await _register(client)
+    ws = await _create_workspace(client, api_key)
+    slack = await source_service.create_source(
+        workspace_id=ws,
+        owner_user_id=owner_id,
+        source_type="slack",
+        external_ref="T123",
+        display_name="Webflow Slack",
+        settings={"allowed_channel_ids": ["C1"]},
+    )
+    captured_logs: list[tuple[str, tuple]] = []
+
+    async def fail_fetch(source, since, until, limit):
+        raise RuntimeError("token=secret-token channel=#board customer transcript")
+
+    def capture_warning(message, *args, **kwargs):
+        captured_logs.append((message, args))
+
+    monkeypatch.setattr(indexer, "fetch_history", fail_fetch)
+    monkeypatch.setattr(source_service.logger, "warning", capture_warning)
+
+    result = await source_service.fetch_history(
+        ws, owner_id, slack["id"], "2026-01-01", until="2026-02-01"
+    )
+
+    assert result == {"error": "source history fetch failed"}
+    assert captured_logs == [
+        (
+            "source history fetch failed source=%s source_type=%s exception_type=%s",
+            (slack["id"], "slack", "RuntimeError"),
+        )
+    ]
+    assert "secret-token" not in str(captured_logs)
+    assert "customer transcript" not in str(captured_logs)
+    assert "#board" not in str(captured_logs)
 
 
 @pytest.mark.asyncio
@@ -2247,6 +2455,74 @@ async def test_snapshot_source_into_skill_copies_lazy_content(client: AsyncClien
     public = await client.get(f"/api/v1/skills/{skill.json()['slug']}")
     page_ids = {p["id"] for p in public.json()["contents"]["pages"]}
     assert page["id"] in page_ids
+
+
+@pytest.mark.asyncio
+async def test_snapshot_source_into_skill_fails_when_provider_fetch_fails(
+    client: AsyncClient, pool, monkeypatch
+):
+    """A failed provider fetch must fail the snapshot request — never persist
+    an empty page or record a success audit event for content that was
+    never copied."""
+    from backend.integrations.google import indexer
+
+    api_key, owner_id = await _register(client)
+    ws = await _create_workspace(client, api_key)
+
+    src = await source_service.create_source(
+        workspace_id=ws,
+        owner_user_id=owner_id,
+        source_type="google_drive",
+        external_ref="root",
+        display_name="My Drive",
+    )
+    await source_service.upsert_index_row(
+        table="drive_index",
+        source_id=UUID(src["id"]),
+        workspace_id=ws,
+        path="Auth",
+        name="Auth",
+        kind="file",
+        external_ref="file-abc",
+    )
+
+    async def fail_fetch(owner, file_id):
+        raise RuntimeError("provider down")
+
+    monkeypatch.setattr(indexer, "fetch_drive_content", fail_fetch)
+
+    folder = await client.post(
+        f"/api/v1/workspaces/{ws}/folders",
+        json={"name": "Bundle"},
+        headers=_auth(api_key),
+    )
+    assert folder.status_code == 201
+    skill = await client.post(
+        f"/api/v1/workspaces/{ws}/skills",
+        json={"folder_id": folder.json()["id"], "title": "Bundle"},
+        headers=_auth(api_key),
+    )
+    assert skill.status_code == 201
+    skill_id = skill.json()["id"]
+
+    snap = await client.post(
+        f"/api/v1/workspaces/{ws}/skills/{skill_id}/snapshot-source",
+        json={"source_id": src["id"], "path": "Auth"},
+        headers=_auth(api_key),
+    )
+    copied_pages = await pool.fetchval(
+        "SELECT COUNT(*) FROM pages WHERE workspace_id = $1 AND name = 'Auth'",
+        ws,
+    )
+    snapshot_events = await pool.fetchval(
+        "SELECT COUNT(*) FROM security_audit_events "
+        "WHERE workspace_id = $1 AND action = 'source.document_snapshotted'",
+        ws,
+    )
+
+    assert snap.status_code == 404
+    assert copied_pages == 0
+    assert snapshot_events == 0
 
 
 @pytest.mark.asyncio

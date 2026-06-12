@@ -756,27 +756,22 @@ async def snapshot_source_into_skill(
     skill_id: UUID,
     user_id: UUID,
     *,
-    source_id: UUID,
+    source: dict,
     path: str,
 ) -> dict | None:
     """Copy a point-in-time snapshot of one connected-source document into the
     skill's folder as a native page, so the skill stays self-contained.
 
-    Returns None if the user doesn't own the source or the document is gone."""
+    The caller validates source ownership (get_owned_source_in_workspace).
+    Returns None if the document is gone or its provider fetch failed — an
+    error doc must never be persisted as an empty snapshot page."""
     skill = await get_skill(skill_id)
     if not skill:
         return None
     if not await user_can_write(skill_id, user_id):
         raise PermissionError("Not allowed to edit this skill")
-    source = await source_service.get_owned_source_in_workspace(
-        source_id,
-        user_id,
-        skill["workspace_id"],
-    )
-    if source is None:
-        return None
     doc = await source_service.read_document(source, path)
-    if doc is None:
+    if doc is None or "error" in doc:
         return None
     return await files_tree_service.create_page(
         skill["workspace_id"],

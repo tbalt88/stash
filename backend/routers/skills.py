@@ -17,8 +17,10 @@ from ..models import (
     SkillUpdateRequest,
 )
 from ..services import (
+    security_audit_service,
     shared_skill_service,
     skill_service,
+    source_service,
     workspace_service,
 )
 
@@ -117,14 +119,34 @@ async def snapshot_source(
     skill = await shared_skill_service.get_skill(skill_id)
     if not skill or skill["workspace_id"] != workspace_id:
         raise HTTPException(status_code=404, detail="Skill not found")
+    source = await source_service.get_owned_source_in_workspace(
+        req.source_id,
+        current_user["id"],
+        workspace_id,
+    )
+    if source is None:
+        raise HTTPException(status_code=404, detail="Source document not found")
     try:
         page = await shared_skill_service.snapshot_source_into_skill(
-            skill_id, current_user["id"], source_id=req.source_id, path=req.path
+            skill_id, current_user["id"], source=source, path=req.path
         )
     except PermissionError:
         raise HTTPException(status_code=403, detail="Not allowed to edit this skill")
     if page is None:
         raise HTTPException(status_code=404, detail="Source document not found")
+    await security_audit_service.record_event(
+        action="source.document_snapshotted",
+        actor_user_id=current_user["id"],
+        workspace_id=workspace_id,
+        target_type="source",
+        target_id=source["id"],
+        provider=source_service.SOURCE_TYPE_PROVIDER.get(source["source_type"]),
+        source_type=source["source_type"],
+        metadata={
+            "ref_hash": security_audit_service.hash_value(req.path),
+            "skill_id": str(skill_id),
+        },
+    )
     return PageResponse(**page)
 
 
@@ -275,6 +297,10 @@ async def fork_skill(
 ):
     """Fork: deep-copy the skill's folder into the caller's workspace."""
     await _require_member(req.workspace_id, current_user["id"])
+    # Forking writes new pages/files/sessions into the workspace — same bar as
+    # creating a Skill.
+    if not await workspace_service.can_write(req.workspace_id, current_user["id"]):
+        raise HTTPException(status_code=403, detail="Viewers can read but not create Skills")
     forked = await shared_skill_service.fork_skill(req.workspace_id, slug, current_user["id"])
     if not forked:
         raise HTTPException(status_code=404, detail="Skill not found")

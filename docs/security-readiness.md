@@ -4,6 +4,8 @@ This document records the security controls that must be true before Stash is us
 
 It is intentionally operational: do not use this as marketing copy. Use it to verify what is enforced in code, what CI checks continuously, and what still needs evidence from production operations.
 
+Operational evidence collection lives in [security-operations.md](security-operations.md).
+
 ## Customer Data We Must Treat As Confidential
 
 - Session transcripts and agent messages.
@@ -31,25 +33,31 @@ It is intentionally operational: do not use this as marketing copy. Use it to ve
 - Aggregate session lists must require current workspace access for workspace sessions; event authorship alone must not preserve access after a user leaves or is removed from a workspace.
 - User-wide analytics visualizations must not serve cached workspace-derived labels or topics after membership changes; only explicit workspace-scoped visualization results may use persistent caches.
 - Workspace writes must require editor or owner membership. Viewer access is read-only.
+- Skill publishing and forking must require the same workspace write/owner gates as creating workspace content; viewers are read-only.
+- Public, discoverable, or non-default workspace-readable session folders must require workspace owner membership; private session-folder management and session assignment must require current workspace write access.
 - Public links must not create write-capable paths for Stashes, session folders, files, pages, tables, or collaboration documents.
 - Export workers must re-check page/file access server-side and must block outbound network access during export rendering.
 - Stored file access must use signed URLs. Raw storage URLs must not be returned to clients.
 - Slack and Gong integrations must require explicit allowlists before sync. Empty allowlists must not default to broad access.
 - Slack and Gong allowlist reductions must physically delete copied rows outside the current allowlist.
 - Slack deleted-message events must remove copied message rows, and Slack changed-message events must update the existing copied row without duplicating old content.
+- Slack push-event ingestion must only copy new or changed messages into enabled sources whose owners are still workspace members.
 - Copied source documents that disappear from an upstream crawl must be physically deleted rather than retained as hidden soft-deleted content.
 - Slack indexing and history skip logs must not include channel names, provider error text, tokens, or message content.
+- On-demand source history fetch failures must return generic errors, preserve a hashed security audit event, and log only source metadata plus exception class.
+- Index-only source document read failures, including Jira, Drive, and Asana lazy fetches, must return generic errors, preserve hashed security audit events, and log only source metadata plus exception class.
 - Jira source references and JQL must be scoped and quoted before execution.
 - Source handles must be scoped to the route workspace and source owner.
 - Source sync must require the source owner to still be a workspace member; leaving a workspace must remove member-owned connected sources and copied integration documents.
 - Leaving or removing a workspace member must remove direct shares, share invites, Stash memberships, Stash invites, and member-owned Stashes that user received or granted in that workspace.
 - OAuth token exchange and refresh failures must not include upstream response bodies, authorization codes, access tokens, refresh tokens, tenant details, or customer text in raised exceptions, logs, redirects, or API responses.
-- Snowflake execution must reject multi-statement or CTE-prefixed SQL and clamp row limits before execution.
+- Snowflake execution must reject multi-statement or CTE-prefixed SQL, clamp row limits before execution, and return generic errors for live query, table listing, and table description failures.
 - Sensitive errors from storage, Auth0 JWT handling, Snowflake, source sync, OAuth callbacks, profile calls, and credential validation must be redacted before reaching API responses.
 - Unhandled API exceptions must return a generic 500 and log only non-sensitive failure metadata.
 - File download and table ingest failures must not log storage keys, bucket names, tokens, parser exception text, or workbook-derived content.
 - Background task and file extraction failures must not persist or return exception messages, parser output, storage keys, or customer document text.
 - Agent tool failures must not log tool inputs, customer queries, source handles, or transcript snippets.
+- Agent Stash tool validation failures must return generic errors without echoing raw tool inputs, object IDs, labels, or customer content.
 - Source provider failures must log only source metadata and exception class, not provider response bodies, query text, tokens, or customer snippets.
 - Integration indexer logs must not include external source references, provider resource identifiers, tool response text, customer document names, meeting IDs, or query text.
 - Embedding failures must not log provider response bodies, exception messages, tokens, transcript text, copied integration content, or table row content.
@@ -60,6 +68,7 @@ It is intentionally operational: do not use this as marketing copy. Use it to ve
 - Disconnect and hard-delete paths must purge copied documents, stored files, and generated artifacts.
 - Permanent delete paths must delete a storage object only when no surviving file or session artifact still references its storage key.
 - Sensitive integration and source actions must emit workspace security audit events that only admins can read.
+- Connected-source document reads, searches, history fetches, queries, and Stash snapshots must audit hashed refs or filters rather than storing source names, provider refs, queries, or customer content.
 - Security audit log reads and denied member read attempts must themselves emit security audit events with hashed filter metadata.
 - Shared-token admin endpoint access must emit global security audit events without storing tokens, client IPs, or raw query strings.
 - Workspace invite token creation/revocation and member join/leave events must emit workspace security audit events without storing raw invite tokens, member names, emails, or workspace names in event metadata.
@@ -105,7 +114,7 @@ These items cannot be proven by code alone. They need production configuration, 
 - Subprocessors and infrastructure vendors are listed with the data categories they process.
 - Production observability redacts secrets and customer content from logs by default.
 - The customer can disconnect Slack, Jira, Gong, and other integrations without leaving copied documents or stored files behind.
-- A security contact and vulnerability reporting path are published and monitored.
+- A security contact and vulnerability reporting path are published at `/security` and `/.well-known/security.txt`, and the contact path is monitored.
 
 ## Demo Stance
 

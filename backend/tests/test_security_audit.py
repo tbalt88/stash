@@ -574,6 +574,428 @@ async def test_source_access_audit_uses_hashes_not_sensitive_values(client: Asyn
 
 
 @pytest.mark.asyncio
+async def test_lazy_source_read_failure_redacts_provider_error_and_audits_hashes(
+    client: AsyncClient,
+    monkeypatch,
+):
+    from backend.integrations.jira import indexer
+
+    api_key, _ = await _register(client, "audit_lazy_read")
+    ws = await _create_workspace(client, api_key)
+    headers = _auth(api_key)
+    ref = "PROJ-9"
+    external_ref = "cloud-1:PROJ-9"
+    captured_logs = []
+
+    async def fail_fetch(owner_user_id, provider_ref):
+        raise RuntimeError(
+            f"token=secret-token external_ref={provider_ref} customer transcript body"
+        )
+
+    def capture_warning(message, *args, **kwargs):
+        captured_logs.append((message, args))
+
+    monkeypatch.setattr(indexer, "fetch_jira_content", fail_fetch)
+    monkeypatch.setattr(source_service.logger, "warning", capture_warning)
+
+    added = await client.post(
+        f"/api/v1/workspaces/{ws}/sources",
+        json={
+            "source_type": "jira_project",
+            "external_ref": "cloud-1:PROJ",
+            "display_name": "Webflow confidential Jira",
+        },
+        headers=headers,
+    )
+    assert added.status_code == 200
+    source_id = UUID(added.json()["id"])
+    await source_service.upsert_index_row(
+        table="jira_documents",
+        source_id=source_id,
+        workspace_id=ws,
+        path=ref,
+        name="PROJ-9: confidential launch bug",
+        kind="issue",
+        external_ref=external_ref,
+    )
+
+    doc = await client.get(
+        f"/api/v1/workspaces/{ws}/sources/{source_id}/doc",
+        params={"ref": ref},
+        headers=headers,
+    )
+    events_resp = await client.get(
+        f"/api/v1/workspaces/{ws}/security-events",
+        headers=headers,
+    )
+
+    assert doc.status_code == 200
+    assert doc.json() == {
+        "path": ref,
+        "name": "PROJ-9: confidential launch bug",
+        "kind": "issue",
+        "content": "",
+        "error": "source document fetch failed",
+    }
+    response_json = json.dumps(doc.json())
+    assert "secret-token" not in response_json
+    assert external_ref not in response_json
+    assert "customer transcript body" not in response_json
+    assert captured_logs == [
+        (
+            "source document fetch failed source=%s source_type=%s exception_type=%s",
+            (str(source_id), "jira_project", "RuntimeError"),
+        )
+    ]
+    assert "secret-token" not in str(captured_logs)
+    assert external_ref not in str(captured_logs)
+    assert "customer transcript body" not in str(captured_logs)
+    assert events_resp.status_code == 200
+
+    events = events_resp.json()["events"]
+    event_json = json.dumps(events)
+    assert ref not in event_json
+    assert external_ref not in event_json
+    assert "secret-token" not in event_json
+    assert "customer transcript body" not in event_json
+    assert "Webflow confidential Jira" not in event_json
+    assert "confidential launch bug" not in event_json
+
+    read_event = next(event for event in events if event["action"] == "source.document_read")
+    assert read_event["target_id"] == str(source_id)
+    assert read_event["provider"] == "jira"
+    assert read_event["source_type"] == "jira_project"
+    assert read_event["metadata"] == {"ref_hash": security_audit_service.hash_value(ref)}
+
+
+@pytest.mark.asyncio
+async def test_query_source_failure_redacts_snowflake_error_and_sql(
+    client: AsyncClient,
+    monkeypatch,
+):
+    from backend.integrations.snowflake import client as snowflake_client
+
+    api_key, _ = await _register(client, "audit_query")
+    ws = await _create_workspace(client, api_key)
+    headers = _auth(api_key)
+    sensitive_sql = "SELECT secret FROM confidential_webflow_pipeline"
+    captured_logs = []
+
+    async def fake_creds(owner_user_id):
+        return {"account": "webflow", "user": "svc", "token": "secret-token"}
+
+    def fail_query(creds, sql, limit):
+        raise RuntimeError(f"account={creds['account']} token={creds['token']} sql={sql}")
+
+    def capture_warning(message, *args, **kwargs):
+        captured_logs.append((message, args))
+
+    monkeypatch.setattr(snowflake_client, "_creds", fake_creds)
+    monkeypatch.setattr(snowflake_client, "_run_sync", fail_query)
+    monkeypatch.setattr(source_service.logger, "warning", capture_warning)
+
+    added = await client.post(
+        f"/api/v1/workspaces/{ws}/sources",
+        json={
+            "source_type": "snowflake",
+            "external_ref": "webflow-confidential-account",
+            "display_name": "Webflow confidential Snowflake",
+        },
+        headers=headers,
+    )
+    assert added.status_code == 200
+    source_id = added.json()["id"]
+
+    query = await client.post(
+        f"/api/v1/workspaces/{ws}/sources/{source_id}/query",
+        json={"sql": sensitive_sql, "limit": 10},
+        headers=headers,
+    )
+    events_resp = await client.get(
+        f"/api/v1/workspaces/{ws}/security-events",
+        headers=headers,
+    )
+
+    assert query.status_code == 200
+    assert query.json() == {"error": "Snowflake query failed"}
+    assert captured_logs == [
+        (
+            "query source failed source=%s source_type=%s exception_type=%s",
+            (source_id, "snowflake", "SnowflakeQueryError"),
+        )
+    ]
+    assert events_resp.status_code == 200
+
+    events = events_resp.json()["events"]
+    event_json = json.dumps(events)
+    assert sensitive_sql not in event_json
+    assert "confidential_webflow_pipeline" not in event_json
+    assert "secret-token" not in event_json
+    assert "webflow-confidential-account" not in event_json
+    assert "Webflow confidential Snowflake" not in event_json
+    assert "secret-token" not in str(captured_logs)
+    assert "confidential_webflow_pipeline" not in str(captured_logs)
+
+    query_event = next(event for event in events if event["action"] == "source.queried")
+    assert query_event["target_id"] == source_id
+    assert query_event["provider"] == "snowflake"
+    assert query_event["source_type"] == "snowflake"
+    assert query_event["metadata"] == {
+        "sql_hash": security_audit_service.hash_value(sensitive_sql),
+        "limit": 10,
+        "row_count": None,
+        "error": True,
+    }
+
+
+@pytest.mark.asyncio
+async def test_snowflake_metadata_failures_are_redacted_and_audited(
+    client: AsyncClient,
+    monkeypatch,
+):
+    from backend.integrations.snowflake import client as snowflake_client
+
+    api_key, _ = await _register(client, "audit_snowflake_metadata")
+    ws = await _create_workspace(client, api_key)
+    headers = _auth(api_key)
+    sensitive_path = "token=secret-token customer table list"
+    sensitive_ref = "DB.SCHEMA.confidential_customer_data"
+    captured_logs = []
+
+    async def fake_creds(owner_user_id):
+        return {"account": "webflow", "user": "svc", "token": "secret-token"}
+
+    def fail_metadata(creds, sql, limit):
+        raise RuntimeError(f"account={creds['account']} token={creds['token']} sql={sql}")
+
+    def capture_warning(message, *args, **kwargs):
+        captured_logs.append((message, args))
+
+    monkeypatch.setattr(snowflake_client, "_creds", fake_creds)
+    monkeypatch.setattr(snowflake_client, "_run_sync", fail_metadata)
+    monkeypatch.setattr(source_service.logger, "warning", capture_warning)
+
+    added = await client.post(
+        f"/api/v1/workspaces/{ws}/sources",
+        json={
+            "source_type": "snowflake",
+            "external_ref": "webflow-confidential-account",
+            "display_name": "Webflow confidential Snowflake",
+        },
+        headers=headers,
+    )
+    assert added.status_code == 200
+    source_id = added.json()["id"]
+
+    entries = await client.get(
+        f"/api/v1/workspaces/{ws}/sources/{source_id}/entries",
+        params={"path": sensitive_path},
+        headers=headers,
+    )
+    doc = await client.get(
+        f"/api/v1/workspaces/{ws}/sources/{source_id}/doc",
+        params={"ref": sensitive_ref},
+        headers=headers,
+    )
+    events_resp = await client.get(
+        f"/api/v1/workspaces/{ws}/security-events",
+        headers=headers,
+    )
+
+    assert entries.status_code == 200
+    assert entries.json() == {"entries": []}
+    assert doc.status_code == 200
+    assert doc.json() == {"error": "Snowflake metadata fetch failed"}
+    assert captured_logs == [
+        (
+            "source entries failed source=%s source_type=%s exception_type=%s",
+            (source_id, "snowflake", "SnowflakeMetadataError"),
+        ),
+        (
+            "source document failed source=%s source_type=%s exception_type=%s",
+            (source_id, "snowflake", "SnowflakeMetadataError"),
+        ),
+    ]
+    assert events_resp.status_code == 200
+
+    events = events_resp.json()["events"]
+    event_json = json.dumps(events)
+    assert sensitive_path not in event_json
+    assert sensitive_ref not in event_json
+    assert "confidential_customer_data" not in event_json
+    assert "secret-token" not in event_json
+    assert "webflow-confidential-account" not in event_json
+    assert "Webflow confidential Snowflake" not in event_json
+    assert "secret-token" not in str(captured_logs)
+    assert "confidential_customer_data" not in str(captured_logs)
+
+    entries_event = next(event for event in events if event["action"] == "source.entries_listed")
+    doc_event = next(event for event in events if event["action"] == "source.document_read")
+    assert entries_event["target_id"] == source_id
+    assert entries_event["provider"] == "snowflake"
+    assert entries_event["source_type"] == "snowflake"
+    assert entries_event["metadata"] == {
+        "path_hash": security_audit_service.hash_value(sensitive_path),
+        "result_count": 0,
+    }
+    assert doc_event["target_id"] == source_id
+    assert doc_event["provider"] == "snowflake"
+    assert doc_event["source_type"] == "snowflake"
+    assert doc_event["metadata"] == {
+        "ref_hash": security_audit_service.hash_value(sensitive_ref),
+    }
+
+
+@pytest.mark.asyncio
+async def test_history_fetch_failure_audit_redacts_provider_error_and_filters(
+    client: AsyncClient,
+    monkeypatch,
+):
+    from backend.integrations.slack import indexer as slack_indexer
+
+    api_key, owner_id = await _register(client, "audit_history")
+    ws = await _create_workspace(client, api_key)
+    headers = _auth(api_key)
+    sensitive_since = "2026-01-01T00:00:00Z"
+    sensitive_until = "2026-02-01T00:00:00Z"
+    source = await source_service.create_source(
+        workspace_id=ws,
+        owner_user_id=owner_id,
+        source_type="slack",
+        external_ref="T_SECRET",
+        display_name="Webflow confidential Slack",
+        settings={"allowed_channel_ids": ["C_SECRET"]},
+    )
+    captured_logs = []
+
+    async def fail_fetch(source, since, until, limit):
+        raise RuntimeError(
+            f"token=secret-token channel=C_SECRET Webflow transcript {sensitive_since}"
+        )
+
+    def capture_warning(message, *args, **kwargs):
+        captured_logs.append((message, args))
+
+    monkeypatch.setattr(slack_indexer, "fetch_history", fail_fetch)
+    monkeypatch.setattr(source_service.logger, "warning", capture_warning)
+
+    fetched = await client.post(
+        f"/api/v1/workspaces/{ws}/sources/{source['id']}/history",
+        json={"since": sensitive_since, "until": sensitive_until, "limit": 77},
+        headers=headers,
+    )
+    events_resp = await client.get(
+        f"/api/v1/workspaces/{ws}/security-events",
+        headers=headers,
+    )
+
+    assert fetched.status_code == 200
+    assert fetched.json() == {"error": "source history fetch failed"}
+    assert captured_logs == [
+        (
+            "source history fetch failed source=%s source_type=%s exception_type=%s",
+            (source["id"], "slack", "RuntimeError"),
+        )
+    ]
+    assert events_resp.status_code == 200
+
+    events = events_resp.json()["events"]
+    event_json = json.dumps(events)
+    assert sensitive_since not in event_json
+    assert sensitive_until not in event_json
+    assert "secret-token" not in event_json
+    assert "C_SECRET" not in event_json
+    assert "T_SECRET" not in event_json
+    assert "Webflow confidential Slack" not in event_json
+    assert "Webflow transcript" not in event_json
+    assert "secret-token" not in str(captured_logs)
+    assert "C_SECRET" not in str(captured_logs)
+
+    history_event = next(event for event in events if event["action"] == "source.history_fetched")
+    assert history_event["target_id"] == source["id"]
+    assert history_event["provider"] == "slack"
+    assert history_event["source_type"] == "slack"
+    assert history_event["metadata"] == {
+        "since_hash": security_audit_service.hash_value(sensitive_since),
+        "until_hash": security_audit_service.hash_value(sensitive_until),
+        "limit": 77,
+        "fetched": None,
+        "error": True,
+    }
+
+
+@pytest.mark.asyncio
+async def test_source_snapshot_audit_uses_hashes_not_sensitive_values(client: AsyncClient):
+    api_key, _ = await _register(client, "audit_snapshot")
+    ws = await _create_workspace(client, api_key)
+    headers = _auth(api_key)
+
+    added = await client.post(
+        f"/api/v1/workspaces/{ws}/sources",
+        json={
+            "source_type": "github_repo",
+            "external_ref": "webflow/confidential-sales",
+            "display_name": "webflow/confidential-sales",
+        },
+        headers=headers,
+    )
+    assert added.status_code == 200
+    source_id = UUID(added.json()["id"])
+    ref = "docs/private-webflow-pricing.md"
+    await source_service.upsert_content_document(
+        table="github_documents",
+        source_id=source_id,
+        workspace_id=ws,
+        path=ref,
+        name="private-webflow-pricing.md",
+        content="Webflow confidential pricing notes",
+    )
+    folder = await client.post(
+        f"/api/v1/workspaces/{ws}/folders",
+        json={"name": "Snapshot bundle"},
+        headers=headers,
+    )
+    assert folder.status_code == 201
+    skill = await client.post(
+        f"/api/v1/workspaces/{ws}/skills",
+        json={"folder_id": folder.json()["id"], "title": "Snapshot bundle"},
+        headers=headers,
+    )
+    assert skill.status_code == 201
+    skill_id = skill.json()["id"]
+
+    snap = await client.post(
+        f"/api/v1/workspaces/{ws}/skills/{skill_id}/snapshot-source",
+        json={"source_id": str(source_id), "path": ref},
+        headers=headers,
+    )
+    events_resp = await client.get(
+        f"/api/v1/workspaces/{ws}/security-events",
+        headers=headers,
+    )
+
+    assert snap.status_code == 201
+    assert events_resp.status_code == 200
+    events = events_resp.json()["events"]
+    event_json = json.dumps(events)
+    assert "webflow/confidential-sales" not in event_json
+    assert ref not in event_json
+    assert "private-webflow-pricing.md" not in event_json
+    assert "Webflow confidential pricing notes" not in event_json
+
+    snapshot_event = next(
+        event for event in events if event["action"] == "source.document_snapshotted"
+    )
+    assert snapshot_event["target_id"] == str(source_id)
+    assert snapshot_event["provider"] == "github"
+    assert snapshot_event["source_type"] == "github_repo"
+    assert snapshot_event["metadata"] == {
+        "ref_hash": security_audit_service.hash_value(ref),
+        "skill_id": skill_id,
+    }
+
+
+@pytest.mark.asyncio
 async def test_source_reads_outside_the_rest_api_are_audited(client: AsyncClient):
     """Agent tools call source_service directly — the audit trail must cover
     that front door too, not just the REST endpoints, or a prompt-injected

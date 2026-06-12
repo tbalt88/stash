@@ -744,19 +744,27 @@ async def _read_twitter_live_ref(source: dict, ref: str) -> dict:
 
     owner_user_id = UUID(source["owner_user_id"])
     is_post = (ref.isascii() and ref.isdigit()) or ref.startswith("post:")
-    return {
+    doc = {
         "path": ref,
         "name": twitter_ref_name(ref),
         "kind": "post" if is_post else "feed",
-        "content": await fetch_twitter_content(owner_user_id, source["external_ref"], ref),
-        "external_ref": ref,
     }
+    try:
+        content = await fetch_twitter_content(owner_user_id, source["external_ref"], ref)
+    except Exception as exc:
+        logger.warning(
+            "source document fetch failed source=%s source_type=%s exception_type=%s",
+            source["id"],
+            source["source_type"],
+            type(exc).__name__,
+        )
+        return {**doc, "content": "", "error": "source document fetch failed"}
+    return {**doc, "content": content, "external_ref": ref}
 
 
 async def read_document(source: dict, path: str) -> dict | None:
     """Read one document. Content tables return their stored body; index-only
-    tables (drive/notion) fetch it lazily from the provider with the owner's
-    token."""
+    tables fetch it lazily from the provider with the owner's token."""
     if source["source_type"] == "twitter":
         from ..integrations.twitter.indexer import is_twitter_live_ref
 
@@ -832,7 +840,22 @@ async def read_document(source: dict, path: str) -> dict | None:
     )
     if not row:
         return None
-    content = await _lazy_fetch(source, row["external_ref"])
+    try:
+        content = await _lazy_fetch(source, row["external_ref"])
+    except Exception as exc:
+        logger.warning(
+            "source document fetch failed source=%s source_type=%s exception_type=%s",
+            source["id"],
+            source["source_type"],
+            type(exc).__name__,
+        )
+        return {
+            "path": row["path"],
+            "name": row["name"],
+            "kind": row["kind"],
+            "content": "",
+            "error": "source document fetch failed",
+        }
     return {
         "path": row["path"],
         "name": row["name"],
@@ -1185,9 +1208,18 @@ async def source_entries(
             return None
         if connected["capability"] == "queryable":
             # A queryable source (Snowflake) has no document table — list its tables.
-            from ..integrations.snowflake.client import list_tables
+            from ..integrations.snowflake.client import SnowflakeMetadataError, list_tables
 
-            entries = await list_tables(connected)
+            try:
+                entries = await list_tables(connected)
+            except SnowflakeMetadataError as e:
+                logger.warning(
+                    "source entries failed source=%s source_type=%s exception_type=%s",
+                    connected["id"],
+                    connected["source_type"],
+                    type(e).__name__,
+                )
+                entries = []
         elif connected["source_type"] == "twitter":
             from ..integrations.twitter.indexer import twitter_live_entries
 
@@ -1281,12 +1313,23 @@ async def source_document(
             return False, None
         if connected["capability"] == "queryable":
             # Reading a "document" from a queryable source means describing a table.
-            from ..integrations.snowflake.client import describe_table
+            from ..integrations.snowflake.client import SnowflakeMetadataError, describe_table
 
-            doc = await describe_table(connected, ref)
+            try:
+                doc = await describe_table(connected, ref)
+            except ValueError as e:
+                doc = {"error": str(e)}
+            except SnowflakeMetadataError as e:
+                logger.warning(
+                    "source document failed source=%s source_type=%s exception_type=%s",
+                    connected["id"],
+                    connected["source_type"],
+                    type(e).__name__,
+                )
+                doc = {"error": "Snowflake metadata fetch failed"}
         else:
             doc = await read_document(connected, ref)
-            if doc is not None:
+            if doc is not None and "error" not in doc:
                 doc["url"] = await _deep_link(connected, doc)
 
     if doc is not None:
@@ -1346,12 +1389,20 @@ async def query_source(
         return None
     if connected["capability"] != "queryable":
         return {"error": "source is not queryable"}
-    from ..integrations.snowflake.client import run_query
+    from ..integrations.snowflake.client import SnowflakeQueryError, run_query
 
     try:
         result = await run_query(connected, sql, limit)
     except ValueError as e:
         result = {"error": str(e)}
+    except SnowflakeQueryError as e:
+        logger.warning(
+            "query source failed source=%s source_type=%s exception_type=%s",
+            connected["id"],
+            connected["source_type"],
+            type(e).__name__,
+        )
+        result = {"error": "Snowflake query failed"}
     await _audit_source_read(
         action="source.queried",
         workspace_id=workspace_id,
@@ -1408,7 +1459,16 @@ async def fetch_history(
         from ..integrations.slack.indexer import fetch_history as fn
     else:
         from ..integrations.gong.indexer import fetch_history as fn
-    result = await fn(connected, since_dt, until_dt, min(limit, 1000))
+    try:
+        result = await fn(connected, since_dt, until_dt, min(limit, 1000))
+    except Exception as exc:
+        logger.warning(
+            "source history fetch failed source=%s source_type=%s exception_type=%s",
+            connected["id"],
+            connected["source_type"],
+            type(exc).__name__,
+        )
+        result = {"error": "source history fetch failed"}
     await _audit_source_read(
         action="source.history_fetched",
         workspace_id=workspace_id,

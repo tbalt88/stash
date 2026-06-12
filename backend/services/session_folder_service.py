@@ -50,6 +50,10 @@ def _visibility_for_permissions(workspace_permission: str, public_permission: st
     return "public" if public_permission != "none" else "private"
 
 
+def _is_public(public_permission: str, discoverable: bool) -> bool:
+    return public_permission != "none" or discoverable
+
+
 def _validate_permissions(
     workspace_permission: str, public_permission: str, discoverable: bool
 ) -> None:
@@ -171,6 +175,8 @@ async def user_can_manage(folder_id: UUID, user_id: UUID) -> bool:
     )
     if not row:
         return False
+    if not await workspace_service.can_write(row["workspace_id"], user_id):
+        return False
     if row["owner_user_id"] == user_id:
         return True
     role = await permission_service.get_workspace_role(row["workspace_id"], user_id)
@@ -180,7 +186,8 @@ async def user_can_manage(folder_id: UUID, user_id: UUID) -> bool:
 async def update_folder(folder_id: UUID, user_id: UUID, updates: dict) -> dict | None:
     pool = get_pool()
     folder = await pool.fetchrow(
-        "SELECT workspace_permission, public_permission FROM session_folders WHERE id = $1",
+        "SELECT workspace_id, workspace_permission, public_permission, discoverable "
+        "FROM session_folders WHERE id = $1",
         folder_id,
     )
     if not folder or not await user_can_manage(folder_id, user_id):
@@ -190,9 +197,27 @@ async def update_folder(folder_id: UUID, user_id: UUID, updates: dict) -> dict |
         updates.get("workspace_permission") or folder["workspace_permission"]
     )
     next_public_permission = updates.get("public_permission") or folder["public_permission"]
-    _validate_permissions(
-        next_workspace_permission, next_public_permission, bool(updates.get("discoverable"))
+    next_discoverable = (
+        updates["discoverable"] if "discoverable" in updates else folder["discoverable"]
     )
+    _validate_permissions(
+        next_workspace_permission,
+        next_public_permission,
+        bool(next_discoverable),
+    )
+    # Owner gate fires only when a folder is being made (or kept) publicly
+    # visible by an edit to its publicity; workspace-visible folders stay
+    # manageable by editors.
+    publicity_changed = (
+        next_public_permission != folder["public_permission"]
+        or bool(next_discoverable) != folder["discoverable"]
+    )
+    if (
+        publicity_changed
+        and _is_public(next_public_permission, bool(next_discoverable))
+        and not await workspace_service.is_owner(folder["workspace_id"], user_id)
+    ):
+        raise PermissionError("Only workspace owners can make a session folder public")
     if updates.get("public_permission") == "none" and updates.get("discoverable") is None:
         updates["discoverable"] = False
 
@@ -234,6 +259,29 @@ async def delete_folder(folder_id: UUID, user_id: UUID) -> bool:
     return True
 
 
+async def can_add_session_to_folder(
+    *,
+    workspace_id: UUID,
+    user_id: UUID,
+    folder_id: UUID,
+) -> bool:
+    """Owner-only for public folders (adding a session there publishes it);
+    workspace-visible folders accept sessions from any workspace writer."""
+    folder = await get_pool().fetchrow(
+        "SELECT id, workspace_id, workspace_permission, public_permission, discoverable, is_default "
+        "FROM session_folders WHERE id = $1",
+        folder_id,
+    )
+    if not folder or folder["workspace_id"] != workspace_id:
+        return False
+    is_public = _is_public(folder["public_permission"], bool(folder["discoverable"]))
+    if is_public and not folder["is_default"]:
+        return await workspace_service.is_owner(workspace_id, user_id)
+    if folder["workspace_permission"] != "none":
+        return await workspace_service.can_write(workspace_id, user_id)
+    return await user_can_manage(folder_id, user_id)
+
+
 async def assign_sessions(
     workspace_id: UUID,
     user_id: UUID,
@@ -245,21 +293,11 @@ async def assign_sessions(
     pool = get_pool()
 
     if folder_id is not None:
-        folder = await pool.fetchrow(
-            "SELECT id FROM session_folders WHERE id = $1 AND workspace_id = $2",
-            folder_id,
-            workspace_id,
-        )
-        if not folder:
-            return False
-        can_write_folder = await permission_service.check_access(
-            "session_folder",
-            folder_id,
-            user_id,
+        if not await can_add_session_to_folder(
             workspace_id=workspace_id,
-            require="write",
-        )
-        if not can_write_folder:
+            user_id=user_id,
+            folder_id=folder_id,
+        ):
             return False
 
     for session_row_id in session_row_ids:
