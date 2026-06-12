@@ -83,15 +83,23 @@ def _unique_name(bind, table, workspace_id, folder_id, base_name, exclude_id=Non
     """Dedupe a page/file name within (workspace, folder) with ' (N)' suffixes."""
     name = base_name
     n = 2
+    # NB: ":skip::uuid" is unusable here — SQLAlchemy's :param parser trips
+    # over the ::cast and leaves a literal ":" in the SQL. Branch instead.
+    folder_clause = "folder_id = :fid" if folder_id else "folder_id IS NULL"
+    skip_clause = "AND id != :skip " if exclude_id else ""
+    params = {"ws": workspace_id, "name": name}
+    if folder_id:
+        params["fid"] = folder_id
+    if exclude_id:
+        params["skip"] = exclude_id
     while True:
-        clause = "folder_id = :fid" if folder_id else "folder_id IS NULL"
+        params["name"] = name
         hit = bind.execute(
             text(
-                f"SELECT 1 FROM {table} WHERE workspace_id = :ws AND {clause} "
-                "AND name = :name AND deleted_at IS NULL "
-                "AND (:skip::uuid IS NULL OR id != :skip) LIMIT 1"
+                f"SELECT 1 FROM {table} WHERE workspace_id = :ws AND {folder_clause} "
+                f"AND name = :name AND deleted_at IS NULL {skip_clause}LIMIT 1"
             ),
-            {"ws": workspace_id, "fid": folder_id, "name": name, "skip": exclude_id},
+            params,
         ).fetchone()
         if not hit:
             return name
