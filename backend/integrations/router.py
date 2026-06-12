@@ -21,15 +21,17 @@ from urllib.parse import urlencode
 from uuid import UUID
 
 import httpx
-from cryptography.fernet import Fernet, InvalidToken
+from cryptography.fernet import InvalidToken
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, Field
 
 from ..auth import get_current_user
 from ..config import settings
+from ..services import source_service
 from . import storage
 from .base import AccountInfo
+from .crypto import integration_fernet, integration_keyring_error
 from .registry import get_provider, list_providers
 
 logger = logging.getLogger(__name__)
@@ -41,15 +43,6 @@ STATE_TTL = timedelta(minutes=10)
 SLACK_CONVERSATIONS_LIST_URL = "https://slack.com/api/conversations.list"
 SLACK_CHANNEL_TYPES = "public_channel,private_channel,im,mpim"
 SLACK_CHANNEL_LIMIT = 100
-
-
-def _get_state_fernet() -> Fernet:
-    if not settings.INTEGRATIONS_ENCRYPTION_KEY:
-        raise HTTPException(
-            status_code=500,
-            detail="INTEGRATIONS_ENCRYPTION_KEY is not set",
-        )
-    return Fernet(settings.INTEGRATIONS_ENCRYPTION_KEY.encode())
 
 
 def _encode_state(
@@ -69,12 +62,12 @@ def _encode_state(
             "x": extra or {},
         }
     )
-    return _get_state_fernet().encrypt(payload.encode()).decode()
+    return integration_fernet().encrypt(payload.encode()).decode()
 
 
 def _decode_state_payload(state: str, expected_provider: str) -> dict:
     try:
-        raw = _get_state_fernet().decrypt(state.encode(), ttl=int(STATE_TTL.total_seconds()))
+        raw = integration_fernet().decrypt(state.encode(), ttl=int(STATE_TTL.total_seconds()))
     except InvalidToken:
         raise HTTPException(status_code=400, detail="invalid or expired state")
     payload = json.loads(raw)
@@ -134,15 +127,9 @@ class SlackChannelSummary(BaseModel):
 
 
 def _provider_disabled_reason(provider: str) -> str | None:
-    if not settings.INTEGRATIONS_ENCRYPTION_KEY:
-        return (
-            "OAuth integrations are not configured for this server. "
-            "Set INTEGRATIONS_ENCRYPTION_KEY to enable them."
-        )
-    try:
-        Fernet(settings.INTEGRATIONS_ENCRYPTION_KEY.encode())
-    except ValueError:
-        return "INTEGRATIONS_ENCRYPTION_KEY must be a valid Fernet key."
+    keyring_error = integration_keyring_error()
+    if keyring_error:
+        return keyring_error
 
     required: dict[str, list[str]] = {
         "github": [
@@ -378,8 +365,9 @@ async def integration_disconnect(
     current_user: dict = Depends(get_current_user),
 ):
     get_provider(provider)  # 404 if unknown
+    removed_sources = await source_service.delete_sources_for_provider(current_user["id"], provider)
     await storage.revoke_stored(current_user["id"], provider)
-    return {"ok": True}
+    return {"ok": True, "removed_sources": removed_sources}
 
 
 class CredentialConnectResponse(BaseModel):

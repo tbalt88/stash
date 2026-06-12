@@ -23,8 +23,8 @@ import CommentMark from "./CommentMark";
 import CommentComposerPopover from "./CommentComposerPopover";
 import { Page } from "../../lib/types";
 import {
+  getAuthToken,
   getCollabUrl,
-  getToken,
   uploadFile,
   workspaceFileDownloadUrl,
 } from "../../lib/api";
@@ -126,13 +126,16 @@ export default function MarkdownEditor({
     let active = true;
     setCollabError("");
     setReadOnly(false);
+
     const document = new Y.Doc();
     const provider = new HocuspocusProvider({
       url: getCollabUrl(),
       name: `workspace:${workspaceId}:page:${file.id}`,
       document,
       sessionAwareness: true,
-      token: () => getToken() ?? "",
+      // Async factory, re-run on every (re)connect — Auth0 access tokens
+      // expire, so a reconnect must not re-send a stale token.
+      token: async () => (await getAuthToken()) ?? "",
       onAuthenticated: ({ scope }) => {
         if (!active) return;
         setReadOnly(scope === "readonly");
@@ -149,6 +152,7 @@ export default function MarkdownEditor({
       },
     });
     setCollaboration({ document, provider });
+
     return () => {
       active = false;
       provider.destroy();

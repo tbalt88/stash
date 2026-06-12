@@ -6,7 +6,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   forkSkill,
   ApiError,
-  getToken,
   listMyWorkspaces,
 } from "../../lib/api";
 import type { Workspace } from "../../lib/types";
@@ -56,11 +55,11 @@ export default function ForkSkillCardButton({ slug, sourceWorkspaceId }: Props) 
     return phase.workspaces.filter((w) => w.id !== sourceWorkspaceId);
   }, [phase, sourceWorkspaceId]);
 
+  function redirectToLogin() {
+    router.push(`/login?next=${encodeURIComponent(`/skills/${slug}?action=add`)}`);
+  }
+
   async function openPicker() {
-    if (!getToken()) {
-      router.push(`/login?next=${encodeURIComponent(`/skills/${slug}?action=add`)}`);
-      return;
-    }
     setPhase({ kind: "loading" });
     try {
       const data = await listMyWorkspaces();
@@ -80,6 +79,10 @@ export default function ForkSkillCardButton({ slug, sourceWorkspaceId }: Props) 
         selectedId: usable[0].id,
       });
     } catch (e) {
+      if (e instanceof ApiError && e.status === 401) {
+        redirectToLogin();
+        return;
+      }
       const message =
         e instanceof ApiError ? e.message : "Could not load workspaces";
       setPhase({ kind: "error", message });

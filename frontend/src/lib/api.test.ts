@@ -81,3 +81,111 @@ describe("apiFetch", () => {
     expect(result).toBeUndefined();
   });
 });
+
+describe("managed Auth0 token handling", () => {
+  beforeEach(() => {
+    vi.resetModules();
+    vi.stubEnv("NEXT_PUBLIC_AUTH0_ENABLED", "true");
+    localStorage.clear();
+    vi.stubGlobal("fetch", vi.fn());
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.restoreAllMocks();
+  });
+
+  it("ignores stored API keys and uses the Auth0 access token", async () => {
+    const { getMe, getToken, setToken } = await import("./api");
+    localStorage.setItem("stash_token", "legacy-api-key");
+    setToken("new-api-key");
+
+    vi.mocked(fetch)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ token: "auth0-access-token" }),
+      } as Response)
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: () =>
+          Promise.resolve({
+            id: "1",
+            name: "sam",
+            display_name: "Sam",
+            description: "",
+            created_at: "2026-01-01T00:00:00Z",
+            last_seen: "2026-01-01T00:00:00Z",
+          }),
+      } as Response);
+
+    await getMe();
+
+    expect(getToken()).toBeNull();
+    expect(fetch).toHaveBeenNthCalledWith(1, "/auth/access-token", {
+      credentials: "include",
+    });
+    expect(fetch).toHaveBeenNthCalledWith(
+      2,
+      "/api/v1/users/me",
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Authorization: "Bearer auth0-access-token",
+        }),
+      }),
+    );
+  });
+
+  it("caches the Auth0 access token so API calls don't double up requests", async () => {
+    const { getAuthToken } = await import("./api");
+
+    vi.mocked(fetch).mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ token: "auth0-access-token" }),
+    } as Response);
+
+    expect(await getAuthToken()).toBe("auth0-access-token");
+    expect(await getAuthToken()).toBe("auth0-access-token");
+
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("revokeStoredApiKey revokes the legacy browser key server-side, not just locally", async () => {
+    const { revokeStoredApiKey } = await import("./api");
+    localStorage.setItem("stash_token", "legacy-api-key");
+
+    vi.mocked(fetch).mockResolvedValue({ ok: true } as Response);
+
+    await revokeStoredApiKey();
+
+    expect(localStorage.getItem("stash_token")).toBeNull();
+    expect(fetch).toHaveBeenCalledWith("/api/v1/users/logout", {
+      method: "POST",
+      headers: { Authorization: "Bearer legacy-api-key" },
+    });
+  });
+
+  it("getAgentApiKey mints a persistent key via the exchange endpoint", async () => {
+    const { getAgentApiKey } = await import("./api");
+
+    vi.mocked(fetch)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ token: "auth0-access-token" }),
+      } as Response)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ api_key: "mc_agent_key" }),
+      } as Response);
+
+    expect(await getAgentApiKey()).toBe("mc_agent_key");
+    expect(fetch).toHaveBeenNthCalledWith(
+      2,
+      "/api/v1/auth0/exchange?device=onboarding",
+      expect.objectContaining({
+        method: "POST",
+        headers: { Authorization: "Bearer auth0-access-token" },
+      }),
+    );
+  });
+});

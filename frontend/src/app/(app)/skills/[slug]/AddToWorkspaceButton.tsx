@@ -6,7 +6,6 @@ import { useRouter } from "next/navigation";
 import {
   forkSkill,
   ApiError,
-  getToken,
   listMyWorkspaces,
 } from "../../../../lib/api";
 import type { Workspace } from "../../../../lib/types";
@@ -37,10 +36,14 @@ export default function AddToWorkspaceButton({ slug, sourceWorkspaceId }: Props)
     if (typeof window === "undefined") return;
     const params = new URLSearchParams(window.location.search);
     if (params.get("action") !== "add") return;
-    if (!getToken()) return;
     void loadWorkspaces();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  function redirectToLogin() {
+    const next = `/skills/${slug}?action=add`;
+    router.push(`/login?next=${encodeURIComponent(next)}`);
+  }
 
   async function loadWorkspaces() {
     setBusy(true);
@@ -56,6 +59,10 @@ export default function AddToWorkspaceButton({ slug, sourceWorkspaceId }: Props)
         await attachToWorkspace(eligible[0].id);
       }
     } catch (e) {
+      if (e instanceof ApiError && e.status === 401) {
+        redirectToLogin();
+        return;
+      }
       const message = e instanceof ApiError ? e.message : "Could not load workspaces";
       setError(message);
     } finally {
@@ -79,11 +86,6 @@ export default function AddToWorkspaceButton({ slug, sourceWorkspaceId }: Props)
   }
 
   function onClick() {
-    if (!getToken()) {
-      const next = `/skills/${slug}?action=add`;
-      router.push(`/login?next=${encodeURIComponent(next)}`);
-      return;
-    }
     void loadWorkspaces();
   }
 

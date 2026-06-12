@@ -1,12 +1,18 @@
 "use client";
 
-import { Suspense, useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
 import Header from "../../components/Header";
 import { useAuth } from "../../hooks/useAuth";
 import { track } from "../../lib/analytics";
-import { createPage, getToken, listMyWorkspaces, updateMe, updatePage } from "../../lib/api";
+import {
+  createPage,
+  getAgentApiKey,
+  listMyWorkspaces,
+  updateMe,
+  updatePage,
+} from "../../lib/api";
 import { generateCollabIntroMarkdown } from "../../lib/onboarding/collabIntro";
 import { seedWelcomePage } from "../../lib/onboarding/seedWelcome";
 import SourceConnectorList from "../../components/integrations/SourceConnectorList";
@@ -38,17 +44,6 @@ const REFERRAL_OPTIONS = [
   "Other",
 ];
 
-function useSkillToken(): string | null {
-  return useSyncExternalStore(
-    (cb) => {
-      window.addEventListener("storage", cb);
-      return () => window.removeEventListener("storage", cb);
-    },
-    () => getToken(),
-    () => null,
-  );
-}
-
 export default function OnboardingPage() {
   return (
     <Suspense
@@ -65,7 +60,6 @@ function OnboardingInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { user, loading, logout } = useAuth();
-  const apiKey = useSkillToken();
   const [workspaceId, setWorkspaceId] = useState<string | null>(null);
   const [sourceCount, setSourceCount] = useState(0);
   const [obsidianAdded, setObsidianAdded] = useState(false);
@@ -83,23 +77,23 @@ function OnboardingInner() {
   }, [searchParams]);
 
   useEffect(() => {
-    if (!loading && apiKey === null) router.replace("/login");
-  }, [loading, apiKey, router]);
+    if (!loading && !user) router.replace("/login");
+  }, [loading, user, router]);
 
   useEffect(() => {
-    if (!apiKey) return;
+    if (!user) return;
     listMyWorkspaces()
       .then(({ workspaces }) => {
         const primary = workspaces.find((workspace) => workspace.is_primary) ?? workspaces[0];
         if (primary) setWorkspaceId(primary.id);
       })
       .catch(() => {});
-  }, [apiKey]);
+  }, [user]);
 
   useEffect(() => {
-    if (loading || !apiKey) return;
+    if (loading || !user) return;
     track("onboarding.viewed", { has_path: false });
-  }, [loading, apiKey]);
+  }, [loading, user]);
 
   useEffect(() => {
     const name = STEP_NAMES[stepIdx];
@@ -148,17 +142,19 @@ function OnboardingInner() {
     track("onboarding.collab_path_chosen", {});
     // The starter page embeds its own id and the user's API key in a
     // copy-paste agent prompt, so we create it empty and fill it in after.
+    // The agent needs a persistent key — under managed Auth0 this mints one.
+    const apiKey = await getAgentApiKey();
     const page = await createPage(workspaceId, "Welcome to your Drive");
     const content = generateCollabIntroMarkdown({
       displayName: user?.display_name || user?.name || "",
       pageId: page.id,
-      apiKey: getToken() ?? "",
+      apiKey,
     });
     await updatePage(workspaceId, page.id, { content });
     router.push(`/p/${page.id}`);
   }, [workspaceId, user, router]);
 
-  if (loading || !apiKey) {
+  if (loading || !user) {
     return (
       <div className="min-h-screen flex items-center justify-center text-muted">Loading…</div>
     );

@@ -21,9 +21,11 @@ from backend.config import settings
 from backend.integrations.asana.indexer import _render_task
 from backend.integrations.gmail import indexer as gmail_indexer
 from backend.integrations.gmail.provider import GmailIntegration
+from backend.integrations.gong import indexer as gong_indexer
 from backend.integrations.gong.indexer import _render_call
 from backend.integrations.gong.provider import GongIntegration
 from backend.integrations.jira.indexer import _adf_to_text, _render_issue
+from backend.integrations.registry import list_providers
 from backend.integrations.snowflake.client import _assert_read_only, _validate_identifier
 from backend.integrations.snowflake.provider import SnowflakeIntegration
 from backend.integrations.twitter import indexer as twitter_indexer
@@ -145,6 +147,11 @@ def test_connected_source_types_are_fully_wired():
         assert is_content or is_index_only, table
 
 
+def test_provider_disconnect_cleanup_mapping_covers_registered_providers():
+    provider_names = {provider.name for provider in list_providers()}
+    assert set(source_service.PROVIDER_SOURCE_TYPES) == provider_names
+
+
 def test_notion_is_searchable_content_source():
     # Notion copies content (its crawl already renders the text), so it's FTS
     # searchable rather than federated.
@@ -227,6 +234,10 @@ def test_gong_is_api_key_searchable_source():
     assert gong.auth_kind == "api_key"
     assert [f.name for f in gong.credential_fields] == ["access_key", "access_key_secret"]
     assert all(f.secret for f in gong.credential_fields)
+    assert source_service.normalize_source_settings(
+        "gong_calls",
+        {"allowed_workspace_ids": ["W1", " W2 ", "W1"]},
+    ) == {"allowed_workspace_ids": ["W1", "W2"]}
     assert source_service.SOURCE_TABLE["gong_calls"] == "gong_documents"
     assert "gong_documents" in source_service.CONTENT_TABLES
     assert source_service.SOURCE_CAPABILITY["gong_calls"] == "searchable"
@@ -238,6 +249,89 @@ async def test_gong_rejects_missing_credentials():
         await GongIntegration().connect_with_credentials(
             {"access_key": "", "access_key_secret": ""}
         )
+
+
+@pytest.mark.asyncio
+async def test_gong_indexer_requires_workspace_allowlist(monkeypatch):
+    """An unconfigured allowlist must purge previously indexed (unscoped)
+    calls and fail the sync — not report a healthy no-op that leaves them
+    searchable."""
+    purges: list[tuple[str, list[str]]] = []
+
+    async def fail_get_valid_token(user_id, provider):
+        raise AssertionError("Gong credentials should not be touched without an allowlist")
+
+    async def fake_soft_delete_missing(table, source_id, present_paths):
+        purges.append((table, present_paths))
+
+    monkeypatch.setattr(gong_indexer, "get_valid_token", fail_get_valid_token)
+    monkeypatch.setattr(
+        gong_indexer.source_service,
+        "soft_delete_missing",
+        fake_soft_delete_missing,
+    )
+
+    with pytest.raises(RuntimeError, match="no allowed workspaces"):
+        await gong_indexer.index_gong(
+            {
+                "id": "00000000-0000-0000-0000-000000000001",
+                "workspace_id": "00000000-0000-0000-0000-000000000002",
+                "owner_user_id": "00000000-0000-0000-0000-000000000003",
+                "settings": {},
+            }
+        )
+
+    assert purges == [("gong_documents", [])]
+
+
+@pytest.mark.asyncio
+async def test_gong_indexer_filters_to_allowed_workspaces(monkeypatch):
+    stored_paths: list[str] = []
+    soft_deleted: list[str] = []
+
+    async def fake_get_valid_token(user_id, provider):
+        return '{"access_key": "ak", "access_key_secret": "secret"}'
+
+    async def fake_fetch_call_meta(client, from_dt, to_dt):
+        return {
+            "allowed-call": {"id": "allowed-call", "workspaceId": "W_ALLOWED"},
+            "blocked-call": {"id": "blocked-call", "workspaceId": "W_BLOCKED"},
+        }
+
+    async def fake_fetch_transcripts(client, from_dt, to_dt):
+        return {"allowed-call": [], "blocked-call": []}
+
+    async def fake_upsert_content_document(**kwargs):
+        stored_paths.append(kwargs["path"])
+
+    async def fake_soft_delete_missing(table, source_id, present_paths):
+        soft_deleted.extend(present_paths)
+
+    monkeypatch.setattr(gong_indexer, "get_valid_token", fake_get_valid_token)
+    monkeypatch.setattr(gong_indexer, "_fetch_call_meta", fake_fetch_call_meta)
+    monkeypatch.setattr(gong_indexer, "_fetch_transcripts", fake_fetch_transcripts)
+    monkeypatch.setattr(
+        gong_indexer.source_service,
+        "upsert_content_document",
+        fake_upsert_content_document,
+    )
+    monkeypatch.setattr(
+        gong_indexer.source_service,
+        "soft_delete_missing",
+        fake_soft_delete_missing,
+    )
+
+    await gong_indexer.index_gong(
+        {
+            "id": "00000000-0000-0000-0000-000000000001",
+            "workspace_id": "00000000-0000-0000-0000-000000000002",
+            "owner_user_id": "00000000-0000-0000-0000-000000000003",
+            "settings": {"allowed_workspace_ids": ["W_ALLOWED"]},
+        }
+    )
+
+    assert stored_paths == ["allowed-call"]
+    assert soft_deleted == ["allowed-call"]
 
 
 # --- Snowflake (queryable source) -------------------------------------------

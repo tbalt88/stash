@@ -20,9 +20,10 @@ import {
 
 const TOKEN_KEY = "stash_token";
 export const API_BASE = "";
+const AUTH0_ENABLED = process.env.NEXT_PUBLIC_AUTH0_ENABLED === "true";
 
 // Local trampoline so api.ts can fire analytics without importing analytics.ts
-// (which would create a cycle — analytics.ts reads the auth token).
+// (which would create a cycle — analytics.ts imports getAuthToken from here).
 function trackEvent(
   event: string,
   properties?: Record<string, unknown>,
@@ -37,15 +38,71 @@ const DEFAULT_LOCAL_COLLAB_URL = "ws://localhost:3458";
 
 export function getToken(): string | null {
   if (typeof window === "undefined") return null;
+  if (AUTH0_ENABLED) return null;
   return localStorage.getItem(TOKEN_KEY);
 }
 
 export function setToken(token: string) {
+  if (AUTH0_ENABLED) return;
   localStorage.setItem(TOKEN_KEY, token);
 }
 
 export function clearToken() {
+  if (typeof window === "undefined") return;
   localStorage.removeItem(TOKEN_KEY);
+}
+
+// Legacy browser sign-ins stored a permanent mc_ API key in localStorage.
+// Revoke it server-side before discarding so the credential dies with the
+// session instead of staying valid forever.
+export async function revokeStoredApiKey(): Promise<void> {
+  if (typeof window === "undefined") return;
+  const token = localStorage.getItem(TOKEN_KEY);
+  localStorage.removeItem(TOKEN_KEY);
+  if (!token) return;
+  await fetch(`${API_BASE}/api/v1/users/logout`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+  }).catch(() => {});
+}
+
+// Cached briefly so chatty views don't pay a serial round-trip to the
+// Next.js auth route before every backend call.
+const AUTH0_TOKEN_CACHE_MS = 60_000;
+let auth0TokenCache: { token: string; fetchedAt: number } | null = null;
+
+export async function getAuth0AccessToken(): Promise<string | null> {
+  if (!AUTH0_ENABLED || typeof window === "undefined") return null;
+  if (auth0TokenCache && Date.now() - auth0TokenCache.fetchedAt < AUTH0_TOKEN_CACHE_MS) {
+    return auth0TokenCache.token;
+  }
+  const res = await fetch("/auth/access-token", { credentials: "include" });
+  if (!res.ok) return null;
+  const body = await res.json().catch(() => ({}));
+  if (typeof body.token !== "string" || !body.token) return null;
+  auth0TokenCache = { token: body.token, fetchedAt: Date.now() };
+  return body.token;
+}
+
+// The onboarding agent prompt needs a persistent API key — agents can't use
+// the browser's short-lived Auth0 access token. Under managed Auth0 we mint
+// one via the exchange endpoint; self-hosted browsers already hold their key.
+export async function getAgentApiKey(): Promise<string> {
+  const stored = getToken();
+  if (stored) return stored;
+  const auth0Token = await getAuth0AccessToken();
+  if (!auth0Token) throw new ApiError(401, "Not signed in");
+  const res = await fetch(`${API_BASE}/api/v1/auth0/exchange?device=onboarding`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${auth0Token}` },
+  });
+  if (!res.ok) throw new ApiError(res.status, "Could not create an API key");
+  const data = await res.json();
+  return data.api_key;
+}
+
+export async function getAuthToken(): Promise<string | null> {
+  return getToken() ?? (await getAuth0AccessToken());
 }
 
 export function getCollabUrl(): string {
@@ -69,7 +126,7 @@ export class ApiError extends Error {
 }
 
 export async function fetchAuthed(path: string): Promise<Response> {
-  const token = getToken();
+  const token = await getAuthToken();
   const headers: Record<string, string> = {};
   if (token) headers["Authorization"] = `Bearer ${token}`;
   return fetch(`${API_BASE}${path}`, { headers });
@@ -86,7 +143,7 @@ export async function apiFetch<T>(
   path: string,
   options: RequestInit = {}
 ): Promise<T> {
-  const token = getToken();
+  const token = await getAuthToken();
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
     ...(options.headers as Record<string, string>),
@@ -901,7 +958,7 @@ async function uploadAny(
   file: File,
   folderId?: string | null
 ): Promise<UploadApiResponse> {
-  const token = getToken();
+  const token = await getAuthToken();
   const formData = new FormData();
   formData.append("file", file);
   if (folderId) formData.append("folder_id", folderId);
@@ -1697,7 +1754,7 @@ export async function uploadTranscript(
   agentName: string,
   cwd?: string
 ): Promise<UploadedTranscript> {
-  const token = getToken();
+  const token = await getAuthToken();
   const formData = new FormData();
   formData.append("file", file);
   formData.append("session_id", sessionId);
@@ -1788,7 +1845,7 @@ const _sidebarEtags: Record<string, string> = {};
 const _sidebarCache: Record<string, WorkspaceSidebar> = {};
 
 export async function getWorkspaceSidebar(workspaceId: string): Promise<WorkspaceSidebar> {
-  const token = getToken();
+  const token = await getAuthToken();
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   if (token) headers["Authorization"] = `Bearer ${token}`;
   const cached = _sidebarEtags[workspaceId];

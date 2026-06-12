@@ -73,6 +73,20 @@ SOURCE_CAPABILITY = {
     "snowflake": "queryable",
 }
 
+PROVIDER_SOURCE_TYPES = {
+    "github": ("github_repo",),
+    "google": ("google_drive",),
+    "gmail": ("gmail",),
+    "notion": ("notion",),
+    "slack": ("slack",),
+    "granola": ("granola",),
+    "jira": ("jira_project",),
+    "asana": ("asana_project",),
+    "gong": ("gong_calls",),
+    "snowflake": ("snowflake",),
+    "twitter": ("twitter",),
+}
+
 
 def _clean_string_list(value, field_name: str) -> list[str]:
     if value is None:
@@ -99,6 +113,16 @@ def normalize_source_settings(source_type: str, settings: dict | None) -> dict:
     if not isinstance(settings, dict):
         raise ValueError("settings must be an object")
 
+    if source_type == "gong_calls":
+        unsupported = set(settings) - {"allowed_workspace_ids"}
+        if unsupported:
+            raise ValueError(f"unsupported Gong setting: {sorted(unsupported)[0]}")
+        return {
+            "allowed_workspace_ids": _clean_string_list(
+                settings.get("allowed_workspace_ids", []), "allowed_workspace_ids"
+            )
+        }
+
     if source_type != "slack":
         if settings:
             raise ValueError("settings are not supported for this source type")
@@ -124,6 +148,15 @@ def slack_allowed_channel_ids(source: dict) -> list[str]:
     if not isinstance(settings, dict):
         raise ValueError("settings must be an object")
     return _clean_string_list(settings.get("allowed_channel_ids", []), "allowed_channel_ids")
+
+
+def gong_allowed_workspace_ids(source: dict) -> list[str]:
+    settings = source.get("settings")
+    if settings is None:
+        settings = {}
+    if not isinstance(settings, dict):
+        raise ValueError("settings must be an object")
+    return _clean_string_list(settings.get("allowed_workspace_ids", []), "allowed_workspace_ids")
 
 
 def _content_hash(content: str | None) -> str:
@@ -247,6 +280,21 @@ async def delete_source(source_id: UUID, user_id: UUID) -> bool:
         user_id,
     )
     return result.endswith("1")
+
+
+async def delete_sources_for_provider(user_id: UUID, provider: str) -> int:
+    """Remove all connected sources backed by one disconnected provider."""
+    source_types = PROVIDER_SOURCE_TYPES.get(provider)
+    if source_types is None:
+        raise ValueError(f"unknown provider source mapping: {provider}")
+
+    result = await get_pool().execute(
+        "DELETE FROM workspace_sources "
+        "WHERE owner_user_id = $1 AND source_type = ANY($2::text[])",
+        user_id,
+        list(source_types),
+    )
+    return int(result.rsplit(" ", 1)[-1])
 
 
 async def get_source_for_sync(source_id: UUID) -> dict | None:

@@ -55,6 +55,7 @@ export function AddSourceControls({
 }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [gongWorkspaceIds, setGongWorkspaceIds] = useState("");
 
   async function add(body?: AddSourceBody) {
     setBusy(true);
@@ -138,6 +139,40 @@ export function AddSourceControls({
           className={secondaryButton()}
         >
           {busy ? "Adding..." : "Add My Drive"}
+        </button>
+        {errorRow}
+      </div>
+    );
+  }
+
+  if (connector.sourceType === "gong_calls") {
+    const ids = gongWorkspaceIds
+      .split(",")
+      .map((id) => id.trim())
+      .filter(Boolean);
+    return (
+      <div className="space-y-2">
+        {!connected && (
+          <div className="text-[11.5px] text-muted">Connect Gong first to add it.</div>
+        )}
+        <input
+          value={gongWorkspaceIds}
+          onChange={(event) => setGongWorkspaceIds(event.target.value)}
+          placeholder="Gong workspace IDs"
+          className="w-full rounded-md border border-border bg-background px-2 py-1.5 text-[12px] text-foreground placeholder:text-muted"
+          disabled={busy || !connected}
+        />
+        <button
+          type="button"
+          onClick={() =>
+            void add({
+              settings: { allowed_workspace_ids: ids },
+            })
+          }
+          disabled={busy || !connected || ids.length === 0}
+          className={secondaryButton()}
+        >
+          {busy ? "Adding..." : "Add"}
         </button>
         {errorRow}
       </div>
