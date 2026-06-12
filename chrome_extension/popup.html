@@ -22,12 +22,13 @@
       padding: 8px 12px;
       border: none;
       border-radius: 8px;
-      background: #4f46e5;
+      background: #F97316;
       color: white;
       font-size: 13px;
       font-weight: 600;
       cursor: pointer;
     }
+    button:not(.secondary):hover { background: #EA580C; }
     button.secondary {
       background: none;
       color: #6b7280;
@@ -57,13 +58,13 @@
       color: #b91c1c;
       word-break: break-word;
     }
-    a { color: #4f46e5; }
+    a { color: #EA580C; }
     details { margin-top: 16px; }
     summary { color: #9ca3af; font-size: 12px; cursor: pointer; }
   </style>
 </head>
 <body>
-  <h1>Stash Chat Sync</h1>
+  <h1><img src="icons/icon16.png" width="16" height="16" alt="" style="vertical-align: -2px; margin-right: 6px;" />Stash Chat Sync</h1>
   <div id="app" class="muted">Loading…</div>
   <script src="dist/popup.js"></script>
 </body>
