@@ -7,7 +7,10 @@
 import type { ConversationSnapshot } from './content/sync';
 
 const DEFAULT_API_BASE = 'https://api.joinstash.ai';
-const CONNECT_POLL_TIMEOUT_MS = 180_000;
+// Auth sessions live 15 min server-side. The poll loop covers most of that,
+// and checkPendingConnect() collects an approval that lands after the loop
+// gave up (e.g. MV3 suspended the worker mid-wait).
+const CONNECT_POLL_TIMEOUT_MS = 600_000;
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   handle(message)
@@ -156,24 +159,48 @@ async function connect(): Promise<any> {
   }
   const { session_id } = await created.json();
 
+  await chrome.storage.local.set({ pendingConnect: { sessionId: session_id, apiBase } });
   await chrome.tabs.create({
     url: `${signinPage(apiBase)}?session=${session_id}&device=${encodeURIComponent('Chrome extension')}`,
   });
 
   const deadline = Date.now() + CONNECT_POLL_TIMEOUT_MS;
   while (Date.now() < deadline) {
-    await new Promise((r) => setTimeout(r, 1000));
-    const res = await fetch(`${apiBase}/api/v1/users/cli-auth/sessions/${session_id}`);
-    if (!res.ok) continue;
-    const data = await res.json();
-    if (data.status === 'complete') {
-      await chrome.storage.local.set({ apiKey: data.api_key, username: data.username, lastError: null });
-      await setBadge('', 'Stash Chat Sync');
-      await refreshWorkspaces();
-      return { ok: true, username: data.username };
+    await new Promise((r) => setTimeout(r, 2000));
+    if (await checkPendingConnect()) {
+      const { username } = await chrome.storage.local.get(['username']);
+      return { ok: true, username };
     }
+    const { pendingConnect } = await chrome.storage.local.get(['pendingConnect']);
+    if (!pendingConnect) return { ok: false, error: 'Sign-in link expired — click Connect again' };
   }
   return { ok: false, error: 'Timed out waiting for sign-in' };
+}
+
+// One poll of the pending auth session. Completes the connect if the user
+// has approved; clears the pending state if the link expired. Called from
+// the connect() loop and from getStatus(), so an approval that happens
+// after the loop ends is still collected the next time the popup opens.
+async function checkPendingConnect(): Promise<boolean> {
+  const { pendingConnect } = await chrome.storage.local.get(['pendingConnect']);
+  if (!pendingConnect) return false;
+
+  const res = await fetch(
+    `${pendingConnect.apiBase}/api/v1/users/cli-auth/sessions/${pendingConnect.sessionId}`
+  );
+  if (res.status === 404) {
+    await chrome.storage.local.remove(['pendingConnect']);
+    return false;
+  }
+  if (!res.ok) return false;
+  const data = await res.json();
+  if (data.status !== 'complete') return false;
+
+  await chrome.storage.local.set({ apiKey: data.api_key, username: data.username, lastError: null });
+  await chrome.storage.local.remove(['pendingConnect']);
+  await setBadge('', 'Stash Chat Sync');
+  await refreshWorkspaces();
+  return true;
 }
 
 async function refreshWorkspaces(): Promise<void> {
@@ -232,6 +259,7 @@ async function refreshFolders(): Promise<void> {
 // ---------------------------------------------------------------------------
 
 async function getStatus(): Promise<any> {
+  await checkPendingConnect();
   await refreshWorkspaces();
   const cfg = await chrome.storage.local.get([
     'apiBase',
