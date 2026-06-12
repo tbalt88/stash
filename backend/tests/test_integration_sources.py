@@ -276,19 +276,20 @@ async def test_gong_indexer_requires_workspace_allowlist(monkeypatch):
     """An unconfigured allowlist must purge previously indexed (unscoped)
     calls and fail the sync — not report a healthy no-op that leaves them
     searchable."""
-    purges: list[tuple[str, list[str]]] = []
+    purges: list[str] = []
 
     async def fail_get_valid_token(user_id, provider):
         raise AssertionError("Gong credentials should not be touched without an allowlist")
 
-    async def fake_soft_delete_missing(table, source_id, present_paths):
-        purges.append((table, present_paths))
+    async def fake_purge_disallowed_copied_documents(source):
+        purges.append(source["id"])
+        return 0
 
     monkeypatch.setattr(gong_indexer, "get_valid_token", fail_get_valid_token)
     monkeypatch.setattr(
         gong_indexer.source_service,
-        "soft_delete_missing",
-        fake_soft_delete_missing,
+        "purge_disallowed_copied_documents",
+        fake_purge_disallowed_copied_documents,
     )
 
     with pytest.raises(RuntimeError, match="no allowed workspaces"):
@@ -297,11 +298,12 @@ async def test_gong_indexer_requires_workspace_allowlist(monkeypatch):
                 "id": "00000000-0000-0000-0000-000000000001",
                 "workspace_id": "00000000-0000-0000-0000-000000000002",
                 "owner_user_id": "00000000-0000-0000-0000-000000000003",
+                "source_type": "gong_calls",
                 "settings": {},
             }
         )
 
-    assert purges == [("gong_documents", [])]
+    assert purges == ["00000000-0000-0000-0000-000000000001"]
 
 
 @pytest.mark.asyncio
@@ -326,12 +328,20 @@ async def test_gong_indexer_filters_to_allowed_workspaces(monkeypatch):
         stored_paths.append(kwargs["path"])
         stored_workspace_ids.append(kwargs["extra"]["gong_workspace_id"])
 
-    async def fake_soft_delete_missing(table, source_id, present_paths):
+    async def fake_remove_missing_documents(table, source_id, present_paths):
         soft_deleted.extend(present_paths)
+
+    async def fake_purge_disallowed_copied_documents(source):
+        return 0
 
     monkeypatch.setattr(gong_indexer, "get_valid_token", fake_get_valid_token)
     monkeypatch.setattr(gong_indexer, "_fetch_call_meta", fake_fetch_call_meta)
     monkeypatch.setattr(gong_indexer, "_fetch_transcripts", fake_fetch_transcripts)
+    monkeypatch.setattr(
+        gong_indexer.source_service,
+        "purge_disallowed_copied_documents",
+        fake_purge_disallowed_copied_documents,
+    )
     monkeypatch.setattr(
         gong_indexer.source_service,
         "upsert_content_document",
@@ -339,8 +349,8 @@ async def test_gong_indexer_filters_to_allowed_workspaces(monkeypatch):
     )
     monkeypatch.setattr(
         gong_indexer.source_service,
-        "soft_delete_missing",
-        fake_soft_delete_missing,
+        "remove_missing_documents",
+        fake_remove_missing_documents,
     )
 
     await gong_indexer.index_gong(
@@ -348,6 +358,7 @@ async def test_gong_indexer_filters_to_allowed_workspaces(monkeypatch):
             "id": "00000000-0000-0000-0000-000000000001",
             "workspace_id": "00000000-0000-0000-0000-000000000002",
             "owner_user_id": "00000000-0000-0000-0000-000000000003",
+            "source_type": "gong_calls",
             "settings": {"allowed_workspace_ids": ["W_ALLOWED"]},
         }
     )

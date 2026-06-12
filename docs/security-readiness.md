@@ -20,8 +20,10 @@ It is intentionally operational: do not use this as marketing copy. Use it to ve
 - Managed Auth0 deployments must use HTTPS origins for `PUBLIC_URL`, `CORS_ORIGINS`, and `APP_BASE_URL`.
 - Managed Auth0 deployments must set a valid `INTEGRATIONS_ENCRYPTION_KEY` Fernet keyring and complete HTTPS S3 storage config.
 - Configured managed OAuth redirect URIs must be HTTPS callback URLs without path params, query strings, or fragments.
+- Managed Auth0 deployments must reject local password registration, login, and profile password-change paths.
 - Browser clients must use Auth0 access tokens for managed API calls. They must not carry long-lived Stash API keys.
-- Managed Auth0 deployments must not expose generic Auth0-to-API-key exchange or manual API-key creation paths; CLI keys require explicit short-lived session approval.
+- Managed Auth0 deployments must not expose generic Auth0-to-API-key exchange, manual API-key creation, or unauthenticated invite redemption paths; CLI keys require explicit short-lived session approval.
+- Managed Auth0 deployments must reject password-login, manually-created, migrated, and invite-redemption API keys; only explicitly approved CLI device keys may authenticate as Stash API keys.
 - Replayed CLI auth approvals must not mint orphaned device API keys.
 - Expired CLI auth sessions must purge raw pending API keys and revoke approved-but-unclaimed CLI keys.
 - Managed Auth0 deployments must not expose or accept legacy permanent workspace invite codes; use hashed, TTL-bounded invite tokens instead.
@@ -33,6 +35,9 @@ It is intentionally operational: do not use this as marketing copy. Use it to ve
 - Export workers must re-check page/file access server-side and must block outbound network access during export rendering.
 - Stored file access must use signed URLs. Raw storage URLs must not be returned to clients.
 - Slack and Gong integrations must require explicit allowlists before sync. Empty allowlists must not default to broad access.
+- Slack and Gong allowlist reductions must physically delete copied rows outside the current allowlist.
+- Slack deleted-message events must remove copied message rows, and Slack changed-message events must update the existing copied row without duplicating old content.
+- Copied source documents that disappear from an upstream crawl must be physically deleted rather than retained as hidden soft-deleted content.
 - Slack indexing and history skip logs must not include channel names, provider error text, tokens, or message content.
 - Jira source references and JQL must be scoped and quoted before execution.
 - Source handles must be scoped to the route workspace and source owner.

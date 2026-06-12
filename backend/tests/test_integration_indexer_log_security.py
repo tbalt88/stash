@@ -5,6 +5,7 @@ from uuid import UUID, uuid4
 import pytest
 
 from backend.integrations.github import indexer as github_indexer
+from backend.integrations.gmail import indexer as gmail_indexer
 from backend.integrations.gong import indexer as gong_indexer
 from backend.integrations.google import indexer as google_indexer
 from backend.integrations.granola import client as granola_client
@@ -105,7 +106,7 @@ async def test_github_index_success_logs_internal_source_id_only(monkeypatch):
     )
     monkeypatch.setattr(github_indexer, "_crawl_archive", crawl_archive)
     monkeypatch.setattr(github_indexer.source_service, "upsert_content_document", _noop)
-    monkeypatch.setattr(github_indexer.source_service, "soft_delete_missing", _noop)
+    monkeypatch.setattr(github_indexer.source_service, "remove_missing_documents", _noop)
 
     await github_indexer.index_github_repo(source)
 
@@ -146,7 +147,7 @@ async def test_google_drive_index_success_logs_internal_source_id_only(monkeypat
     monkeypatch.setattr(google_indexer.httpx, "AsyncClient", lambda *args, **kwargs: DriveClient())
     monkeypatch.setattr(google_indexer, "_list_folder", list_folder)
     monkeypatch.setattr(google_indexer.source_service, "upsert_index_row", _noop)
-    monkeypatch.setattr(google_indexer.source_service, "soft_delete_missing", _noop)
+    monkeypatch.setattr(google_indexer.source_service, "remove_missing_documents", _noop)
 
     await google_indexer.index_google_drive(source)
 
@@ -160,6 +161,53 @@ async def test_google_drive_index_success_logs_internal_source_id_only(monkeypat
     assert "drive-root-secret" not in str(captured_logs)
     assert "drive-file-secret" not in str(captured_logs)
     assert "Webflow board plan" not in str(captured_logs)
+
+
+@pytest.mark.asyncio
+async def test_gmail_index_success_logs_internal_source_id_only(monkeypatch):
+    """Runs index_gmail end to end (with provider calls faked) so the sync
+    path — including the remove_missing_documents cleanup call — is exercised
+    by at least one test, and the success log stays free of message content."""
+    source = {**_source("account-webflow-secret@example.com"), "external_ref": "gmail-account-id"}
+    captured_logs = _capture_info(gmail_indexer.logger, monkeypatch)
+
+    class GmailClient:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return None
+
+    async def gmail_token(user_id, provider, external_ref):
+        return "provider-token"
+
+    async def list_refs(client, query, limit):
+        return [{"id": "msg-webflow-secret"}]
+
+    async def get_metadata(client, message_id):
+        return {
+            "id": message_id,
+            "payload": {"headers": [{"name": "Subject", "value": "Confidential launch plan"}]},
+        }
+
+    monkeypatch.setattr(gmail_indexer, "get_valid_token", gmail_token)
+    monkeypatch.setattr(gmail_indexer.httpx, "AsyncClient", lambda *args, **kwargs: GmailClient())
+    monkeypatch.setattr(gmail_indexer, "_list_message_refs", list_refs)
+    monkeypatch.setattr(gmail_indexer, "_get_message_metadata", get_metadata)
+    monkeypatch.setattr(gmail_indexer.source_service, "upsert_index_row", _noop)
+    monkeypatch.setattr(gmail_indexer.source_service, "remove_missing_documents", _noop)
+
+    await gmail_indexer.index_gmail(source)
+
+    assert captured_logs == [
+        (
+            "gmail source %s: indexed %d message(s)",
+            (UUID(source["id"]), 1),
+            {},
+        )
+    ]
+    assert "msg-webflow-secret" not in str(captured_logs)
+    assert "Confidential launch plan" not in str(captured_logs)
 
 
 @pytest.mark.asyncio
@@ -190,7 +238,7 @@ async def test_jira_index_success_logs_internal_source_id_only(monkeypatch):
     monkeypatch.setattr(jira_indexer, "get_valid_token", _token)
     monkeypatch.setattr(jira_indexer.httpx, "AsyncClient", lambda *args, **kwargs: JiraClient())
     monkeypatch.setattr(jira_indexer.source_service, "upsert_index_row", _noop)
-    monkeypatch.setattr(jira_indexer.source_service, "soft_delete_missing", _noop)
+    monkeypatch.setattr(jira_indexer.source_service, "remove_missing_documents", _noop)
 
     await jira_indexer.index_jira(source)
 
@@ -211,6 +259,7 @@ async def test_jira_index_success_logs_internal_source_id_only(monkeypatch):
 async def test_gong_index_success_logs_internal_source_id_only(monkeypatch):
     source = {
         **_source("calls"),
+        "source_type": "gong_calls",
         "settings": {"allowed_workspace_ids": ["gong-workspace-secret"]},
     }
     captured_logs = _capture_info(gong_indexer.logger, monkeypatch)
@@ -245,8 +294,9 @@ async def test_gong_index_success_logs_internal_source_id_only(monkeypatch):
     monkeypatch.setattr(gong_indexer.httpx, "AsyncClient", lambda *args, **kwargs: GongClient())
     monkeypatch.setattr(gong_indexer, "_fetch_call_meta", call_meta)
     monkeypatch.setattr(gong_indexer, "_fetch_transcripts", transcripts)
+    monkeypatch.setattr(gong_indexer.source_service, "purge_disallowed_copied_documents", _noop)
     monkeypatch.setattr(gong_indexer.source_service, "upsert_content_document", _noop)
-    monkeypatch.setattr(gong_indexer.source_service, "soft_delete_missing", _noop)
+    monkeypatch.setattr(gong_indexer.source_service, "remove_missing_documents", _noop)
 
     await gong_indexer.index_gong(source)
 
@@ -296,7 +346,7 @@ async def test_granola_index_logs_only_source_metadata(monkeypatch):
     monkeypatch.setattr(granola_indexer, "granola_session", granola_session)
     monkeypatch.setattr(granola_indexer, "call_tool_data", call_tool_data)
     monkeypatch.setattr(granola_indexer.source_service, "upsert_content_document", _noop)
-    monkeypatch.setattr(granola_indexer.source_service, "soft_delete_missing", _noop)
+    monkeypatch.setattr(granola_indexer.source_service, "remove_missing_documents", _noop)
 
     await granola_indexer.index_granola(source)
 

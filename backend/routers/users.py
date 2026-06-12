@@ -41,6 +41,14 @@ def _require_manual_api_key_creation_enabled() -> None:
         )
 
 
+def _require_unauthenticated_invite_redemption_enabled() -> None:
+    if settings.AUTH0_ENABLED:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Invite signup is disabled; use Auth0",
+        )
+
+
 @router.post("/register", response_model=UserRegisterResponse, status_code=201)
 @limiter.limit("5/minute")
 async def register(request: Request, req: UserRegisterRequest):
@@ -107,6 +115,8 @@ async def logout(current_user: dict = Depends(get_current_user)):
 
 @router.patch("/me", response_model=UserProfile)
 async def update_me(req: UserUpdateRequest, current_user: dict = Depends(get_current_user)):
+    if req.password is not None:
+        _require_password_auth()
     try:
         updated = await user_service.update_user(
             user_id=current_user["id"],
@@ -156,7 +166,7 @@ async def create_my_key(
     _require_manual_api_key_creation_enabled()
     from ..database import get_pool
 
-    api_key = await create_api_key(current_user["id"], name=req.name)
+    api_key = await create_api_key(current_user["id"], name=req.name, key_type="manual")
     pool = get_pool()
     from ..auth import hash_api_key
 
@@ -260,6 +270,7 @@ async def redeem_invite_unauthenticated(request: Request, req: RedeemInviteReque
     the path used by `stash connect --invite` for people who don't yet have a
     stash account.
     """
+    _require_unauthenticated_invite_redemption_enabled()
     result = await invite_token_service.redeem_as_new_user(
         raw_token=req.token,
         display_name=req.display_name,
@@ -286,6 +297,11 @@ async def approve_cli_auth_session(
     browser's own session key. Instead we mint a new named key scoped to this
     device, so each CLI install has its own revocable identity.
     """
+    # Under managed auth, only an Auth0 browser session (key_id is None) may
+    # approve. A CLI key must not be able to mint sibling CLI keys — that
+    # would let a leaked key outlive its own revocation.
+    if settings.AUTH0_ENABLED and current_user.get("key_id") is not None:
+        raise HTTPException(status_code=403, detail="CLI approval requires a browser session")
     pool = get_pool()
     await user_service.cleanup_expired_cli_auth_sessions()
     row = await pool.fetchrow(
@@ -302,7 +318,7 @@ async def approve_cli_auth_session(
         return {"status": "approved"}
 
     device_name = row["device_name"] or "CLI"
-    api_key = await create_api_key(current_user["id"], name=f"CLI ({device_name})")
+    api_key = await create_api_key(current_user["id"], name=f"CLI ({device_name})", key_type="cli")
     result = await pool.execute(
         "UPDATE cli_auth_sessions SET api_key = $1, username = $2 "
         "WHERE session_id = $3 AND api_key IS NULL",

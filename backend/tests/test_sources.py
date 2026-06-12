@@ -52,6 +52,70 @@ def _tool_json(result: dict):
     return json.loads(result["content"][0]["text"])
 
 
+def _external_ref_for_source_type(source_type: str) -> str:
+    refs = {
+        "github_repo": "acme/widgets",
+        "gmail": "cleanup@example.com",
+        "google_drive": "drive-root",
+        "notion": "notion-root",
+        "slack": "T123",
+        "granola": "granola",
+        "jira_project": "cloud-1:PROJ_1",
+        "asana_project": "asana-project-1",
+        "gong_calls": "gong-source",
+        "snowflake": "account/database/schema",
+        "twitter": "111",
+    }
+    return refs[source_type]
+
+
+def _settings_for_source_type(source_type: str) -> dict:
+    if source_type == "slack":
+        return {"allowed_channel_ids": ["C123"]}
+    if source_type == "gong_calls":
+        return {"allowed_workspace_ids": ["GONG_WS"]}
+    return {}
+
+
+async def _insert_representative_source_document(
+    *,
+    workspace_id: UUID,
+    source: dict,
+) -> None:
+    table = source_service.SOURCE_TABLE.get(source["source_type"])
+    if table is None:
+        return
+
+    source_id = UUID(source["id"])
+    if table not in source_service.CONTENT_TABLES:
+        await source_service.upsert_index_row(
+            table=table,
+            source_id=source_id,
+            workspace_id=workspace_id,
+            path="record-1",
+            name="Record 1",
+            external_ref="provider-record-1",
+        )
+        return
+
+    extra = {}
+    if table == "slack_messages":
+        extra = {"channel_id": "C123", "channel_name": "eng", "ts": "1720000000.000100"}
+    elif table == "gong_documents":
+        extra = {"gong_workspace_id": "GONG_WS"}
+
+    await source_service.upsert_content_document(
+        table=table,
+        source_id=source_id,
+        workspace_id=workspace_id,
+        path="record-1",
+        name="Record 1",
+        content="confidential customer content",
+        external_ref="provider-record-1",
+        extra=extra,
+    )
+
+
 async def _insert_slack_source_without_channels(ws: UUID, owner_id: UUID) -> dict:
     from backend.database import get_pool
 
@@ -234,6 +298,46 @@ async def test_disconnect_provider_removes_sources_and_copied_documents(
         slack_id,
     )
     assert copied_rows == 0
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("provider", "source_type"),
+    [
+        (provider, source_type)
+        for provider, source_types in source_service.PROVIDER_SOURCE_TYPES.items()
+        for source_type in source_types
+    ],
+)
+async def test_provider_cleanup_removes_source_and_retained_rows(
+    client: AsyncClient,
+    _db_pool,
+    provider: str,
+    source_type: str,
+):
+    api_key, owner_id = await _register(client, "src_cleanup")
+    ws = await _create_workspace(client, api_key)
+    source = await source_service.create_source(
+        workspace_id=ws,
+        owner_user_id=owner_id,
+        source_type=source_type,
+        external_ref=_external_ref_for_source_type(source_type),
+        display_name=f"{source_type} source",
+        settings=_settings_for_source_type(source_type),
+    )
+    source_id = UUID(source["id"])
+    await _insert_representative_source_document(workspace_id=ws, source=source)
+
+    removed_sources = await source_service.delete_sources_for_provider(owner_id, provider)
+
+    assert [UUID(removed["id"]) for removed in removed_sources] == [source_id]
+    assert await source_service.get_owned_source(source_id, owner_id) is None
+    table = source_service.SOURCE_TABLE.get(source_type)
+    if table is not None:
+        assert (
+            await _db_pool.fetchval(f"SELECT COUNT(*) FROM {table} WHERE source_id = $1", source_id)
+            == 0
+        )
 
 
 @pytest.mark.asyncio
@@ -584,7 +688,10 @@ async def test_search_documents_owner_scoped(client: AsyncClient):
 
 
 @pytest.mark.asyncio
-async def test_upsert_idempotency_and_soft_delete(client: AsyncClient):
+async def test_upsert_idempotency_and_missing_copied_content_delete(
+    client: AsyncClient,
+    pool,
+):
     api_key, owner_id = await _register(client)
     ws = await _create_workspace(client, api_key)
     src = await source_service.create_source(
@@ -613,11 +720,59 @@ async def test_upsert_idempotency_and_soft_delete(client: AsyncClient):
     assert await _upsert("README.md", "README.md", "v2") == "updated"
     await _upsert("docs/old.md", "old.md", "stale")
 
-    # A re-sync that only saw README.md soft-deletes docs/old.md.
-    removed = await source_service.soft_delete_missing("github_documents", sid, ["README.md"])
+    removed = await source_service.remove_missing_documents("github_documents", sid, ["README.md"])
     assert removed == 1
+    assert (
+        await pool.fetchval(
+            "SELECT COUNT(*) FROM github_documents WHERE source_id = $1 AND path = 'docs/old.md'",
+            sid,
+        )
+        == 0
+    )
     live = await source_service.list_documents(src)
     assert {d["path"] for d in live} == {"README.md"}
+
+
+@pytest.mark.asyncio
+async def test_missing_index_only_rows_are_soft_deleted(client: AsyncClient, pool):
+    api_key, owner_id = await _register(client)
+    ws = await _create_workspace(client, api_key)
+    src = await source_service.create_source(
+        workspace_id=ws,
+        owner_user_id=owner_id,
+        source_type="google_drive",
+        external_ref="drive-root",
+        display_name="Drive",
+    )
+    sid = UUID(src["id"])
+    await source_service.upsert_index_row(
+        table="drive_index",
+        source_id=sid,
+        workspace_id=ws,
+        path="old-doc",
+        name="Old Doc",
+        external_ref="provider-doc",
+    )
+
+    removed = await source_service.remove_missing_documents("drive_index", sid, [])
+
+    assert removed == 1
+    assert (
+        await pool.fetchval(
+            "SELECT COUNT(*) FROM drive_index WHERE source_id = $1 AND path = 'old-doc'",
+            sid,
+        )
+        == 1
+    )
+    assert (
+        await pool.fetchval(
+            "SELECT COUNT(*) FROM drive_index "
+            "WHERE source_id = $1 AND path = 'old-doc' AND deleted_at IS NOT NULL",
+            sid,
+        )
+        == 1
+    )
+    assert await source_service.list_documents(src) == []
 
 
 # --- search-driven sources (twitter) -----------------------------------------
@@ -1260,7 +1415,143 @@ async def test_gong_visibility_requires_workspace_allowlist(client: AsyncClient)
 
 
 @pytest.mark.asyncio
-async def test_slack_indexer_backfills_only_allowed_channels(client: AsyncClient, monkeypatch):
+async def test_slack_allowlist_update_purges_disallowed_copied_messages(
+    client: AsyncClient,
+    pool,
+):
+    api_key, owner_id = await _register(client)
+    ws = await _create_workspace(client, api_key)
+    source = await source_service.create_source(
+        workspace_id=ws,
+        owner_user_id=owner_id,
+        source_type="slack",
+        external_ref="T1",
+        display_name="Slack",
+        settings={"allowed_channel_ids": ["C_OLD", "C_KEEP"]},
+    )
+    source_id = UUID(source["id"])
+    await source_service.upsert_content_document(
+        table="slack_messages",
+        source_id=source_id,
+        workspace_id=ws,
+        path="old/1",
+        name="#old",
+        kind="message",
+        content="old confidential launch thread",
+        external_ref="C_OLD:1",
+        extra={"channel_id": "C_OLD", "channel_name": "old", "ts": "1"},
+    )
+    await source_service.upsert_content_document(
+        table="slack_messages",
+        source_id=source_id,
+        workspace_id=ws,
+        path="keep/1",
+        name="#keep",
+        kind="message",
+        content="kept confidential launch thread",
+        external_ref="C_KEEP:1",
+        extra={"channel_id": "C_KEEP", "channel_name": "keep", "ts": "1"},
+    )
+
+    updated = await source_service.create_source(
+        workspace_id=ws,
+        owner_user_id=owner_id,
+        source_type="slack",
+        external_ref="T1",
+        display_name="Slack",
+        settings={"allowed_channel_ids": ["C_KEEP"]},
+    )
+
+    assert updated["id"] == source["id"]
+    assert (
+        await pool.fetchval(
+            "SELECT COUNT(*) FROM slack_messages WHERE source_id = $1 AND channel_id = 'C_OLD'",
+            source_id,
+        )
+        == 0
+    )
+    assert (
+        await pool.fetchval(
+            "SELECT COUNT(*) FROM slack_messages WHERE source_id = $1 AND channel_id = 'C_KEEP'",
+            source_id,
+        )
+        == 1
+    )
+
+
+@pytest.mark.asyncio
+async def test_gong_allowlist_update_purges_disallowed_copied_calls(
+    client: AsyncClient,
+    pool,
+):
+    api_key, owner_id = await _register(client)
+    ws = await _create_workspace(client, api_key)
+    source = await source_service.create_source(
+        workspace_id=ws,
+        owner_user_id=owner_id,
+        source_type="gong_calls",
+        external_ref="calls",
+        display_name="Gong",
+        settings={"allowed_workspace_ids": ["W_OLD", "W_KEEP"]},
+    )
+    source_id = UUID(source["id"])
+    await source_service.upsert_content_document(
+        table="gong_documents",
+        source_id=source_id,
+        workspace_id=ws,
+        path="old-call",
+        name="Old Call",
+        kind="call",
+        content="old confidential sales call",
+        external_ref="old-call",
+        extra={"gong_workspace_id": "W_OLD"},
+    )
+    await source_service.upsert_content_document(
+        table="gong_documents",
+        source_id=source_id,
+        workspace_id=ws,
+        path="keep-call",
+        name="Keep Call",
+        kind="call",
+        content="kept confidential sales call",
+        external_ref="keep-call",
+        extra={"gong_workspace_id": "W_KEEP"},
+    )
+
+    updated = await source_service.create_source(
+        workspace_id=ws,
+        owner_user_id=owner_id,
+        source_type="gong_calls",
+        external_ref="calls",
+        display_name="Gong",
+        settings={"allowed_workspace_ids": ["W_KEEP"]},
+    )
+
+    assert updated["id"] == source["id"]
+    assert (
+        await pool.fetchval(
+            "SELECT COUNT(*) FROM gong_documents "
+            "WHERE source_id = $1 AND gong_workspace_id = 'W_OLD'",
+            source_id,
+        )
+        == 0
+    )
+    assert (
+        await pool.fetchval(
+            "SELECT COUNT(*) FROM gong_documents "
+            "WHERE source_id = $1 AND gong_workspace_id = 'W_KEEP'",
+            source_id,
+        )
+        == 1
+    )
+
+
+@pytest.mark.asyncio
+async def test_slack_indexer_backfills_only_allowed_channels(
+    client: AsyncClient,
+    monkeypatch,
+    pool,
+):
     from backend.integrations.slack import indexer
 
     api_key, owner_id = await _register(client)
@@ -1272,6 +1563,18 @@ async def test_slack_indexer_backfills_only_allowed_channels(client: AsyncClient
         external_ref="T1",
         display_name="Slack",
         settings={"allowed_channel_ids": ["C_ALLOWED"]},
+    )
+    source_id = UUID(src["id"])
+    await source_service.upsert_content_document(
+        table="slack_messages",
+        source_id=source_id,
+        workspace_id=ws,
+        path="exec/1",
+        name="#exec",
+        kind="message",
+        content="blocked copied board thread",
+        external_ref="C_BLOCKED:1",
+        extra={"channel_id": "C_BLOCKED", "channel_name": "exec", "ts": "1"},
     )
     requested_history: list[str] = []
 
@@ -1296,6 +1599,13 @@ async def test_slack_indexer_backfills_only_allowed_channels(client: AsyncClient
     await indexer.index_slack(src)
 
     assert requested_history == ["C_ALLOWED"]
+    assert (
+        await pool.fetchval(
+            "SELECT COUNT(*) FROM slack_messages WHERE source_id = $1 AND channel_id = 'C_BLOCKED'",
+            source_id,
+        )
+        == 0
+    )
     docs = await source_service.list_documents(src)
     assert [doc["path"] for doc in docs] == ["general/1"]
 
@@ -1363,6 +1673,148 @@ async def test_slack_event_ingest_fans_out_per_owner(client: AsyncClient):
         workspace_id=ws, user_id=owner_b, query="ship sources"
     )
     assert b_hits == []
+
+
+@pytest.mark.asyncio
+async def test_slack_event_ingest_deletes_removed_messages(client: AsyncClient, pool):
+    from backend.integrations.slack.indexer import ingest_slack_message
+
+    api_key, owner_id = await _register(client, "slack_delete")
+    ws = await _create_workspace(client, api_key)
+    source = await source_service.create_source(
+        workspace_id=ws,
+        owner_user_id=owner_id,
+        source_type="slack",
+        external_ref="T_DELETE",
+        display_name="Acme",
+        settings={"allowed_channel_ids": ["C1"]},
+    )
+    source_id = UUID(source["id"])
+    await source_service.upsert_content_document(
+        table="slack_messages",
+        source_id=source_id,
+        workspace_id=ws,
+        path="general/1717.0001",
+        name="#general",
+        kind="message",
+        content="delete this confidential Slack message",
+        external_ref="C1:1717.0001",
+        extra={"channel_id": "C1", "channel_name": "general", "ts": "1717.0001"},
+    )
+
+    deleted = await ingest_slack_message(
+        "T_DELETE",
+        {
+            "type": "message",
+            "subtype": "message_deleted",
+            "channel": "C1",
+            "deleted_ts": "1717.0001",
+        },
+    )
+
+    assert deleted == 1
+    assert (
+        await pool.fetchval("SELECT COUNT(*) FROM slack_messages WHERE source_id = $1", source_id)
+        == 0
+    )
+
+
+@pytest.mark.asyncio
+async def test_slack_event_ingest_updates_changed_messages_without_duplicate(
+    client: AsyncClient,
+    pool,
+):
+    from backend.integrations.slack.indexer import ingest_slack_message
+
+    api_key, owner_id = await _register(client, "slack_change")
+    ws = await _create_workspace(client, api_key)
+    source = await source_service.create_source(
+        workspace_id=ws,
+        owner_user_id=owner_id,
+        source_type="slack",
+        external_ref="T_CHANGE",
+        display_name="Acme",
+        settings={"allowed_channel_ids": ["C1"]},
+    )
+    source_id = UUID(source["id"])
+    await source_service.upsert_content_document(
+        table="slack_messages",
+        source_id=source_id,
+        workspace_id=ws,
+        path="general/1717.0001",
+        name="#general",
+        kind="message",
+        content="old confidential Slack message",
+        external_ref="C1:1717.0001",
+        extra={"channel_id": "C1", "channel_name": "general", "ts": "1717.0001"},
+    )
+
+    updated = await ingest_slack_message(
+        "T_CHANGE",
+        {
+            "type": "message",
+            "subtype": "message_changed",
+            "channel": "C1",
+            "message": {
+                "type": "message",
+                "ts": "1717.0001",
+                "text": "updated confidential Slack message",
+            },
+        },
+    )
+
+    rows = await pool.fetch(
+        "SELECT path, name, content FROM slack_messages WHERE source_id = $1",
+        source_id,
+    )
+    assert updated == 1
+    assert len(rows) == 1
+    assert rows[0]["path"] == "general/1717.0001"
+    assert rows[0]["name"] == "#general"
+    assert rows[0]["content"] == "updated confidential Slack message"
+
+
+@pytest.mark.asyncio
+async def test_slack_event_ingest_drops_edits_of_subtyped_messages(
+    client: AsyncClient,
+    pool,
+):
+    """Fresh subtyped messages (bot_message, thread_broadcast, ...) are never
+    ingested, so editing one must not sneak it in via message_changed either."""
+    from backend.integrations.slack.indexer import ingest_slack_message
+
+    api_key, owner_id = await _register(client, "slack_bot_edit")
+    ws = await _create_workspace(client, api_key)
+    source = await source_service.create_source(
+        workspace_id=ws,
+        owner_user_id=owner_id,
+        source_type="slack",
+        external_ref="T_BOT_EDIT",
+        display_name="Acme",
+        settings={"allowed_channel_ids": ["C1"]},
+    )
+    source_id = UUID(source["id"])
+
+    ingested = await ingest_slack_message(
+        "T_BOT_EDIT",
+        {
+            "type": "message",
+            "subtype": "message_changed",
+            "channel": "C1",
+            "message": {
+                "type": "message",
+                "subtype": "bot_message",
+                "ts": "1717.0002",
+                "text": "edited bot message",
+            },
+        },
+    )
+
+    assert ingested == 0
+    assert (
+        await pool.fetchval("SELECT COUNT(*) FROM slack_messages WHERE source_id = $1", source_id)
+        == 0
+    )
 
 
 # --- index-only sources (drive): lazy read ----------------------------------

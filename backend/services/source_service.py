@@ -272,7 +272,50 @@ async def create_source(
         sync_enabled,
         normalized_settings,
     )
-    return _source_row(row)
+    source = _source_row(row)
+    await purge_disallowed_copied_documents(source)
+    return source
+
+
+async def purge_disallowed_copied_documents(source: dict) -> int:
+    source_type = source["source_type"]
+    source_id = UUID(source["id"])
+
+    if source_type == "slack":
+        allowed_channel_ids = slack_allowed_channel_ids(source)
+        if not allowed_channel_ids:
+            result = await get_pool().execute(
+                "DELETE FROM slack_messages WHERE source_id = $1",
+                source_id,
+            )
+        else:
+            result = await get_pool().execute(
+                "DELETE FROM slack_messages "
+                "WHERE source_id = $1 "
+                "AND (channel_id IS NULL OR channel_id <> ALL($2::text[]))",
+                source_id,
+                allowed_channel_ids,
+            )
+        return int(result.rsplit(" ", 1)[-1])
+
+    if source_type == "gong_calls":
+        allowed_workspace_ids = gong_allowed_workspace_ids(source)
+        if not allowed_workspace_ids:
+            result = await get_pool().execute(
+                "DELETE FROM gong_documents WHERE source_id = $1",
+                source_id,
+            )
+        else:
+            result = await get_pool().execute(
+                "DELETE FROM gong_documents "
+                "WHERE source_id = $1 "
+                "AND (gong_workspace_id IS NULL OR gong_workspace_id <> ALL($2::text[]))",
+                source_id,
+                allowed_workspace_ids,
+            )
+        return int(result.rsplit(" ", 1)[-1])
+
+    return 0
 
 
 async def list_connected_sources(workspace_id: UUID, user_id: UUID) -> list[dict]:
@@ -609,9 +652,21 @@ async def upsert_index_row(
     return "inserted" if existing is None else "updated"
 
 
-async def soft_delete_missing(table: str, source_id: UUID, present_paths: list[str]) -> int:
-    """Soft-delete live docs whose path wasn't in the latest crawl — the tail
-    of an idempotent re-sync. Returns the number removed."""
+async def remove_missing_documents(table: str, source_id: UUID, present_paths: list[str]) -> int:
+    """Remove live docs whose path was absent from the latest crawl.
+
+    Copied-content tables hold customer text and embeddings, so missing rows are
+    physically deleted. Index-only tables hold provider refs with no copied body,
+    so soft-delete keeps navigation state cheap to resurrect on the next sync.
+    """
+    if table in CONTENT_TABLES:
+        result = await get_pool().execute(
+            f"DELETE FROM {table} WHERE source_id = $1 AND path <> ALL($2::text[])",
+            source_id,
+            present_paths,
+        )
+        return int(result.split()[-1]) if result.startswith("DELETE") else 0
+
     result = await get_pool().execute(
         f"UPDATE {table} SET deleted_at = now() "
         f"WHERE source_id = $1 AND deleted_at IS NULL AND path <> ALL($2::text[])",

@@ -92,11 +92,11 @@ async def index_gong(source: dict) -> str | None:
     workspace_id = UUID(source["workspace_id"])
     owner_user_id = UUID(source["owner_user_id"])
     allowed_workspace_ids = set(source_service.gong_allowed_workspace_ids(source))
+    await source_service.purge_disallowed_copied_documents(source)
     if not allowed_workspace_ids:
-        # Purge anything indexed before the allowlist existed so unscoped
-        # transcripts stop being searchable, then fail loudly so the sync
-        # records a sync_error instead of reporting a successful no-op.
-        await source_service.soft_delete_missing("gong_documents", source_id, [])
+        # purge_disallowed_copied_documents above already removed unscoped
+        # transcripts; fail loudly so the sync records a sync_error instead
+        # of reporting a successful no-op.
         raise RuntimeError("no allowed workspaces configured")
 
     creds = json.loads(await get_valid_token(owner_user_id, "gong"))
@@ -126,7 +126,7 @@ async def index_gong(source: dict) -> str | None:
         )
         present.append(call_id)
 
-    await source_service.soft_delete_missing("gong_documents", source_id, present)
+    await source_service.remove_missing_documents("gong_documents", source_id, present)
     logger.info("gong source %s: indexed %d call(s)", source_id, len(present))
     return None
 
