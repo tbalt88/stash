@@ -177,9 +177,9 @@ async def revoke_stored(
 ) -> None:
     pool = get_pool()
     rows = await pool.fetch(
-        "SELECT access_token_encrypted FROM user_integrations "
-        "WHERE user_id = $1 AND provider = $2 "
-        "AND ($3::text IS NULL OR account_key = $3)",
+        "DELETE FROM user_integrations WHERE user_id = $1 AND provider = $2 "
+        "AND ($3::text IS NULL OR account_key = $3) "
+        "RETURNING access_token_encrypted",
         user_id,
         provider,
         account_key,
@@ -188,21 +188,15 @@ async def revoke_stored(
         return
     provider_impl = get_provider(provider)
     for row in rows:
-        access_token = _decrypt(row["access_token_encrypted"])
-        if access_token:
-            try:
+        try:
+            access_token = _decrypt(row["access_token_encrypted"])
+            if access_token:
                 await provider_impl.revoke(access_token)
-            except Exception:
-                # Provider may already consider the token invalid; we still
-                # delete our local copy so the user can reconnect cleanly.
-                pass
-    await pool.execute(
-        "DELETE FROM user_integrations WHERE user_id = $1 AND provider = $2 "
-        "AND ($3::text IS NULL OR account_key = $3)",
-        user_id,
-        provider,
-        account_key,
-    )
+        except Exception:
+            # Disconnect must always remove Stash's local credential rows.
+            # Provider revocation is best effort because tokens may already be
+            # invalid or undecryptable after key rotation mistakes.
+            pass
 
 
 async def status(user_id: UUID, provider: str) -> dict:

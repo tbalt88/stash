@@ -21,6 +21,9 @@ It is intentionally operational: do not use this as marketing copy. Use it to ve
 - Managed Auth0 deployments must set a valid `INTEGRATIONS_ENCRYPTION_KEY` Fernet keyring and complete HTTPS S3 storage config.
 - Configured managed OAuth redirect URIs must be HTTPS callback URLs without path params, query strings, or fragments.
 - Browser clients must use Auth0 access tokens for managed API calls. They must not carry long-lived Stash API keys.
+- Managed Auth0 deployments must not expose generic Auth0-to-API-key exchange or manual API-key creation paths; CLI keys require explicit short-lived session approval.
+- Replayed CLI auth approvals must not mint orphaned device API keys.
+- Expired CLI auth sessions must purge raw pending API keys and revoke approved-but-unclaimed CLI keys.
 - Managed Auth0 deployments must not expose or accept legacy permanent workspace invite codes; use hashed, TTL-bounded invite tokens instead.
 - User search must be scoped to a workspace where the requester is already a member; it must not enumerate users across tenants.
 - Aggregate session lists must require current workspace access for workspace sessions; event authorship alone must not preserve access after a user leaves or is removed from a workspace.
@@ -33,6 +36,8 @@ It is intentionally operational: do not use this as marketing copy. Use it to ve
 - Slack indexing and history skip logs must not include channel names, provider error text, tokens, or message content.
 - Jira source references and JQL must be scoped and quoted before execution.
 - Source handles must be scoped to the route workspace and source owner.
+- Source sync must require the source owner to still be a workspace member; leaving a workspace must remove member-owned connected sources and copied integration documents.
+- Leaving or removing a workspace member must remove direct shares, share invites, Stash memberships, Stash invites, and member-owned Stashes that user received or granted in that workspace.
 - OAuth token exchange and refresh failures must not include upstream response bodies, authorization codes, access tokens, refresh tokens, tenant details, or customer text in raised exceptions, logs, redirects, or API responses.
 - Snowflake execution must reject multi-statement or CTE-prefixed SQL and clamp row limits before execution.
 - Sensitive errors from storage, Auth0 JWT handling, Snowflake, source sync, OAuth callbacks, profile calls, and credential validation must be redacted before reaching API responses.
@@ -46,7 +51,9 @@ It is intentionally operational: do not use this as marketing copy. Use it to ve
 - Export image failures must not log raw image sources, signed URLs, storage keys, or provider exception text.
 - Email delivery failures must not log provider response bodies, recipient addresses, subjects, tokens, or customer text.
 - Integration token encryption must fail closed on missing or invalid managed keyrings and support rotation through the Fernet keyring.
+- Integration disconnect must delete Stash's local encrypted credentials even when provider token revocation or decryption fails.
 - Disconnect and hard-delete paths must purge copied documents, stored files, and generated artifacts.
+- Permanent delete paths must delete a storage object only when no surviving file or session artifact still references its storage key.
 - Sensitive integration and source actions must emit workspace security audit events that only admins can read.
 - Security audit log reads and denied member read attempts must themselves emit security audit events with hashed filter metadata.
 - Shared-token admin endpoint access must emit global security audit events without storing tokens, client IPs, or raw query strings.
@@ -56,6 +63,7 @@ It is intentionally operational: do not use this as marketing copy. Use it to ve
 - Page, file, and session delete/restore/permanent-purge actions must emit workspace security audit events without storing customer content, object names, or storage keys in event metadata.
 - Credentialed CORS must reject wildcard origins.
 - API and Next.js responses must include baseline security headers.
+- Next.js routes must deny cross-origin framing except for explicit published Skill embed routes.
 - Admin secrets and cookie secrets must be at least 32 characters.
 
 ## Continuous Checks

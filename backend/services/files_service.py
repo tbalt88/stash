@@ -64,6 +64,19 @@ async def get_trashed_file(file_id: UUID, workspace_id: UUID) -> dict | None:
     return dict(row) if row else None
 
 
+async def storage_key_referenced_elsewhere(file_id: UUID, storage_key: str) -> bool:
+    """Forks copy storage_key by reference (shared_skill_service._fork_file /
+    _fork_session), so other files rows or session artifacts can point at the
+    same S3 object. Purge must keep the blob alive for them."""
+    pool = get_pool()
+    return await pool.fetchval(
+        "SELECT EXISTS (SELECT 1 FROM files WHERE storage_key = $1 AND id <> $2) "
+        "OR EXISTS (SELECT 1 FROM session_artifacts WHERE storage_key = $1)",
+        storage_key,
+        file_id,
+    )
+
+
 async def purge_file(file_id: UUID, workspace_id: UUID) -> bool:
     pool = get_pool()
     result = await pool.execute(

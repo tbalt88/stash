@@ -342,12 +342,26 @@ async def delete_sources_for_provider(user_id: UUID, provider: str) -> list[dict
     return [_source_row(row) for row in rows]
 
 
+async def delete_sources_for_workspace_member(conn, workspace_id: UUID, user_id: UUID) -> int:
+    result = await conn.execute(
+        "DELETE FROM workspace_sources WHERE workspace_id = $1 AND owner_user_id = $2",
+        workspace_id,
+        user_id,
+    )
+    return int(result.rsplit(" ", 1)[-1])
+
+
 async def get_source_for_sync(source_id: UUID) -> dict | None:
     """Everything a sync task needs to crawl one source. Not owner-gated —
     sync runs server-side on behalf of the owner via their stored token."""
     row = await get_pool().fetchrow(
         "SELECT id, workspace_id, owner_user_id, source_type, external_ref, sync_cursor, settings "
-        "FROM workspace_sources WHERE id = $1",
+        "FROM workspace_sources ws "
+        "WHERE id = $1 "
+        "AND EXISTS ("
+        "  SELECT 1 FROM workspace_members wm "
+        "  WHERE wm.workspace_id = ws.workspace_id AND wm.user_id = ws.owner_user_id"
+        ")",
         source_id,
     )
     if not row:
@@ -367,8 +381,12 @@ async def due_sources(limit: int = 50) -> list[dict]:
     """Pull sources whose scheduled sync is due (for the Beat reconciler)."""
     rows = await get_pool().fetch(
         "SELECT id, workspace_id, owner_user_id, source_type, external_ref, sync_cursor, settings "
-        "FROM workspace_sources "
+        "FROM workspace_sources ws "
         "WHERE sync_enabled AND next_sync_at <= now() "
+        "AND EXISTS ("
+        "  SELECT 1 FROM workspace_members wm "
+        "  WHERE wm.workspace_id = ws.workspace_id AND wm.user_id = ws.owner_user_id"
+        ") "
         "ORDER BY next_sync_at LIMIT $1",
         limit,
     )

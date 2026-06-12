@@ -561,7 +561,12 @@ async def purge_ws_file(
     row = await files_service.get_trashed_file(file_id, workspace_id)
     if not row:
         raise HTTPException(status_code=404, detail="File not in trash")
-    await storage_service.delete_file(row["storage_key"])
+    keep_blob = await files_service.storage_key_referenced_elsewhere(
+        file_id,
+        row["storage_key"],
+    )
+    if not keep_blob:
+        await storage_service.delete_file(row["storage_key"])
     purged = await files_service.purge_file(file_id, workspace_id)
     if not purged:
         raise HTTPException(status_code=404, detail="File not in trash")
@@ -571,7 +576,7 @@ async def purge_ws_file(
         workspace_id=workspace_id,
         target_type="file",
         target_id=file_id,
-        metadata={"storage_key_count": 1},
+        metadata={"storage_key_count": 0 if keep_blob else 1},
     )
 
 

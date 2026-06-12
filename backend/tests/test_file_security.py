@@ -235,3 +235,55 @@ async def test_svg_downloads_as_attachment_not_inline(client: AsyncClient, pool,
     assert svg_charset_resp.headers["content-disposition"].startswith("attachment;")
     assert svg_upper_resp.headers["content-disposition"].startswith("attachment;")
     assert png_resp.headers["content-disposition"].startswith("inline;")
+
+
+@pytest.mark.asyncio
+async def test_file_purge_keeps_storage_keys_still_referenced(
+    client: AsyncClient, pool, monkeypatch
+):
+    """Forks copy storage_key by reference (shared_skill_service._fork_file),
+    so purging the origin file must not delete an S3 object a surviving fork
+    still serves downloads from. Unreferenced keys are still deleted."""
+    api_key, owner = await _register(client)
+    workspace_id = await _workspace_id(client, api_key)
+    owner_id = uuid.UUID(owner["id"])
+
+    async def insert_file(name: str, storage_key: str) -> uuid.UUID:
+        return await pool.fetchval(
+            "INSERT INTO files "
+            "(workspace_id, name, content_type, size_bytes, storage_key, uploaded_by) "
+            "VALUES ($1, $2, 'text/plain', 12, $3, $4) RETURNING id",
+            workspace_id,
+            name,
+            storage_key,
+            owner_id,
+        )
+
+    shared_id = await insert_file("origin.txt", "shared-fork-key")
+    await insert_file("forked-copy.txt", "shared-fork-key")
+    unique_id = await insert_file("unique.txt", "unique-file-key")
+
+    deleted_keys: list[str] = []
+
+    async def fake_delete_file(storage_key: str) -> None:
+        deleted_keys.append(storage_key)
+
+    monkeypatch.setattr(files_router.storage_service, "delete_file", fake_delete_file)
+
+    for file_id in (shared_id, unique_id):
+        trashed = await client.delete(
+            f"/api/v1/workspaces/{workspace_id}/files/{file_id}",
+            headers=_auth(api_key),
+        )
+        assert trashed.status_code == 204
+        purged = await client.delete(
+            f"/api/v1/workspaces/{workspace_id}/files/{file_id}/purge",
+            headers=_auth(api_key),
+        )
+        assert purged.status_code == 204
+
+    assert deleted_keys == ["unique-file-key"]
+    fork_count = await pool.fetchval(
+        "SELECT COUNT(*) FROM files WHERE storage_key = 'shared-fork-key'"
+    )
+    assert fork_count == 1

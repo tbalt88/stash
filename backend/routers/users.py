@@ -2,7 +2,7 @@ import secrets
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 
-from ..auth import create_api_key, get_current_user
+from ..auth import create_api_key, get_current_user, hash_api_key
 from ..config import settings
 from ..database import get_pool
 from ..middleware import limiter
@@ -22,7 +22,7 @@ from ..services import invite_token_service, user_service
 
 router = APIRouter(prefix="/api/v1/users", tags=["users"])
 
-_CLI_AUTH_TTL_INTERVAL = "10 minutes"
+_CLI_AUTH_TTL_INTERVAL = user_service.CLI_AUTH_TTL_INTERVAL
 
 
 def _require_password_auth() -> None:
@@ -30,6 +30,14 @@ def _require_password_auth() -> None:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Password auth is disabled; use Auth0",
+        )
+
+
+def _require_manual_api_key_creation_enabled() -> None:
+    if settings.AUTH0_ENABLED:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Manual API key creation is disabled; use CLI sign-in",
         )
 
 
@@ -145,6 +153,7 @@ async def create_my_key(
 ):
     """Mint a new API key for the current user. The raw key is returned once
     and never shown again; only its hash is stored."""
+    _require_manual_api_key_creation_enabled()
     from ..database import get_pool
 
     api_key = await create_api_key(current_user["id"], name=req.name)
@@ -200,13 +209,11 @@ async def create_cli_auth_session(request: Request):
         device_name = str(body.get("device_name") or "")[:128]
     except Exception:
         pass
+    await user_service.cleanup_expired_cli_auth_sessions()
     await pool.execute(
         "INSERT INTO cli_auth_sessions (session_id, device_name) VALUES ($1, $2)",
         session_id,
         device_name,
-    )
-    await pool.execute(
-        f"DELETE FROM cli_auth_sessions WHERE created_at < now() - interval '{_CLI_AUTH_TTL_INTERVAL}'"
     )
     return {"session_id": session_id, "device_name": device_name}
 
@@ -216,16 +223,31 @@ async def create_cli_auth_session(request: Request):
 async def poll_cli_auth_session(request: Request, session_id: str):
     """Poll for CLI auth result. Returns pending or complete with api_key."""
     pool = get_pool()
-    row = await pool.fetchrow(
-        "SELECT api_key, username FROM cli_auth_sessions "
+    await user_service.cleanup_expired_cli_auth_sessions()
+    # DELETE ... RETURNING makes the claim atomic: a session row is consumed
+    # exactly once, either here (key delivered) or by the expiry cleanup (key
+    # revoked) — never both, so a delivered key can't be revoked at the TTL
+    # boundary by a concurrent cleanup.
+    claimed = await pool.fetchrow(
+        "DELETE FROM cli_auth_sessions "
+        "WHERE session_id = $1 AND api_key IS NOT NULL "
+        f"AND created_at > now() - interval '{_CLI_AUTH_TTL_INTERVAL}' "
+        "RETURNING api_key, username",
+        session_id,
+    )
+    if claimed:
+        return {
+            "status": "complete",
+            "api_key": claimed["api_key"],
+            "username": claimed["username"],
+        }
+    pending = await pool.fetchval(
+        "SELECT 1 FROM cli_auth_sessions "
         f"WHERE session_id = $1 AND created_at > now() - interval '{_CLI_AUTH_TTL_INTERVAL}'",
         session_id,
     )
-    if not row:
+    if not pending:
         raise HTTPException(status_code=404, detail="Session not found or expired")
-    if row["api_key"]:
-        await pool.execute("DELETE FROM cli_auth_sessions WHERE session_id = $1", session_id)
-        return {"status": "complete", "api_key": row["api_key"], "username": row["username"]}
     return {"status": "pending"}
 
 
@@ -265,19 +287,35 @@ async def approve_cli_auth_session(
     device, so each CLI install has its own revocable identity.
     """
     pool = get_pool()
+    await user_service.cleanup_expired_cli_auth_sessions()
     row = await pool.fetchrow(
-        "SELECT device_name FROM cli_auth_sessions "
+        "SELECT device_name, api_key FROM cli_auth_sessions "
         f"WHERE session_id = $1 AND created_at > now() - interval '{_CLI_AUTH_TTL_INTERVAL}'",
         session_id,
     )
     if not row:
         raise HTTPException(status_code=404, detail="Session not found or expired")
+    # Approve exactly once. A replayed approve must not mint a second key: the
+    # first key's hash would stay active while its plaintext is overwritten,
+    # leaving an orphan that the session-based cleanup can never revoke.
+    if row["api_key"] is not None:
+        return {"status": "approved"}
+
     device_name = row["device_name"] or "CLI"
     api_key = await create_api_key(current_user["id"], name=f"CLI ({device_name})")
-    await pool.execute(
-        "UPDATE cli_auth_sessions SET api_key = $1, username = $2 WHERE session_id = $3",
+    result = await pool.execute(
+        "UPDATE cli_auth_sessions SET api_key = $1, username = $2 "
+        "WHERE session_id = $3 AND api_key IS NULL",
         api_key,
         current_user["name"],
         session_id,
     )
+    if result != "UPDATE 1":
+        # Lost a concurrent approve race; revoke the key we just minted so it
+        # cannot linger unreferenced.
+        await pool.execute(
+            "UPDATE user_api_keys SET revoked_at = now() "
+            "WHERE key_hash = $1 AND revoked_at IS NULL",
+            hash_api_key(api_key),
+        )
     return {"status": "approved"}

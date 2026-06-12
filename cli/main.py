@@ -202,7 +202,6 @@ def _browser_auth_flow(
     import socket
     import time
     import webbrowser
-    from urllib.parse import quote
 
     import httpx
 
@@ -220,8 +219,6 @@ def _browser_auth_flow(
 
     sep = "&" if "?" in page else "?"
     url = f"{page}{sep}session={session_id}"
-    if device_name:
-        url += f"&device={quote(device_name)}"
 
     ssh = any(os.environ.get(v) for v in ("SSH_CONNECTION", "SSH_CLIENT", "SSH_TTY"))
     opened = False if (no_browser or ssh) else webbrowser.open(url)

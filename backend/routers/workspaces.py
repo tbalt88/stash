@@ -175,6 +175,21 @@ async def leave_workspace(
         raise HTTPException(status_code=400, detail="Cannot leave as the last workspace admin")
 
 
+@router.delete("/{workspace_id}/members/{user_id}", status_code=204)
+async def remove_member(
+    workspace_id: UUID,
+    user_id: UUID,
+    current_user: dict = Depends(get_current_user),
+):
+    """Offboard a member: owner-only, revokes their shares and skill grants."""
+    removed = await workspace_service.kick_member(workspace_id, user_id, current_user["id"])
+    if not removed:
+        raise HTTPException(
+            status_code=403,
+            detail="Only workspace owners can remove members, and owners cannot be removed",
+        )
+
+
 # ---------------------------------------------------------------------------
 # Magic-link invite tokens (distinct from the workspace.invite_code shared secret)
 # ---------------------------------------------------------------------------

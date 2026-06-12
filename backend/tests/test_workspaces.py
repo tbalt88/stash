@@ -430,6 +430,106 @@ async def test_delete_workspace_deletes_stored_files_and_session_artifacts(
 
 
 @pytest.mark.asyncio
+async def test_delete_workspace_keeps_storage_keys_referenced_by_other_workspaces(
+    client: AsyncClient,
+    pool,
+    monkeypatch,
+):
+    key, user = await _register(client)
+    first = (
+        await client.post("/api/v1/workspaces", json={"name": "First"}, headers=_auth(key))
+    ).json()
+    second = (
+        await client.post("/api/v1/workspaces", json={"name": "Second"}, headers=_auth(key))
+    ).json()
+    first_workspace_id = UUID(first["id"])
+    second_workspace_id = UUID(second["id"])
+    user_id = UUID(user["id"])
+
+    for workspace_id, name, storage_key in [
+        (first_workspace_id, "first-plan.pdf", "shared-file-key"),
+        (first_workspace_id, "first-private.pdf", "first-private-file-key"),
+        (second_workspace_id, "second-plan.pdf", "shared-file-key"),
+    ]:
+        await pool.execute(
+            "INSERT INTO files "
+            "(workspace_id, name, content_type, size_bytes, storage_key, uploaded_by) "
+            "VALUES ($1, $2, $3, $4, $5, $6)",
+            workspace_id,
+            name,
+            "application/pdf",
+            12,
+            storage_key,
+            user_id,
+        )
+
+    first_session_id = await pool.fetchval(
+        "INSERT INTO sessions (workspace_id, session_id, agent_name, created_by) "
+        "VALUES ($1, $2, $3, $4) "
+        "RETURNING id",
+        first_workspace_id,
+        "first-session",
+        "codex",
+        user_id,
+    )
+    second_session_id = await pool.fetchval(
+        "INSERT INTO sessions (workspace_id, session_id, agent_name, created_by) "
+        "VALUES ($1, $2, $3, $4) "
+        "RETURNING id",
+        second_workspace_id,
+        "second-session",
+        "codex",
+        user_id,
+    )
+    for session_id, file_path, storage_key in [
+        (first_session_id, "private.txt", "first-private-artifact-key"),
+        (first_session_id, "shared.txt", "shared-artifact-key"),
+        (second_session_id, "shared.txt", "shared-artifact-key"),
+    ]:
+        await pool.execute(
+            "INSERT INTO session_artifacts (session_id, file_path, storage_key, size_bytes) "
+            "VALUES ($1, $2, $3, $4)",
+            session_id,
+            file_path,
+            storage_key,
+            42,
+        )
+
+    deleted_keys: list[str] = []
+
+    async def fake_delete_file(storage_key: str) -> None:
+        deleted_keys.append(storage_key)
+
+    monkeypatch.setattr("backend.routers.workspaces.storage_service.delete_file", fake_delete_file)
+
+    resp = await client.delete(f"/api/v1/workspaces/{first['id']}", headers=_auth(key))
+
+    assert resp.status_code == 204
+    assert deleted_keys == ["first-private-artifact-key", "first-private-file-key"]
+    assert (
+        await pool.fetchval(
+            "SELECT COUNT(*) FROM files WHERE workspace_id = $1",
+            first_workspace_id,
+        )
+        == 0
+    )
+    assert (
+        await pool.fetchval(
+            "SELECT COUNT(*) FROM files WHERE workspace_id = $1",
+            second_workspace_id,
+        )
+        == 1
+    )
+    assert (
+        await pool.fetchval(
+            "SELECT COUNT(*) FROM session_artifacts WHERE session_id = $1",
+            second_session_id,
+        )
+        == 1
+    )
+
+
+@pytest.mark.asyncio
 async def test_non_owner_cannot_delete_workspace(client: AsyncClient):
     owner_key, _ = await _register(client)
     member_key, _ = await _register(client)
@@ -466,6 +566,200 @@ async def test_member_can_leave(client: AsyncClient):
         )
     ).json()
     assert len(members) == 1
+
+
+@pytest.mark.asyncio
+async def test_member_leave_removes_workspace_shares_and_stash_access(
+    client: AsyncClient,
+    pool,
+):
+    """Shares confer access independently of membership, so leaving must
+    revoke the shares the member received and the ones they granted."""
+    owner_key, _owner = await _register(client, "offboarding_owner")
+    member_name = unique_name("offboarding_member")
+    member_email = f"{member_name}@example.com"
+    member_resp = await client.post(
+        "/api/v1/users/register",
+        json={
+            "name": member_name,
+            "email": member_email,
+            "password": "securepassword1",
+        },
+    )
+    assert member_resp.status_code == 201
+    member_key = member_resp.json()["api_key"]
+    member_id = UUID(member_resp.json()["id"])
+    _recipient_key, recipient = await _register(client, "offboarding_recipient")
+    recipient_id = UUID(recipient["id"])
+
+    ws = (
+        await client.post(
+            "/api/v1/workspaces",
+            json={"name": "Offboarding Team"},
+            headers=_auth(owner_key),
+        )
+    ).json()
+    workspace_id = UUID(ws["id"])
+    joined = await client.post(
+        f"/api/v1/workspaces/join/{ws['invite_code']}",
+        headers=_auth(member_key),
+    )
+    assert joined.status_code == 200
+
+    page = (
+        await client.post(
+            f"/api/v1/workspaces/{ws['id']}/pages/new",
+            json={"name": "Confidential", "content": "Webflow confidential plan"},
+            headers=_auth(owner_key),
+        )
+    ).json()
+    page_id = page["id"]
+    shared = await client.post(
+        "/api/v1/share",
+        json={
+            "object_type": "page",
+            "object_id": page_id,
+            "email": member_email,
+            "permission": "read",
+        },
+        headers=_auth(owner_key),
+    )
+    assert shared.status_code == 200
+    await pool.execute(
+        "INSERT INTO shares "
+        "(workspace_id, object_type, object_id, principal_type, principal_id, permission, created_by) "
+        "VALUES ($1, 'page', $2, 'user', $3, 'read', $4)",
+        workspace_id,
+        UUID(page_id),
+        recipient_id,
+        member_id,
+    )
+    await pool.execute(
+        "INSERT INTO share_invites "
+        "(workspace_id, object_type, object_id, email, permission, created_by) "
+        "VALUES ($1, 'page', $2, $3, 'read', $4)",
+        workspace_id,
+        UUID(page_id),
+        "future-webflow-user@example.com",
+        member_id,
+    )
+
+    left = await client.post(
+        f"/api/v1/workspaces/{ws['id']}/leave",
+        headers=_auth(member_key),
+    )
+
+    assert left.status_code == 204
+    # The share the member received must not outlive their membership.
+    assert (
+        await client.get(
+            f"/api/v1/workspaces/{ws['id']}/pages/{page_id}",
+            headers=_auth(member_key),
+        )
+    ).status_code == 404
+    assert (
+        await pool.fetchval(
+            "SELECT COUNT(*) FROM shares "
+            "WHERE workspace_id = $1 AND principal_type = 'user' AND principal_id = $2",
+            workspace_id,
+            member_id,
+        )
+        == 0
+    )
+    assert (
+        await pool.fetchval(
+            "SELECT COUNT(*) FROM shares WHERE workspace_id = $1 AND created_by = $2",
+            workspace_id,
+            member_id,
+        )
+        == 0
+    )
+    assert (
+        await pool.fetchval(
+            "SELECT COUNT(*) FROM share_invites WHERE workspace_id = $1 AND created_by = $2",
+            workspace_id,
+            member_id,
+        )
+        == 0
+    )
+
+
+@pytest.mark.asyncio
+async def test_owner_can_remove_member_and_revoke_access(client: AsyncClient, pool):
+    """Removal must offboard like a voluntary leave: shares confer access
+    independently of membership, so kicking a member has to revoke them too,
+    not just drop the membership row."""
+    owner_key, owner = await _register(client, "kick_owner")
+    member_key, member = await _register(client, "kick_member")
+    member_id = UUID(member["id"])
+
+    ws = (
+        await client.post(
+            "/api/v1/workspaces",
+            json={"name": "Kick Team"},
+            headers=_auth(owner_key),
+        )
+    ).json()
+    workspace_id = UUID(ws["id"])
+    joined = await client.post(
+        f"/api/v1/workspaces/join/{ws['invite_code']}",
+        headers=_auth(member_key),
+    )
+    assert joined.status_code == 200
+
+    page = (
+        await client.post(
+            f"/api/v1/workspaces/{ws['id']}/pages/new",
+            json={"name": "Confidential", "content": "Kick offboarding plan"},
+            headers=_auth(owner_key),
+        )
+    ).json()
+    await pool.execute(
+        "INSERT INTO shares "
+        "(workspace_id, object_type, object_id, principal_type, principal_id, permission, created_by) "
+        "VALUES ($1, 'page', $2, 'user', $3, 'read', $4)",
+        workspace_id,
+        UUID(page["id"]),
+        member_id,
+        UUID(owner["id"]),
+    )
+
+    # Members cannot kick — owner-only.
+    forbidden = await client.delete(
+        f"/api/v1/workspaces/{ws['id']}/members/{owner['id']}",
+        headers=_auth(member_key),
+    )
+    assert forbidden.status_code == 403
+
+    removed = await client.delete(
+        f"/api/v1/workspaces/{ws['id']}/members/{member_id}",
+        headers=_auth(owner_key),
+    )
+    assert removed.status_code == 204
+
+    assert (
+        await client.get(
+            f"/api/v1/workspaces/{ws['id']}/pages/{page['id']}",
+            headers=_auth(member_key),
+        )
+    ).status_code == 404
+    assert (
+        await pool.fetchval(
+            "SELECT COUNT(*) FROM shares "
+            "WHERE workspace_id = $1 AND principal_type = 'user' AND principal_id = $2",
+            workspace_id,
+            member_id,
+        )
+        == 0
+    )
+    assert (
+        await pool.fetchval(
+            "SELECT COUNT(*) FROM workspace_members WHERE workspace_id = $1 AND user_id = $2",
+            workspace_id,
+            member_id,
+        )
+        == 0
+    )
 
 
 @pytest.mark.asyncio
