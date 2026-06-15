@@ -17,7 +17,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from .client import StashClient
+from .client import StashClient, StashError
 
 BytesLoader = Callable[[], bytes]
 BytesWriter = Callable[[bytes], None]
@@ -61,9 +61,14 @@ class StashVfsModel:
         self.client = client
         self.workspace_id = workspace_id
         self.nodes: dict[str, VfsNode] = {}
+        # Source-root path -> thunk that fetches that source's entries. A source's
+        # contents are materialized only when something first descends into it, so
+        # listing source names stays cheap no matter how large the source is.
+        self._expanders: dict[str, Callable[[], None]] = {}
 
     def refresh(self) -> None:
         self.nodes = {}
+        self._expanders = {}
         self._add_dir("/")
         self._add_static_file(
             "/README.md",
@@ -76,6 +81,8 @@ class StashVfsModel:
                     "- `workspaces/*/files` exposes folders, pages, and uploaded files.",
                     "- Markdown and HTML pages are writable; saves sync back to Stash.",
                     "- Uploaded files, sessions, skills, and tables are read-only projections.",
+                    "- `workspaces/*/sources` exposes connected integrations (Gmail, "
+                    "GitHub, Slack, Jira, …) as read-only documents.",
                     "",
                 ]
             ),
@@ -94,7 +101,9 @@ class StashVfsModel:
             self._add_workspace(workspace)
 
     def exists(self, path: str) -> bool:
-        return self._clean_path(path) in self.nodes
+        path = self._clean_path(path)
+        self._ensure_expanded(path)
+        return path in self.nodes
 
     def list_dir(self, path: str) -> list[str]:
         node = self._get_node(path)
@@ -165,6 +174,7 @@ class StashVfsModel:
         self._add_skills(workspace_path, overview.get("skills", []))
         self._add_sessions(workspace_path, workspace_id, overview.get("sessions", []))
         self._add_tables(workspace_path, workspace_id)
+        self._add_sources(workspace_path, workspace_id)
 
     def _add_files_tree(self, workspace_path: str, workspace_id: str, tree: dict) -> None:
         root_path = f"{workspace_path}/files"
@@ -225,13 +235,17 @@ class StashVfsModel:
         self._add_dir(skills_path)
         self._add_jsonl_file(f"{skills_path}/_index.jsonl", skills)
         for skill in skills:
-            skill_id = str(skill["id"])
-            basename = _object_basename(skill.get("title") or "skill", skill_id)
+            folder_id = str(skill.get("folder_id") or "")
+            if not folder_id:
+                continue
+            basename = _object_basename(skill.get("name") or "skill", folder_id)
             self._add_json_file(f"{skills_path}/{basename}.json", skill)
-            self._add_file(
-                f"{skills_path}/{basename}.md",
-                loader=lambda slug=skill["slug"]: _text_bytes(self.client.get_skill_text(slug)),
-            )
+            slug = (skill.get("published") or {}).get("slug")
+            if slug:
+                self._add_file(
+                    f"{skills_path}/{basename}.md",
+                    loader=lambda s=slug: _text_bytes(self.client.get_skill_text(s)),
+                )
 
     def _add_sessions(self, workspace_path: str, workspace_id: str, sessions: list[dict]) -> None:
         sessions_path = f"{workspace_path}/sessions"
@@ -291,6 +305,60 @@ class StashVfsModel:
                 f"{table_path}/rows.jsonl",
                 loader=lambda ws=workspace_id, tid=table_id: _jsonl_bytes(
                     self._load_all_table_rows(ws, tid).get("rows", [])
+                ),
+            )
+
+    def _add_sources(self, workspace_path: str, workspace_id: str) -> None:
+        """Expose connected integrations (Gmail, GitHub, Slack, Jira, …) as
+        read-only document trees. Native files/sessions are already mounted
+        above, so skip them. Each source's full entry list is materialized;
+        document bodies load lazily on read."""
+        try:
+            sources = self.client.list_sources(workspace_id)
+        except StashError:
+            return
+        connected = [s for s in sources if not str(s.get("type", "")).startswith("native_")]
+        if not connected:
+            return
+
+        sources_path = self._add_dir(f"{workspace_path}/sources")
+        for source in connected:
+            handle = str(source.get("source") or "")
+            if not handle:
+                continue
+            source_root = self._add_dir_child(
+                sources_path, _source_slug(source.get("display_name") or handle)
+            )
+            self._expanders[source_root] = (
+                lambda root=source_root, ws=workspace_id, h=handle: self._expand_source(root, ws, h)
+            )
+
+    def _expand_source(self, source_root: str, workspace_id: str, handle: str) -> None:
+        try:
+            entries = self.client.list_source_entries(workspace_id, handle, "")
+        except StashError:
+            return
+        self._add_source_entries(source_root, workspace_id, handle, entries)
+
+    def _add_source_entries(
+        self, source_root: str, workspace_id: str, handle: str, entries: list[dict]
+    ) -> None:
+        for entry in entries:
+            ref = str(entry.get("path") or "")
+            segments = [_safe_name(seg) for seg in ref.split("/") if seg]
+            if not segments:
+                continue
+            parent = source_root
+            for segment in segments[:-1]:
+                parent = self._add_dir(f"{parent}/{segment}")
+            display = _safe_name(entry.get("name") or segments[-1])
+            if entry.get("kind") == "folder":
+                self._add_dir(f"{parent}/{display}")
+                continue
+            self._add_file(
+                f"{parent}/{display}",
+                loader=lambda ws=workspace_id, h=handle, r=ref: _text_bytes(
+                    _source_doc_text(self.client.read_source_doc(ws, h, r))
                 ),
             )
 
@@ -379,10 +447,19 @@ class StashVfsModel:
 
     def _get_node(self, path: str) -> VfsNode:
         path = self._clean_path(path)
+        self._ensure_expanded(path)
         node = self.nodes.get(path)
         if node is None:
             raise FileNotFoundError(path)
         return node
+
+    def _ensure_expanded(self, path: str) -> None:
+        """Materialize any connected source whose subtree contains `path`. No-op
+        once a source has been expanded, and never triggered by listing the
+        `sources/` directory itself — only by descending into a source."""
+        for root in list(self._expanders):
+            if path == root or path.startswith(f"{root}/"):
+                self._expanders.pop(root)()
 
     def _unique_child_name(self, parent: str, name: str) -> str:
         existing = self.nodes[parent].children
@@ -753,6 +830,15 @@ def _safe_name(value: str) -> str:
     value = re.sub(r"\s+", " ", value)
     value = value.strip(". ")
     return (value or "untitled")[:96]
+
+
+def _source_slug(name: str) -> str:
+    slug = re.sub(r"[^a-z0-9._-]+", "-", name.lower()).strip("-")
+    return slug or "source"
+
+
+def _source_doc_text(doc: dict) -> str:
+    return doc.get("content") or doc.get("transcript") or ""
 
 
 def _object_basename(name: str, object_id: str) -> str:
