@@ -1,10 +1,10 @@
 "use client";
 
-import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { ApiError } from "@/lib/api";
 import {
+  disconnectIntegration,
   listIntegrations,
   startConnect,
   submitCredentials,
@@ -12,6 +12,7 @@ import {
   type IntegrationStatus,
 } from "@/lib/integrations";
 
+import { useConfirm } from "../ConfirmDialog";
 import { ObsidianIcon } from "./BrandIcons";
 import { CONNECTORS, connectorIcon, type Connector } from "./connectors";
 import { CredentialForm, primaryButton, secondaryButton } from "./pickers";
@@ -39,6 +40,7 @@ export default function SourceConnectorList({
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [paymentRequired, setPaymentRequired] = useState(false);
+  const confirm = useConfirm();
 
   const refresh = useCallback(async () => {
     setError(null);
@@ -98,6 +100,25 @@ export default function SourceConnectorList({
     }
   }
 
+  async function disconnect(connector: Connector) {
+    const ok = await confirm({
+      title: `Disconnect ${connector.label}?`,
+      body: "You'll need to reconnect to sync its sources again.",
+      confirmLabel: "Disconnect",
+    });
+    if (!ok) return;
+    setBusy(connector.provider);
+    setError(null);
+    try {
+      await disconnectIntegration(connector.provider);
+      await refresh();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not disconnect");
+    } finally {
+      setBusy(null);
+    }
+  }
+
   return (
     <div className="space-y-2">
       {disabledReasons.length > 0 && (
@@ -126,15 +147,14 @@ export default function SourceConnectorList({
               </div>
               <div className="flex shrink-0 items-center gap-2">
                 <ConnectorAction
-                  connector={connector}
                   connected={connected}
                   enabled={enabled}
                   authKind={status?.auth_kind ?? "oauth"}
                   disabledReason={status?.disabled_reason ?? null}
                   busy={busy === connector.provider}
-                  workspaceId={workspaceId}
                   expanded={expanded === connector.provider}
                   onConnect={() => void connect(connector)}
+                  onDisconnect={() => void disconnect(connector)}
                   onExpand={() =>
                     setExpanded((value) => (value === connector.provider ? null : connector.provider))
                   }
@@ -180,26 +200,24 @@ function connectedLabel(status: IntegrationStatus | undefined): string {
 }
 
 function ConnectorAction({
-  connector,
   connected,
   enabled,
   authKind,
   disabledReason,
   busy,
-  workspaceId,
   expanded,
   onConnect,
+  onDisconnect,
   onExpand,
 }: {
-  connector: Connector;
   connected: boolean;
   enabled: boolean;
   authKind: IntegrationStatus["auth_kind"];
   disabledReason: string | null;
   busy: boolean;
-  workspaceId: string | null;
   expanded: boolean;
   onConnect: () => void;
+  onDisconnect: () => void;
   onExpand: () => void;
 }) {
   if (!enabled) {
@@ -225,14 +243,14 @@ function ConnectorAction({
       </button>
     );
   }
-  if (workspaceId) {
-    return (
-      <Link href={`/workspaces/${workspaceId}/integrations/${connector.provider}`} className={secondaryButton()}>
-        Open
-      </Link>
-    );
-  }
-  return <span className="text-[12px] font-medium text-muted">Connected</span>;
+  // Once connected, the single action toggles to Disconnect. The dedicated
+  // integration page (for adding specific repos/pages) is still reachable from
+  // the sidebar's External Sources list.
+  return (
+    <button type="button" onClick={onDisconnect} disabled={busy} className={secondaryButton()}>
+      {busy ? "Disconnecting..." : "Disconnect"}
+    </button>
+  );
 }
 
 function ObsidianSourceCard({
