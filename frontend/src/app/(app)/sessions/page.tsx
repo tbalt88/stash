@@ -1164,11 +1164,15 @@ function FolderDrill({
   }, [folder, loadingMore, hasMore, folderSessions]);
 
   // Auto-load the next page when the sentinel scrolls into view; the button it
-  // wraps is the manual fallback if the observer can't fire.
+  // wraps is the manual fallback if the observer can't fire. Pagination follows
+  // the server's recent-first order, so only the "recent" sort places new pages
+  // below the sentinel. Other sorts reorder appended pages above it, which would
+  // keep the sentinel in view and cascade-load the whole folder — for those the
+  // button stays as the one-page-at-a-time control.
   const sentinelRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     const el = sentinelRef.current;
-    if (!el || !hasMore) return;
+    if (!el || !hasMore || sort !== "recent") return;
     const observer = new IntersectionObserver(
       (entries) => {
         if (entries[0]?.isIntersecting) loadMore();
@@ -1177,7 +1181,7 @@ function FolderDrill({
     );
     observer.observe(el);
     return () => observer.disconnect();
-  }, [hasMore, loadMore]);
+  }, [hasMore, loadMore, sort]);
 
   const ownFolder = folder.folder;
   // Shared folders are read-only: render the same chronological browser, but
