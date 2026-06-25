@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 
 import AppRedirectForSignedInUsers from "./AppRedirectForSignedInUsers";
 import { INTEGRATIONS, integrationIcon } from "./BrandIcons";
+import CtaPair from "./CtaPair";
 import HeroTerminal from "./HeroTerminal";
 import Logo from "./Logo";
 import ScrollLink from "./ScrollLink";
@@ -41,40 +42,6 @@ export default function HomePage() {
 // (.kicker) and reused as every section's eyebrow.
 function Kicker({ children }: { children: ReactNode }) {
   return <p className="kicker">{children}</p>;
-}
-
-// One consistent CTA pair everywhere: orange "Sign up free" as the primary
-// goal, outlined "Book a call" as the enterprise secondary.
-function CtaPair({
-  signupHref = APP_URL,
-  align = "start",
-}: {
-  signupHref?: string;
-  align?: "start" | "center";
-}) {
-  const primaryClass =
-    "inline-flex h-11 items-center rounded-lg bg-brand px-5 text-[14px] font-medium text-white shadow-sm transition hover:bg-brand-hover";
-  return (
-    <div
-      className={`flex flex-wrap items-center gap-3 ${align === "center" ? "justify-center" : ""}`}
-    >
-      {signupHref.startsWith("#") ? (
-        <ScrollLink to={signupHref} className={primaryClass}>
-          Sign up free →
-        </ScrollLink>
-      ) : (
-        <Link href={signupHref} className={primaryClass}>
-          Sign up free →
-        </Link>
-      )}
-      <Link
-        href={CALL_URL}
-        className="inline-flex h-11 items-center rounded-lg border border-border bg-background px-5 text-[14px] font-medium text-ink transition hover:border-ink"
-      >
-        Book a call
-      </Link>
-    </div>
-  );
 }
 
 function Avatar({

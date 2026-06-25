@@ -1,9 +1,9 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 
+import CtaPair from "../_components/CtaPair";
 import SiteHeader from "../_components/SiteHeader";
-
-const APP_URL = process.env.MANAGED_APP_URL || "https://app.joinstash.ai";
+import Texture from "../_components/Texture";
 
 export const metadata: Metadata = {
   title: "Token Monitoring · Stash",
@@ -35,13 +35,19 @@ export default function TokenMonitoringPage() {
     <main className="min-h-screen bg-background text-foreground">
       <SiteHeader />
 
-      <section className="border-b border-border-subtle py-24 md:py-32">
-        <div className="mx-auto max-w-[1200px] px-7">
-          <p className="flex items-center font-mono text-[11px] font-medium uppercase tracking-[0.14em] text-muted">
-            <span className="mr-[10px] inline-block h-[6px] w-[6px] rounded-full bg-brand" />
-            Token Monitoring
-          </p>
-          <h1 className="mt-5 max-w-[900px] text-balance font-display text-[clamp(40px,5.4vw,72px)] font-bold leading-[1.02] tracking-[-0.04em] text-ink">
+      <section className="relative overflow-hidden border-b border-border-subtle py-24 md:py-32">
+        <Texture className="h-[560px]" fade="top" />
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-x-0 top-0 z-0 h-[520px]"
+          style={{
+            background:
+              "radial-gradient(ellipse 80% 60% at 18% 8%, rgba(249,115,22,0.10), transparent 60%)",
+          }}
+        />
+        <div className="relative z-10 mx-auto max-w-[1200px] px-7">
+          <p className="kicker rise-in mb-6">Token.monitoring</p>
+          <h1 className="max-w-[920px] text-balance font-display text-[clamp(40px,5.4vw,72px)] font-bold leading-[1.02] tracking-[-0.035em] text-ink">
             Monitor your team&apos;s{" "}
             <span className="text-brand">agent sessions.</span>
           </h1>
@@ -51,20 +57,15 @@ export default function TokenMonitoringPage() {
             you can onboard faster, coach your team, monitor what&apos;s
             happening, and build automations for continual improvement.
           </p>
-          <div className="mt-9 flex flex-wrap gap-3">
-            <Link
-              href={APP_URL}
-              className="inline-flex h-11 items-center rounded-lg bg-brand px-5 text-[14px] font-medium text-white shadow-sm transition hover:bg-brand-hover"
-            >
-              Start free →
-            </Link>
-            <Link
-              href="/docs/quickstart"
-              className="inline-flex h-11 items-center rounded-lg border border-border bg-background px-5 text-[14px] font-medium text-ink transition hover:border-ink"
-            >
-              Quickstart →
-            </Link>
+          <div className="mt-9">
+            <CtaPair />
           </div>
+          <Link
+            href="/docs/quickstart"
+            className="mt-5 inline-flex font-mono text-[13px] text-dim transition hover:text-brand"
+          >
+            Quickstart →
+          </Link>
         </div>
       </section>
 
@@ -91,10 +92,7 @@ export default function TokenMonitoringPage() {
 
       <section className="border-b border-border-subtle py-20 md:py-28">
         <div className="mx-auto max-w-[1200px] px-7">
-          <p className="flex items-center font-mono text-[11px] font-medium uppercase tracking-[0.14em] text-muted">
-            <span className="mr-[10px] inline-block h-[6px] w-[6px] rounded-full bg-brand" />
-            How it works
-          </p>
+          <p className="kicker">How.it.works</p>
           <h2 className="mt-5 max-w-[760px] text-balance font-display text-[clamp(28px,3.4vw,44px)] font-bold leading-[1.1] tracking-[-0.02em] text-ink">
             No manual capture. Nothing to copy-paste.
           </h2>
@@ -120,25 +118,21 @@ export default function TokenMonitoringPage() {
         </div>
       </section>
 
-      <section className="bg-surface py-28 text-center">
-        <div className="mx-auto max-w-[1200px] px-7">
-          <h2 className="text-balance font-display text-[clamp(36px,4.6vw,64px)] font-bold leading-[1.0] tracking-[-0.04em] text-ink">
+      <section className="relative overflow-hidden bg-surface py-28 text-center">
+        <Texture className="opacity-70" fade="center" />
+        <div className="relative z-10 mx-auto max-w-[1200px] px-7">
+          <h2 className="text-balance font-display text-[clamp(36px,4.6vw,64px)] font-bold leading-[1.0] tracking-[-0.035em] text-ink">
             See how your team really works with agents.
           </h2>
-          <div className="mt-8 flex flex-wrap justify-center gap-3">
-            <Link
-              href={APP_URL}
-              className="inline-flex h-11 items-center rounded-lg bg-brand px-5 text-[14px] font-medium text-white shadow-sm transition hover:bg-brand-hover"
-            >
-              Start free →
-            </Link>
-            <Link
-              href="/company-brain"
-              className="inline-flex h-11 items-center rounded-lg border border-border bg-background px-5 text-[14px] font-medium text-ink transition hover:border-ink"
-            >
-              See the Company Brain →
-            </Link>
+          <div className="mt-8 flex justify-center">
+            <CtaPair align="center" />
           </div>
+          <Link
+            href="/company-brain"
+            className="mt-6 inline-flex font-mono text-[13px] text-dim transition hover:text-brand"
+          >
+            See the Company Brain →
+          </Link>
         </div>
       </section>
     </main>

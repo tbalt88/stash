@@ -2,14 +2,14 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 import { INTEGRATIONS, integrationIcon } from "../_components/BrandIcons";
+import CtaPair from "../_components/CtaPair";
 import SiteHeader from "../_components/SiteHeader";
-
-const APP_URL = process.env.MANAGED_APP_URL || "https://app.joinstash.ai";
+import Texture from "../_components/Texture";
 
 export const metadata: Metadata = {
   title: "Company Brain · Stash",
   description:
-    "A brain for your company. Stash connects your tools, synthesizes them into one permission-aware source of truth, and surfaces it as a filesystem any agent can read — GitHub, Drive, Gmail, Notion, Slack, and more.",
+    "All your company's context in one place every agent can read. Stash connects your tools into a permission-aware source of truth, surfaced as a filesystem any agent can navigate — GitHub, Drive, Gmail, Notion, Slack, and more.",
 };
 
 export default function CompanyBrainPage() {
@@ -17,15 +17,21 @@ export default function CompanyBrainPage() {
     <main className="min-h-screen bg-background text-foreground">
       <SiteHeader />
 
-      <section className="border-b border-border-subtle py-24 md:py-32">
-        <div className="mx-auto max-w-[1200px] px-7">
-          <p className="flex items-center font-mono text-[11px] font-medium uppercase tracking-[0.14em] text-muted">
-            <span className="mr-[10px] inline-block h-[6px] w-[6px] rounded-full bg-brand" />
-            Company Brain
-          </p>
-          <h1 className="mt-5 max-w-[900px] text-balance font-display text-[clamp(40px,5.4vw,72px)] font-bold leading-[1.02] tracking-[-0.04em] text-ink">
-            A brain for{" "}
-            <span className="text-brand">your company.</span>
+      <section className="relative overflow-hidden border-b border-border-subtle py-24 md:py-32">
+        <Texture className="h-[560px]" fade="top" />
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-x-0 top-0 z-0 h-[520px]"
+          style={{
+            background:
+              "radial-gradient(ellipse 80% 60% at 18% 8%, rgba(249,115,22,0.10), transparent 60%)",
+          }}
+        />
+        <div className="relative z-10 mx-auto max-w-[1200px] px-7">
+          <p className="kicker rise-in mb-6">Company.brain</p>
+          <h1 className="max-w-[920px] text-balance font-display text-[clamp(40px,5.4vw,72px)] font-bold leading-[1.02] tracking-[-0.035em] text-ink">
+            Your company&apos;s context, in one place{" "}
+            <span className="text-brand">every agent can read.</span>
           </h1>
           <p className="mt-7 max-w-[620px] text-[18px] leading-[1.55] text-foreground">
             Your agent is a clueless genius — brilliant, but it doesn&apos;t know
@@ -34,19 +40,8 @@ export default function CompanyBrainPage() {
             one source of truth, surfaced as a filesystem any agent can read.
             Enterprise context in under five minutes.
           </p>
-          <div className="mt-9 flex flex-wrap gap-3">
-            <Link
-              href={APP_URL}
-              className="inline-flex h-11 items-center rounded-lg bg-brand px-5 text-[14px] font-medium text-white shadow-sm transition hover:bg-brand-hover"
-            >
-              Start free →
-            </Link>
-            <Link
-              href="/contact-sales"
-              className="inline-flex h-11 items-center rounded-lg border border-border bg-background px-5 text-[14px] font-medium text-ink transition hover:border-ink"
-            >
-              Talk to us
-            </Link>
+          <div className="mt-9">
+            <CtaPair />
           </div>
         </div>
       </section>
@@ -97,25 +92,21 @@ export default function CompanyBrainPage() {
         </div>
       </section>
 
-      <section className="bg-surface py-28 text-center">
-        <div className="mx-auto max-w-[1200px] px-7">
-          <h2 className="text-balance font-display text-[clamp(36px,4.6vw,64px)] font-bold leading-[1.0] tracking-[-0.04em] text-ink">
+      <section className="relative overflow-hidden bg-surface py-28 text-center">
+        <Texture className="opacity-70" fade="center" />
+        <div className="relative z-10 mx-auto max-w-[1200px] px-7">
+          <h2 className="text-balance font-display text-[clamp(36px,4.6vw,64px)] font-bold leading-[1.0] tracking-[-0.035em] text-ink">
             Give your agents the why, not just the what.
           </h2>
-          <div className="mt-8 flex flex-wrap justify-center gap-3">
-            <Link
-              href={APP_URL}
-              className="inline-flex h-11 items-center rounded-lg bg-brand px-5 text-[14px] font-medium text-white shadow-sm transition hover:bg-brand-hover"
-            >
-              Start free →
-            </Link>
-            <Link
-              href="/agent-drive"
-              className="inline-flex h-11 items-center rounded-lg border border-border bg-background px-5 text-[14px] font-medium text-ink transition hover:border-ink"
-            >
-              See the Agent Drive →
-            </Link>
+          <div className="mt-8 flex justify-center">
+            <CtaPair align="center" />
           </div>
+          <Link
+            href="/agent-drive"
+            className="mt-6 inline-flex font-mono text-[13px] text-dim transition hover:text-brand"
+          >
+            See the Agent Drive →
+          </Link>
         </div>
       </section>
     </main>
