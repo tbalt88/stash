@@ -8,7 +8,7 @@ import Texture from "../_components/Texture";
 export const metadata: Metadata = {
   title: "Memory · Stash",
   description:
-    "Best-in-class agent memory: a three-way hybrid index — curated wiki, vector search, and grep — so your agents retrieve the right thing every time. Every retrieval method has blind spots; Stash runs all three.",
+    "Best-in-class agent memory: a three-way hybrid index of curated wiki, vector search, and grep, so your agents retrieve the right thing every time. Every index has blind spots, so Stash runs all three.",
 };
 
 const METHODS = [
@@ -16,13 +16,13 @@ const METHODS = [
     name: "Curated wiki",
     tag: "structure",
     blurb:
-      "While you sleep, an agent curates your history into linked pages — a virtual file system your agents navigate directly, the way a teammate would open the right doc.",
+      "While you sleep, an agent curates your history into linked pages: a virtual file system your agents navigate directly, the way a teammate opens the right doc.",
   },
   {
     name: "Vector search",
     tag: "meaning",
     blurb:
-      "Every session, page, and table is embedded, so agents find knowledge by meaning — not by remembering the exact filename or wording.",
+      "Every session, page, and table is embedded, so agents find knowledge by meaning, not by remembering the exact filename or wording.",
   },
   {
     name: "Grep",
@@ -35,15 +35,15 @@ const METHODS = [
 const POINTS = [
   {
     title: "Shared, not per-agent",
-    body: "One memory the whole team and every agent reads from — no per-agent black box, no knowledge trapped in one run's context.",
+    body: "One memory the whole team and every agent reads from. No per-agent black box, no knowledge trapped in one run's context.",
   },
   {
     title: "Kept in sync",
-    body: "As your connected sources change, the index updates — agents reason over the current state of your work, not a stale snapshot.",
+    body: "As your connected sources change, the index updates, so agents reason over the current state of your work, not a stale snapshot.",
   },
   {
     title: "Cited back to the source",
-    body: "Retrieved knowledge links to where it came from — the page, session, or table — so answers are checkable, not vibes.",
+    body: "Retrieved knowledge links to where it came from, the page, session, or table, so answers are checkable, not guesses.",
   },
 ];
 
@@ -69,9 +69,10 @@ export default function MemoryPage() {
             <span className="text-brand">actually retrievable.</span>
           </h1>
           <p className="mt-7 max-w-[640px] text-[18px] leading-[1.55] text-foreground">
-            Every retrieval method has blind spots, so Stash runs three at once — a
-            curated wiki, vector search, and grep. Your agents get the best of all
-            worlds, instead of one index that misses.
+            Every index has blind spots, so Stash runs three at once: a curated
+            wiki for structure, vector search for meaning, and grep for exact
+            identifiers. One query hits all three, so your agents retrieve the
+            right thing instead of the closest match.
           </p>
           <div className="mt-9">
             <CtaPair />
@@ -91,7 +92,7 @@ export default function MemoryPage() {
             Three indexes, one retrieval.
           </h2>
           <p className="mt-4 max-w-[620px] text-[17px] leading-[1.55] text-dim">
-            A question runs against all three and the results merge — keyword
+            A question runs against all three and the results merge: keyword
             precision, semantic recall, and a navigable structure, together.
           </p>
           <div className="mt-12 grid grid-cols-1 gap-5 lg:grid-cols-3">

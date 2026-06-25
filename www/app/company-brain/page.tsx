@@ -9,7 +9,7 @@ import Texture from "../_components/Texture";
 export const metadata: Metadata = {
   title: "Company Brain · Stash",
   description:
-    "All your company's context in one place every agent can read. Stash connects your tools into a permission-aware source of truth, surfaced as a filesystem any agent can navigate — GitHub, Drive, Gmail, Notion, Slack, and more.",
+    "All your company's context in one place every agent can read. Stash connects your tools into a permission-aware source of truth, surfaced as a filesystem any agent can navigate across GitHub, Drive, Gmail, Notion, Slack, and more.",
 };
 
 export default function CompanyBrainPage() {
@@ -34,11 +34,10 @@ export default function CompanyBrainPage() {
             <span className="text-brand">every agent can read.</span>
           </h1>
           <p className="mt-7 max-w-[620px] text-[18px] leading-[1.55] text-foreground">
-            Your agent is a clueless genius — brilliant, but it doesn&apos;t know
-            your people, your projects, or what changed yesterday. Stash connects
-            your tools and weaves them into a permission-aware context graph —
-            one source of truth, surfaced as a filesystem any agent can read.
-            Enterprise context in under five minutes.
+            Your agent doesn&apos;t know your people, your projects, or what
+            shipped yesterday. Stash connects every tool your company uses into
+            one permission-aware source of truth, exposed as a filesystem any
+            agent can read. Set up in minutes, scoped to exactly what you grant.
           </p>
           <div className="mt-9">
             <CtaPair />
@@ -75,19 +74,19 @@ export default function CompanyBrainPage() {
       <section className="border-b border-border-subtle py-20 md:py-28">
         <div className="mx-auto grid max-w-[1200px] grid-cols-1 gap-8 px-7 md:grid-cols-3 md:gap-12">
           <Point title="Connect">
-            OAuth in and permissions are inherited automatically — no tokens to
-            paste, no scripts to run. Access stays scoped to exactly what you
+            OAuth in and permissions are inherited automatically. No tokens to
+            paste, no scripts to run, and access stays scoped to exactly what you
             grant.
           </Point>
           <Point title="Synthesize">
-            Stash continuously weaves your sources into a context graph of the
-            company — the people, projects, and decisions and how they connect,
-            kept accurate in real time, not a one-time export.
+            Stash continuously maps your sources into a context graph of the
+            company: the people, projects, and decisions, and how they connect.
+            Kept accurate in real time, not exported once and left to go stale.
           </Point>
           <Point title="Serve">
-            Ask one question and your agent answers across every source at once —
-            structured results or LLM-ready Markdown, with citations back to
-            where it came from.
+            Ask one question and your agent answers across every source at once,
+            as structured results or LLM-ready Markdown, with citations back to
+            the source.
           </Point>
         </div>
       </section>

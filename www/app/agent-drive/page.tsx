@@ -8,29 +8,29 @@ import Texture from "../_components/Texture";
 export const metadata: Metadata = {
   title: "Agent Drive · Stash",
   description:
-    "A Drive that speaks your agent's language — Markdown files, HTML pages, and Skills, all mounted as a virtual filesystem your agents ls, find, and rg. Reachable through the CLI, MCP, and API.",
+    "A Drive that speaks your agent's language. Markdown files, HTML pages, and Skills, all mounted as a virtual filesystem your agents ls, find, and rg. Reachable through the CLI, MCP, and API.",
 };
 
 const FEATURES = [
   [
     "Markdown & HTML, natively",
-    "Pages are real Markdown and HTML — plus CSV, PDF, and images. The formats your agent already reads and writes, not a proprietary block format.",
+    "Pages are real Markdown and HTML, plus CSV, PDF, and images. The formats your agent already reads and writes, not a proprietary block format.",
   ],
   [
     "A virtual filesystem",
-    "The whole Drive mounts as a filesystem your agent can ls, find, and rg — pages, files, Skills, and session transcripts side by side, addressed by path.",
+    "The whole Drive mounts as a filesystem your agent can ls, find, and rg. Pages, files, Skills, and session transcripts sit side by side, addressed by path.",
   ],
   [
     "Skills are just folders",
-    "A Skill is a folder with a SKILL.md and the pages, files, and sessions it needs. No new format to learn — your agent reads it like a repo.",
+    "A Skill is a folder with a SKILL.md and the pages, files, and sessions it needs. No new format to learn; your agent reads it like a repo.",
   ],
   [
     "WYSIWYG HTML editing",
-    "When your agent builds an HTML page — a report, a dashboard, a deck — you edit it visually in a WYSIWYG editor. Tweak the result by hand without touching the markup.",
+    "When your agent builds an HTML page, a report, a dashboard, or a deck, you edit it visually in a WYSIWYG editor. Adjust the result by hand without touching the markup.",
   ],
   [
     "Real-time collaboration",
-    "You and your agent edit the same page at the same time — two cursors at once. Edits save automatically.",
+    "You and your agent edit the same page at the same time, two cursors at once. Edits save automatically.",
   ],
   [
     "Reachable everywhere",
@@ -38,7 +38,7 @@ const FEATURES = [
   ],
   [
     "Sessions land here too",
-    "Every coding-agent session streams in automatically, indexed alongside your docs — no manual upload, no copy-paste.",
+    "Every coding-agent session streams in automatically, indexed alongside your docs. No manual upload, no copy-paste.",
   ],
 ];
 
@@ -64,11 +64,10 @@ export default function AgentDrivePage() {
             <span className="text-brand">agent&apos;s language.</span>
           </h1>
           <p className="mt-7 max-w-[640px] text-[18px] leading-[1.55] text-foreground">
-            Markdown files, HTML pages, and Skills — all mounted as a virtual
-            filesystem your agent can ls, find, and rg, the way it already works
-            in a repo. No proprietary block format, no API to learn. Reachable
-            through the CLI, MCP, and API, so your agent reads and writes it as
-            naturally as you do.
+            Pages are real Markdown and HTML. Your whole Drive mounts as a virtual
+            filesystem your agent can ls, find, and rg, the same way it works in a
+            repo. No proprietary format, no API to learn. Reach it from the CLI,
+            the MCP server, or the HTTP API.
           </p>
           <div className="mt-9">
             <CtaPair />
@@ -112,7 +111,7 @@ export default function AgentDrivePage() {
           <p className="mt-5 max-w-[640px] text-[16px] leading-[1.6] text-foreground">
             A Skill is just a folder in your Drive with a SKILL.md and the pages,
             files, and sessions a workflow needs. Bundle how a task actually gets
-            done into one place your team and their agents can run again — so a
+            done into one place your team and their agents can run again, so a
             process you figure out once becomes something everyone repeats.
           </p>
           <div className="mt-12 grid grid-cols-1 gap-8 md:grid-cols-3 md:gap-12">
@@ -127,7 +126,7 @@ export default function AgentDrivePage() {
             </Point>
             <Point title="Fork and stay in sync">
               Fork a Skill into your own Stash and it stays live with the source
-              as it changes — improvements flow downstream.
+              as it changes, so improvements flow downstream.
             </Point>
           </div>
           <div className="mt-10 flex flex-wrap gap-3">

@@ -8,7 +8,7 @@ import Texture from "../_components/Texture";
 export const metadata: Metadata = {
   title: "Token Monitoring · Stash",
   description:
-    "Monitor your team's agent sessions like Granola or Gong — onboard faster, coach your team, see what's happening across every session, and build automations for continual improvement.",
+    "Monitor your team's agent sessions like Granola or Gong. Onboard faster, coach your team, see what's happening across every session, and build automations for continual improvement.",
 };
 
 const FEATURES = [
@@ -26,7 +26,7 @@ const FEATURES = [
   ],
   [
     "Automations & workflows",
-    "Mine recurring patterns into reusable Skills, prompts, and automations — so the lessons from one session compound into continual improvement for everyone.",
+    "Mine recurring patterns into reusable Skills, prompts, and automations, so the lessons from one session compound into improvement for everyone.",
   ],
 ];
 
@@ -52,10 +52,10 @@ export default function TokenMonitoringPage() {
             <span className="text-brand">agent sessions.</span>
           </h1>
           <p className="mt-7 max-w-[620px] text-[18px] leading-[1.55] text-foreground">
-            Like Granola or Gong for your coding agents. Every session your team
-            runs streams into Stash automatically and is indexed full-text — so
-            you can onboard faster, coach your team, monitor what&apos;s
-            happening, and build automations for continual improvement.
+            Granola or Gong, but for coding agents. Every session your team runs
+            streams into Stash automatically and is indexed full-text, so you can
+            onboard faster, see where people get stuck, and promote the best runs
+            into shared playbooks.
           </p>
           <div className="mt-9">
             <CtaPair />
@@ -98,13 +98,13 @@ export default function TokenMonitoringPage() {
           </h2>
           <p className="mt-5 max-w-[620px] text-[16px] leading-[1.6] text-foreground">
             Point Claude Code, Cursor, Codex, or OpenCode at Stash and every
-            session lands automatically — transcripts, files, and the decisions
-            along the way — searchable across your whole team.
+            session lands automatically: transcripts, files, and the decisions
+            along the way, searchable across your whole team.
           </p>
           <div className="mt-12 grid grid-cols-1 gap-8 md:grid-cols-3 md:gap-12">
             <Point title="Sessions stream in">
               Each coding-agent session is uploaded as it happens and indexed
-              alongside your docs — no manual recap, no lost context.
+              alongside your docs. No manual recap, no lost context.
             </Point>
             <Point title="Search across the team">
               Full-text and semantic search over every session. Find how a
