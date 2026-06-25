@@ -795,7 +795,7 @@ function CliAndPlugin() {
                 </span>
               </div>
               <span className="font-mono text-[10.5px] uppercase tracking-[0.12em] text-on-inverted-dim">
-                stash mcp
+                stash cli
               </span>
             </div>
             <div className="overflow-x-auto px-5 py-6 font-mono text-[13px] leading-[1.75] text-on-inverted">

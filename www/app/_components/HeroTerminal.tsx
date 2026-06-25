@@ -98,7 +98,7 @@ export default function HeroTerminal() {
           </span>
         </div>
         <span className="font-mono text-[10.5px] uppercase tracking-[0.12em] text-on-inverted-dim">
-          stash mcp
+          stash cli
         </span>
       </div>
 
