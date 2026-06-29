@@ -268,24 +268,22 @@ function Problem() {
       <div className="mx-auto max-w-[1200px] px-7">
         <Kicker>The problem</Kicker>
         <h2 className="mt-4 max-w-[980px] text-balance font-display text-[clamp(38px,5vw,64px)] font-bold leading-[1.04] tracking-[-0.035em] text-ink">
-          Agent memory today is a locked black box.{" "}
-          <span className="text-brand">And it&apos;s single-player.</span>
+          Your agent is a clueless genius.{" "}
+          <span className="text-dim">It forgets everything by{" "}</span>
+          <span className="text-brand">tomorrow.</span>
         </h2>
         <div className="mt-12 grid grid-cols-1 gap-8 text-[17px] leading-[1.6] text-foreground md:grid-cols-2 md:gap-14">
           <p>
-            <span className="font-semibold text-ink">It isn&apos;t yours.</span>{" "}
-            Most agent memory lives in someone else&apos;s black box. You
-            can&apos;t read it, move it, or run it yourself, and switching tools
-            means leaving it behind. Stash is portable memory you own: open
-            source, MIT licensed, and self-hostable on your own Postgres. No
-            vendor lock-in.
+            Every Claude, Cursor, or Codex run generates pages of work:
+            transcripts, plans, the decisions it reasoned through, the files it
+            wrote. Most of it evaporates the moment the session closes, so the
+            next run starts cold and re-derives what you already solved.
           </p>
           <p>
-            <span className="font-semibold text-ink">It isn&apos;t shared.</span>{" "}
-            Every agent keeps its own private context, invisible to your
-            teammates and to the next run. Stash is true multiplayer AI: humans
-            and agents read and write the same memory in real time, so everyone
-            and every agent works from one source of truth.
+            Stash fixes that. It connects to all your data, from GitHub and Drive
+            to Gmail, Notion, and Slack, and captures every session into one
+            agent-native Drive your agents can read, search, and write back into.
+            Memory that builds itself, shared across every agent and teammate.
           </p>
         </div>
       </div>
@@ -511,21 +509,21 @@ const DEFAULT_HOW_STEPS: HowItWorksStep[] = [
     n: "01",
     pill: "Connect",
     title: "Connect any data source.",
-    body: "GitHub, Drive, Gmail, Notion, Slack, Jira, Gong, Snowflake and more — one easy connection per source, through any integration, and every agent you run can read all of them.",
+    body: "GitHub, Drive, Gmail, Notion, Slack, Jira, Gong, Snowflake and more. One easy connection per source, through any integration, and every agent you run can read all of them.",
     viz: <SourcesViz />,
   },
   {
     n: "02",
     pill: "Remember",
     title: "Memory that builds itself.",
-    body: "Every agent session — prompts, tool calls, artifacts — streams in automatically and becomes shared, retrievable memory. Your agents remember what they did instead of starting from zero each run.",
+    body: "Every agent session, including prompts, tool calls, and artifacts, streams in automatically and becomes shared, retrievable memory. Your agents remember what they did instead of starting from zero each run.",
     viz: <StreamViz />,
   },
   {
     n: "03",
-    pill: "Drive",
-    title: "An agent-native Drive.",
-    body: "HTML docs, Markdown, dashboards, decks — your agents' work lands as real files. Edit HTML visually in a WYSIWYG editor, and share any slice as a link.",
+    pill: "VFS",
+    title: "A virtual filesystem agents speak.",
+    body: "Your whole Stash mounts as a virtual filesystem (VFS) agents ls, find, and rg through the CLI and MCP. Humans and agents edit the same files at the same time, synced live, so everyone works from one copy.",
     viz: <FilesViz />,
   },
 ];
