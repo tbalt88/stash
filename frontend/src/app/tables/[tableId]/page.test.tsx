@@ -72,7 +72,7 @@ vi.mock("../../../hooks/useAuth", () => ({
   }),
 }));
 
-vi.mock("../../../components/AppShell", () => ({
+vi.mock("@/components/workspace/workspace-shell", () => ({
   default: ({ children }: { children: ReactNode }) => (
     <div data-testid="app-shell">{children}</div>
   ),

@@ -180,7 +180,7 @@ export default function ResourceShareButton({
             <button
               type="button"
               onClick={() => setOpen(false)}
-              className="cursor-pointer rounded p-1 text-muted hover:bg-raised hover:text-foreground"
+              className="cursor-pointer rounded p-1 text-muted-foreground hover:bg-raised hover:text-foreground"
               aria-label="Close share dialog"
             >
               <svg
@@ -208,7 +208,7 @@ export default function ResourceShareButton({
                 value={email}
                 onChange={(event) => setEmail(event.target.value)}
                 placeholder="Add people by email"
-                className="min-w-0 flex-1 rounded-md border border-border bg-base px-3 py-2 text-[13px] text-foreground placeholder:text-muted focus:border-brand focus:outline-none"
+                className="min-w-0 flex-1 rounded-md border border-border bg-base px-3 py-2 text-[13px] text-foreground placeholder:text-muted-foreground focus:border-brand focus:outline-none"
               />
               <select
                 value={permission}
@@ -247,7 +247,7 @@ export default function ResourceShareButton({
               />
 
               {loadingShares && (
-                <div className="rounded-md border border-border bg-surface px-3 py-2 text-[12.5px] text-muted">
+                <div className="rounded-md border border-border bg-surface px-3 py-2 text-[12.5px] text-muted-foreground">
                   Loading access...
                 </div>
               )}
@@ -284,7 +284,7 @@ export default function ResourceShareButton({
               General access
             </h3>
             <div className="mt-2 flex items-center gap-3 rounded-md border border-border bg-surface px-3 py-2.5">
-              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-base text-muted ring-1 ring-border">
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-base text-muted-foreground ring-1 ring-border">
                 <svg
                   aria-hidden="true"
                   className="h-4 w-4"
@@ -301,7 +301,7 @@ export default function ResourceShareButton({
                 <span className="block text-[13px] font-medium text-foreground">
                   Restricted
                 </span>
-                <span className="block truncate text-[12px] text-muted">
+                <span className="block truncate text-[12px] text-muted-foreground">
                   Only people with access can open this link
                 </span>
               </span>
@@ -326,7 +326,7 @@ export default function ResourceShareButton({
           </div>
 
           {message && (
-            <div className="mt-3 text-[12px] text-muted" role="status">
+            <div className="mt-3 text-[12px] text-muted-foreground" role="status">
               {message}
             </div>
           )}
@@ -360,7 +360,7 @@ function AccessRow({
         <span className="block truncate text-[13px] font-medium text-foreground">
           {label}
         </span>
-        <span className="block truncate text-[12px] text-muted">{sublabel}</span>
+        <span className="block truncate text-[12px] text-muted-foreground">{sublabel}</span>
       </span>
       {onChangePermission && permission ? (
         <select
@@ -379,7 +379,7 @@ function AccessRow({
           ))}
         </select>
       ) : (
-        <span className="shrink-0 text-[12px] text-muted">{permissionLabel}</span>
+        <span className="shrink-0 text-[12px] text-muted-foreground">{permissionLabel}</span>
       )}
       {onRemove && (
         <button

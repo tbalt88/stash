@@ -432,6 +432,11 @@ export async function listFolders(): Promise<{ folders: Folder[] }> {
   return apiFetch(`${ME}/folders`);
 }
 
+// The reserved per-user Memory folder (created on first access) — Memory's root.
+export async function getMemoryFolder(): Promise<Folder> {
+  return apiFetch(`${ME}/memory-folder`);
+}
+
 export async function createFolder(
   name: string,
   parentFolderId?: string | null
@@ -623,7 +628,7 @@ export interface MeOverview {
 // Counts for the "Your brain" vitals, spanning the user's own content plus
 // everything shared with them.
 export async function getMeOverview(): Promise<MeOverview> {
-  return apiFetch(`${ME}/overview`);
+  return apiFetch(`${ME}/vitals`);
 }
 
 export async function getActivityTimeline(
@@ -1267,6 +1272,16 @@ export interface Skill {
 export async function listSkills(): Promise<Skill[]> {
   const data = await apiFetch<{ skills: Skill[] }>(`${ME}/skills`);
   return data.skills;
+}
+
+// Import a public GitHub repo's SKILL.md folders as private skills in your scope.
+export async function importGithubSkill(
+  repoUrl: string,
+): Promise<{ skills: number; imported: number }> {
+  return apiFetch(`${ME}/skills/import-github`, {
+    method: "POST",
+    body: JSON.stringify({ repo_url: repoUrl }),
+  });
 }
 
 // The full publish record, as returned by publish/update.

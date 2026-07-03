@@ -256,7 +256,7 @@ function MessageBubble({ message }: { message: ChatMessage }) {
           <span className="inline-block h-3 w-1.5 animate-pulse bg-brand align-baseline" />
         )}
         {!isUser && message.citations && message.citations.length > 0 && (
-          <div className="mt-2 border-t border-border-subtle pt-2 text-[11px] text-muted">
+          <div className="mt-2 border-t border-border-subtle pt-2 text-[11px] text-muted-foreground">
             <span className="font-medium text-foreground">Grounded on:</span>{" "}
             {message.citations.map((c, i) => (
               <span key={c.id}>
@@ -297,7 +297,7 @@ function Composer({
           }}
           rows={2}
           placeholder="Ask your agent anything..."
-          className="flex-1 resize-none rounded-md border border-border bg-base px-3 py-2 text-[13px] text-foreground placeholder:text-muted focus:border-brand focus:outline-none"
+          className="flex-1 resize-none rounded-md border border-border bg-base px-3 py-2 text-[13px] text-foreground placeholder:text-muted-foreground focus:border-brand focus:outline-none"
         />
         <button
           type="button"

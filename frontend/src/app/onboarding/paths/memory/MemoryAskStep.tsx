@@ -184,7 +184,7 @@ export default function MemoryAskStep({
               onChange={(e) => setQuestion(e.target.value)}
               placeholder="Or write your own…"
               rows={2}
-              className="flex-1 rounded-md border border-border bg-base px-3 py-2 text-[13px] text-foreground placeholder:text-muted focus:border-brand focus:outline-none resize-none"
+              className="flex-1 rounded-md border border-border bg-base px-3 py-2 text-[13px] text-foreground placeholder:text-muted-foreground focus:border-brand focus:outline-none resize-none"
             />
             <button
               type="submit"
@@ -199,13 +199,13 @@ export default function MemoryAskStep({
 
       {submitted && (
         <div className="rounded-2xl border border-border bg-surface p-4 space-y-3">
-          <div className="text-[12px] text-muted italic">{question}</div>
+          <div className="text-[12px] text-muted-foreground italic">{question}</div>
           {error ? (
             <div className="text-[12px] text-error rounded-lg border border-error/30 bg-error/10 px-3 py-2">
               {error}
             </div>
           ) : streaming && !answer ? (
-            <div className="flex items-center gap-2 py-2 text-[13px] text-muted">
+            <div className="flex items-center gap-2 py-2 text-[13px] text-muted-foreground">
               <span className="flex gap-1" aria-hidden>
                 <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-brand [animation-delay:-0.3s]" />
                 <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-brand [animation-delay:-0.15s]" />
@@ -222,7 +222,7 @@ export default function MemoryAskStep({
                 )}
               </div>
               {citations.length > 0 && (
-                <div className="border-t border-border-subtle pt-3 text-[11.5px] text-muted">
+                <div className="border-t border-border-subtle pt-3 text-[11.5px] text-muted-foreground">
                   <span className="font-medium text-foreground">
                     Grounded on:
                   </span>{" "}

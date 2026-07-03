@@ -153,6 +153,17 @@ async def get_scope_tree(
     return ScopeTreeResponse(**tree)
 
 
+@router.get("/memory-folder", response_model=FolderResponse)
+async def get_memory_folder(
+    current_user: dict = Depends(get_current_user),
+):
+    """The caller's reserved Memory folder (created on first access)."""
+    folder = await files_tree_service.get_or_create_memory_folder(
+        current_user["id"], current_user["id"]
+    )
+    return FolderResponse(**folder)
+
+
 # --- Folders ---
 
 
@@ -393,6 +404,8 @@ async def update_folder(
         raise HTTPException(status_code=409, detail=str(e))
     except FolderCycle as e:
         raise HTTPException(status_code=400, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     if not folder:
         raise HTTPException(status_code=404, detail="Folder not found")
     return FolderResponse(**folder)
@@ -412,7 +425,10 @@ async def delete_folder(
         current_user["id"],
         require="write",
     )
-    deleted = await files_tree_service.delete_folder(folder_id, owner_user_id)
+    try:
+        deleted = await files_tree_service.delete_folder(folder_id, owner_user_id)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     if not deleted:
         raise HTTPException(status_code=404, detail="Folder not found")
 

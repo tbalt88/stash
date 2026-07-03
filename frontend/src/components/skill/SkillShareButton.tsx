@@ -193,7 +193,7 @@ export default function SkillShareButton({
         {publish ? "Published" : "Publish"}
       </button>
       {(handoffMessage || (message && !open)) && (
-        <div className="absolute right-0 top-full z-40 mt-1.5 max-w-[280px] rounded-md border border-border bg-base px-2 py-1.5 text-[12px] text-muted shadow-lg">
+        <div className="absolute right-0 top-full z-40 mt-1.5 max-w-[280px] rounded-md border border-border bg-base px-2 py-1.5 text-[12px] text-muted-foreground shadow-lg">
           {handoffMessage || message}
         </div>
       )}
@@ -205,7 +205,7 @@ export default function SkillShareButton({
         >
           {!publish ? (
             <>
-              <p className="m-0 text-[12.5px] leading-relaxed text-muted">
+              <p className="m-0 text-[12.5px] leading-relaxed text-muted-foreground">
                 Publishing creates a public, read-only page for this skill.
                 Anyone with the link can view it.
               </p>
@@ -247,7 +247,7 @@ export default function SkillShareButton({
               </label>
 
               <div className="mt-3 flex items-center justify-between gap-2">
-                <span className="text-[11.5px] text-muted">
+                <span className="text-[11.5px] text-muted-foreground">
                   {publish.view_count} view{publish.view_count === 1 ? "" : "s"}
                 </span>
                 <button
@@ -262,7 +262,7 @@ export default function SkillShareButton({
             </>
           )}
 
-          {message && <div className="mt-2 text-[12px] text-muted">{message}</div>}
+          {message && <div className="mt-2 text-[12px] text-muted-foreground">{message}</div>}
         </div>
       )}
     </div>

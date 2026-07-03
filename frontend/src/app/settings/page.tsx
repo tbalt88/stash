@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useConfirm } from "../../components/ConfirmDialog";
-import Header from "../../components/Header";
+import WorkspaceShell from "@/components/workspace/workspace-shell";
 import IntegrationsSettings from "../../components/integrations/IntegrationsSettings";
 import SubscriptionSection from "../../components/settings/SubscriptionSection";
 import { AccountSettingsSkeleton, ApiKeysSkeleton } from "../../components/SkeletonStates";
@@ -34,20 +34,19 @@ export default function SettingsPage() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col">
-      <Header user={user} onLogout={logout} />
+    <WorkspaceShell user={user} onLogout={logout}>
       <main className="flex-1 px-4 py-10">
         <div className="w-full max-w-2xl mx-auto space-y-8">
           <button
             type="button"
             onClick={() => router.push("/")}
-            className="cursor-pointer text-sm text-muted hover:text-foreground inline-flex items-center gap-1.5"
+            className="cursor-pointer text-sm text-muted-foreground hover:text-foreground inline-flex items-center gap-1.5"
           >
             <span aria-hidden>←</span> Home
           </button>
           <div>
             <h1 className="text-2xl font-semibold text-foreground">Settings</h1>
-            <p className="text-sm text-muted mt-1">
+            <p className="text-sm text-muted-foreground mt-1">
               Your profile, connected sources, sessions, and password.
             </p>
           </div>
@@ -58,7 +57,7 @@ export default function SettingsPage() {
           {!AUTH0_ENABLED && <ChangePassword />}
         </div>
       </main>
-    </div>
+    </WorkspaceShell>
   );
 }
 
@@ -96,7 +95,7 @@ function Profile({ user, onUpdated }: { user: User; onUpdated: () => void }) {
     <section className="rounded-2xl border border-border bg-surface p-6 space-y-4">
       <div>
         <h2 className="text-base font-semibold text-foreground">Profile</h2>
-        <p className="text-xs text-muted mt-0.5">
+        <p className="text-xs text-muted-foreground mt-0.5">
           Signed in as <span className="font-mono">{user.name}</span>.
         </p>
       </div>
@@ -143,7 +142,7 @@ function TextField({
       placeholder={placeholder}
       value={value}
       onChange={(e) => onChange(e.target.value)}
-      className="w-full px-3.5 py-2.5 rounded-lg border border-border bg-background text-foreground text-sm placeholder:text-muted focus:outline-none focus:border-brand focus:ring-2 focus:ring-brand/20 transition-all"
+      className="w-full px-3.5 py-2.5 rounded-lg border border-border bg-background text-foreground text-sm placeholder:text-muted-foreground focus:outline-none focus:border-brand focus:ring-2 focus:ring-brand/20 transition-all"
     />
   );
 }
@@ -210,7 +209,7 @@ function ActiveSessions() {
       <div className="flex items-baseline justify-between">
         <div>
           <h2 className="text-base font-semibold text-foreground">API keys & sessions</h2>
-          <p className="text-xs text-muted mt-0.5">
+          <p className="text-xs text-muted-foreground mt-0.5">
             {AUTH0_ENABLED
               ? "CLI installs have their own revocable keys. Revoke anything you don't recognize."
               : "Each browser tab and CLI install holds its own key. Create a personal key to use the Skill API or CLI directly, and revoke anything you don't recognize."}
@@ -218,7 +217,7 @@ function ActiveSessions() {
         </div>
         <button
           onClick={load}
-          className="cursor-pointer text-xs text-muted hover:text-foreground"
+          className="cursor-pointer text-xs text-muted-foreground hover:text-foreground"
           type="button"
         >
           Refresh
@@ -235,7 +234,7 @@ function ActiveSessions() {
             onChange={(e) => setNewKeyName(e.target.value)}
             placeholder="Key name (e.g. laptop, ci-runner)"
             maxLength={128}
-            className="flex-1 px-3 py-2 rounded-lg border border-border bg-background text-foreground text-sm placeholder:text-muted focus:outline-none focus:border-brand focus:ring-2 focus:ring-brand/20 transition-all"
+            className="flex-1 px-3 py-2 rounded-lg border border-border bg-background text-foreground text-sm placeholder:text-muted-foreground focus:outline-none focus:border-brand focus:ring-2 focus:ring-brand/20 transition-all"
           />
           <button
             type="submit"
@@ -251,14 +250,14 @@ function ActiveSessions() {
       {keys === null ? (
         <ApiKeysSkeleton />
       ) : keys.length === 0 ? (
-        <p className="text-sm text-muted">No active sessions.</p>
+        <p className="text-sm text-muted-foreground">No active sessions.</p>
       ) : (
         <ul className="divide-y divide-border rounded-lg border border-border overflow-hidden">
           {keys.map((k) => (
             <li key={k.id} className="flex items-center gap-3 p-3">
               <div className="flex-1 min-w-0">
                 <div className="text-sm text-foreground truncate">{k.name || "(unnamed)"}</div>
-                <div className="text-[11px] text-muted font-mono">
+                <div className="text-[11px] text-muted-foreground font-mono">
                   created {formatDate(k.created_at)}
                   {k.last_used_at ? ` · last used ${formatRelative(k.last_used_at)}` : " · never used"}
                 </div>
@@ -299,7 +298,7 @@ function MintedKey({
       <div className="text-xs text-foreground font-semibold">
         New key “{minted.name}” created
       </div>
-      <div className="text-[11px] text-muted">
+      <div className="text-[11px] text-muted-foreground">
         Copy it now — this is the only time the full key will be shown.
       </div>
       <div className="flex items-center gap-2">
@@ -316,7 +315,7 @@ function MintedKey({
         <button
           onClick={onDismiss}
           type="button"
-          className="cursor-pointer text-xs text-muted hover:text-foreground px-2"
+          className="cursor-pointer text-xs text-muted-foreground hover:text-foreground px-2"
         >
           Dismiss
         </button>
@@ -365,7 +364,7 @@ function ChangePassword() {
     <section className="rounded-2xl border border-border bg-surface p-6 space-y-4">
       <div>
         <h2 className="text-base font-semibold text-foreground">Change password</h2>
-        <p className="text-xs text-muted mt-0.5">
+        <p className="text-xs text-muted-foreground mt-0.5">
           Changing your password signs out every other browser and CLI.
         </p>
       </div>
@@ -408,7 +407,7 @@ function PasswordField({
       value={value}
       onChange={(e) => onChange(e.target.value)}
       autoComplete={autoComplete}
-      className="w-full px-3.5 py-2.5 rounded-lg border border-border bg-background text-foreground text-sm placeholder:text-muted focus:outline-none focus:border-brand focus:ring-2 focus:ring-brand/20 transition-all"
+      className="w-full px-3.5 py-2.5 rounded-lg border border-border bg-background text-foreground text-sm placeholder:text-muted-foreground focus:outline-none focus:border-brand focus:ring-2 focus:ring-brand/20 transition-all"
     />
   );
 }
