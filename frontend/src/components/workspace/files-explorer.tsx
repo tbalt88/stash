@@ -5,12 +5,12 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
   Loader2, FilePlus, FolderPlus, Upload, Trash2, Pencil, FolderInput,
-  Plus, ArrowDownAZ, Clock, FileText, Code2, Table2, GitBranch, GraduationCap,
+  Plus, ArrowDownAZ, Clock, FileText, Code2, Table2, GitBranch, GraduationCap, MessagesSquare,
 } from "lucide-react";
 import {
   getTree, getFolderContents, createPage, createFolder, createTable, updateFolder, updatePage,
-  updateFile, updateTable, trashItem, deleteFolder, deleteTable, uploadFileOrPage, importGithubSkill,
-  type FolderBreadcrumb,
+  updateFile, updateTable, trashItem, deleteFolder, deleteTable, deleteSessionFolder, updateSessionFolder,
+  uploadFileOrPage, importGithubSkill, type FolderBreadcrumb,
 } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { useWorkspace } from "@/lib/workspace-store";
@@ -21,8 +21,10 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 
-type Kind = "folder" | "page" | "file" | "table" | "skill";
+type Kind = "folder" | "page" | "file" | "table" | "skill" | "session-folder" | "session";
 export type Item = { kind: Kind; id: string; name: string; ts?: string };
+// Kinds that live in the VFS (draggable, rename/move/delete via folder/page APIs).
+const VFS_KINDS = new Set<Kind>(["folder", "page", "file", "table", "skill"]);
 type Menu = { x: number; y: number; item: Item } | null;
 type Sort = "name" | "date";
 const DND = "application/x-fx-item";
@@ -36,7 +38,10 @@ export default function FilesExplorer({
   rootFolderId = null,
   hideFolderId = null,
   loadRoot,
+  loadFolder,
   newRootItem,
+  showImport = true,
+  vfsWritable = true,
 }: {
   onRoot: () => void;
   rootLabel?: string;
@@ -46,9 +51,17 @@ export default function FilesExplorer({
   hideFolderId?: string | null;
   /** Custom root listing (e.g. Skills lists skill folders). Default = the VFS tree. */
   loadRoot?: () => Promise<Item[]>;
+  /** Custom folder navigation (e.g. Sessions folders aren't VFS folders). Default =
+   *  getFolderContents. */
+  loadFolder?: (folderId: string) => Promise<{ crumbs: FolderBreadcrumb[]; items: Item[] }>;
   /** At a virtual root (loadRoot), the "create" action for that root's native item
    *  (e.g. New skill) — replaces new-file/folder/upload, which need a real folder. */
   newRootItem?: { label: string; run: () => Promise<void> };
+  /** Show the GitHub import button. Default true. */
+  showImport?: boolean;
+  /** This section can create VFS items (new file/folder/upload). Default true;
+   *  Sessions is a read-through view, so false. */
+  vfsWritable?: boolean;
 }) {
   const router = useRouter();
   const openTab = useWorkspace((s) => s.openTab);
@@ -80,6 +93,10 @@ export default function FilesExplorer({
           ...tree.folders.filter((f) => f.id !== hideFolderId).map((f) => ({ kind: "folder" as const, id: f.id, name: f.name, ts: f.updated_at })),
           ...tree.pages.map((p) => ({ kind: "page" as const, id: p.id, name: p.name || "Untitled", ts: p.updated_at })),
         ]);
+      } else if (loadFolder) {
+        const { crumbs: c, items: it } = await loadFolder(folderId);
+        setCrumbs(c);
+        setItems(it);
       } else {
         const c = await getFolderContents(folderId);
         setCrumbs(c.breadcrumbs);
@@ -93,7 +110,7 @@ export default function FilesExplorer({
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load");
     }
-  }, [folderId, hideFolderId, loadRoot]);
+  }, [folderId, hideFolderId, loadRoot, loadFolder]);
 
   useEffect(() => { setItems(null); load(); }, [load]);
   useEffect(() => {
@@ -104,17 +121,19 @@ export default function FilesExplorer({
   }, [menu]);
 
   // Open an item as a workbench tab (folder → folder tab; skill → skill tab; …).
+  // Session folders have no tab view, so they only ever navigate in the explorer.
   function openAsTab(item: Item) {
+    if (item.kind === "session-folder") { setFolderId(item.id); return; }
     if (item.kind === "table") { router.push(`/tables/${item.id}`); return; }
-    const kind = item.kind === "folder" ? "folder" : item.kind === "skill" ? "skill" : item.kind === "page" ? "page" : "file";
+    const kind = item.kind === "folder" ? "folder" : item.kind === "skill" ? "skill" : item.kind === "session" ? "session" : item.kind === "page" ? "page" : "file";
     openTab(kind, item.id, item.name);
     router.replace(urlForTab({ kind, refId: item.id }));
   }
 
-  // Single-click a folder (or skill folder) → browse into it in the explorer;
-  // double-click → open it as a tab. A short timer lets the dblclick cancel the
-  // pending navigate.
-  const isFolderLike = (item: Item) => item.kind === "folder" || item.kind === "skill";
+  // Single-click a folder (or skill/session folder) → browse into it in the
+  // explorer; double-click → open it as a tab. A short timer lets the dblclick
+  // cancel the pending navigate.
+  const isFolderLike = (item: Item) => item.kind === "folder" || item.kind === "skill" || item.kind === "session-folder";
   function onRowClick(item: Item) {
     if (!isFolderLike(item)) return;
     if (clickTimer.current) clearTimeout(clickTimer.current);
@@ -139,9 +158,19 @@ export default function FilesExplorer({
     setRenaming(null);
     if (!name.trim() || name === item.name) return;
     if (item.kind === "folder" || item.kind === "skill") await updateFolder(item.id, { name });
+    else if (item.kind === "session-folder") await updateSessionFolder(item.id, { name });
+    else if (item.kind === "session") return;
     else if (item.kind === "page") await updatePage(item.id, { name });
     else if (item.kind === "table") await updateTable(item.id, { name });
     else await updateFile(item.id, { name });
+    await load();
+  }
+
+  async function del(item: Item) {
+    if (item.kind === "folder" || item.kind === "skill") await deleteFolder(item.id);
+    else if (item.kind === "session-folder") await deleteSessionFolder(item.id);
+    else if (item.kind === "table") await deleteTable(item.id);
+    else await trashItem(item.kind, item.id); // page | file | session
     await load();
   }
 
@@ -210,10 +239,10 @@ export default function FilesExplorer({
           {atVirtualRoot ? (
             newRootItem && (
               <button title={newRootItem.label} aria-label={newRootItem.label} onClick={runNewRootItem} className="flex h-7 items-center gap-1 rounded px-1.5 text-[12px] text-sidebar-foreground hover:bg-sidebar-accent">
-                <GraduationCap className="h-4 w-4" /><Plus className="h-2.5 w-2.5" />
+                <FolderPlus className="h-4 w-4" /><Plus className="h-2.5 w-2.5" />
               </button>
             )
-          ) : (
+          ) : vfsWritable ? (
             <>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
@@ -230,8 +259,8 @@ export default function FilesExplorer({
               <ToolBtn icon={<FolderPlus className="h-4 w-4" />} label="New folder" onClick={newFolder} />
               <ToolBtn icon={<Upload className="h-4 w-4" />} label="Upload" onClick={() => fileRef.current?.click()} />
             </>
-          )}
-          <ToolBtn icon={<GitBranch className="h-4 w-4" />} label="Import from GitHub" onClick={() => setImportOpen(true)} />
+          ) : null}
+          {showImport && <ToolBtn icon={<GitBranch className="h-4 w-4" />} label="Import from GitHub" onClick={() => setImportOpen(true)} />}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <button title="Sort" aria-label="Sort" className="flex h-7 w-7 items-center justify-center rounded text-sidebar-foreground hover:bg-sidebar-accent">
@@ -261,7 +290,7 @@ export default function FilesExplorer({
           return (
             <div
               key={`${item.kind}-${item.id}`}
-              draggable={renaming !== item.id}
+              draggable={renaming !== item.id && VFS_KINDS.has(item.kind)}
               onDragStart={(e) => e.dataTransfer.setData(DND, JSON.stringify(item))}
               onDragOver={isFolder ? (e) => { e.preventDefault(); setDropTarget(item.id); } : undefined}
               onDragLeave={isFolder ? () => setDropTarget((t) => (t === item.id ? null : t)) : undefined}
@@ -276,7 +305,7 @@ export default function FilesExplorer({
               title={item.name}
             >
               <span className="flex h-4 w-4 shrink-0 items-center justify-center text-muted-foreground">
-                {item.kind === "skill" ? <GraduationCap className="h-3.5 w-3.5 text-chart-4" /> : item.kind === "folder" ? <FolderIcon className="text-[13px] text-chart-4" /> : item.kind === "page" ? <PageIcon className="text-[13px]" /> : item.kind === "table" ? <TableIcon className="text-[13px]" /> : <FileIcon className="text-[13px]" />}
+                {item.kind === "skill" ? <GraduationCap className="h-3.5 w-3.5 text-chart-4" /> : item.kind === "session-folder" ? <FolderIcon className="text-[13px] text-chart-4" /> : item.kind === "session" ? <MessagesSquare className="h-3.5 w-3.5" /> : item.kind === "folder" ? <FolderIcon className="text-[13px] text-chart-4" /> : item.kind === "page" ? <PageIcon className="text-[13px]" /> : item.kind === "table" ? <TableIcon className="text-[13px]" /> : <FileIcon className="text-[13px]" />}
               </span>
               {renaming === item.id ? (
                 <input
@@ -297,10 +326,10 @@ export default function FilesExplorer({
 
       {menu && (
         <div className="fixed z-50 w-40 overflow-hidden rounded-md border border-border bg-surface py-1 text-[13px] shadow-lg" style={{ left: menu.x, top: menu.y }} onClick={(e) => e.stopPropagation()}>
-          <button onClick={() => { const it = menu.item; setMenu(null); if (it.kind === "folder" || it.kind === "skill") setFolderId(it.id); else openAsTab(it); }} className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-foreground hover:bg-raised"><FolderInput className="h-3.5 w-3.5" /> Open</button>
+          <button onClick={() => { const it = menu.item; setMenu(null); if (isFolderLike(it)) setFolderId(it.id); else openAsTab(it); }} className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-foreground hover:bg-raised"><FolderInput className="h-3.5 w-3.5" /> Open</button>
           {(menu.item.kind === "folder" || menu.item.kind === "skill") && <button onClick={() => { const it = menu.item; setMenu(null); openAsTab(it); }} className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-foreground hover:bg-raised"><FolderInput className="h-3.5 w-3.5" /> Open in tab</button>}
-          <button onClick={() => { setRenaming(menu.item.id); setMenu(null); }} className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-foreground hover:bg-raised"><Pencil className="h-3.5 w-3.5" /> Rename</button>
-          <button onClick={async () => { const it = menu.item; setMenu(null); if (it.kind === "folder" || it.kind === "skill") await deleteFolder(it.id); else if (it.kind === "table") await deleteTable(it.id); else await trashItem(it.kind, it.id); await load(); }} className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-destructive hover:bg-raised"><Trash2 className="h-3.5 w-3.5" /> Delete</button>
+          {menu.item.kind !== "session" && <button onClick={() => { setRenaming(menu.item.id); setMenu(null); }} className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-foreground hover:bg-raised"><Pencil className="h-3.5 w-3.5" /> Rename</button>}
+          <button onClick={async () => { const it = menu.item; setMenu(null); await del(it); }} className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-destructive hover:bg-raised"><Trash2 className="h-3.5 w-3.5" /> Delete</button>
         </div>
       )}
 

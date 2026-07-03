@@ -3,14 +3,13 @@
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { nanoid } from "nanoid";
-import { ChevronRight, Loader2, MessagesSquare, GraduationCap, Plus, FolderTree, Brain, Plug, ArrowDownAZ, Clock } from "lucide-react";
-import { getMemoryFolder, listMySessions, listSkills, listSources, createFolder, createPage, type SessionSummary, type Source } from "@/lib/api";
+import { ChevronRight, Loader2, MessagesSquare, GraduationCap, Plus, FolderTree, Brain, Plug } from "lucide-react";
+import { getMemoryFolder, listMySessions, listSessionFolders, createSessionFolder, listSkills, listSources, createFolder, createPage, type SessionSummary, type Source } from "@/lib/api";
 import { SKILL_MD, skillMdTemplate } from "@/lib/localSkill";
 import { cn } from "@/lib/utils";
 import { useWorkspace, type TabKind } from "@/lib/workspace-store";
 import { urlForTab } from "@/lib/workspace-routes";
 import { CONNECTORS, connectorIcon, providerForSourceType } from "@/components/integrations/connectors";
-import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import FilesExplorer, { type Item } from "./files-explorer";
 
 export type ExplorerSection = "files" | "sessions" | "skills" | "agents" | "memory" | "tools";
@@ -23,24 +22,6 @@ const SECTIONS: { key: ExplorerSection; label: string; route: string; icon: Reac
   { key: "tools", label: "Tools", route: "/tools", icon: <Plug className="h-4 w-4 text-chart-4" /> },
 ];
 const LABEL: Record<ExplorerSection, string> = { files: "Files", skills: "Skills", sessions: "Sessions", memory: "Memory", tools: "Tools", agents: "Agents" };
-
-type Sort = "name" | "recent";
-
-function SortDropdown({ sort, setSort }: { sort: Sort; setSort: (s: Sort) => void }) {
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <button title="Sort" aria-label="Sort" className="flex h-7 w-7 items-center justify-center rounded text-sidebar-foreground hover:bg-sidebar-accent">
-          {sort === "recent" ? <Clock className="h-4 w-4" /> : <ArrowDownAZ className="h-4 w-4" />}
-        </button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end">
-        <DropdownMenuItem onClick={() => setSort("name")}><ArrowDownAZ className="h-4 w-4" /> Name {sort === "name" && <span className="ml-auto text-brand-600">✓</span>}</DropdownMenuItem>
-        <DropdownMenuItem onClick={() => setSort("recent")}><Clock className="h-4 w-4" /> Most recent {sort === "recent" && <span className="ml-auto text-brand-600">✓</span>}</DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
-  );
-}
 
 /** Open any item as a workbench tab and sync the URL. */
 function useOpenTab() {
@@ -66,25 +47,6 @@ function LeafRow({ icon, label, onClick, onOpen, trailing }: { icon: React.React
 
 function LoadingRow() {
   return <div className="flex items-center gap-2 px-3 py-2 text-[12px] text-muted-foreground"><Loader2 className="h-3.5 w-3.5 animate-spin" /> Loading…</div>;
-}
-function EmptyRow({ text }: { text: string }) {
-  return <div className="px-3 py-2 text-[12px] text-muted-foreground">{text}</div>;
-}
-
-function SessionsSection({ sort }: { sort: Sort }) {
-  const open = useOpenTab();
-  const [rows, setRows] = useState<SessionSummary[] | null>(null);
-  // listMySessions already returns most-recent first, so "recent" is the raw order.
-  useEffect(() => { listMySessions(50).then(setRows).catch(() => setRows([])); }, []);
-  const label = (s: SessionSummary) => s.title || s.agent_name || "Session";
-  const view = rows && (sort === "name" ? [...rows].sort((a, b) => label(a).localeCompare(label(b))) : rows);
-  return (
-    <div className="py-1">
-      {!view && <LoadingRow />}
-      {view?.length === 0 && <EmptyRow text="No sessions yet." />}
-      {view?.map((s) => <LeafRow key={s.session_id} icon={<MessagesSquare className="h-3.5 w-3.5" />} label={label(s)} onOpen={() => open("session", s.session_id, label(s))} />)}
-    </div>
-  );
 }
 
 // Tools = every integration/connector (Slack, Granola, GitHub, …), connected or
@@ -158,7 +120,6 @@ function useMemoryFolder(): string | null {
 export default function Explorer({ section }: { section: ExplorerSection }) {
   const router = useRouter();
   const [atRoot, setAtRoot] = useState(false);
-  const [sort, setSort] = useState<Sort>("recent");
   const memoryFolderId = useMemoryFolder();
   // A rail-section change means we're back to viewing that section, not Home.
   useEffect(() => { setAtRoot(false); }, [section]);
@@ -175,23 +136,50 @@ export default function Explorer({ section }: { section: ExplorerSection }) {
     await createPage(SKILL_MD, folder.id, skillMdTemplate("New skill"));
   }, []);
 
+  // Sessions are their own tree: session folders + loose sessions at the root,
+  // sessions inside each folder. Flat (folders don't nest).
+  const sessionLabel = (s: SessionSummary) => s.title || s.agent_name || "Session";
+  const sessionsRoot = useCallback(async (): Promise<Item[]> => {
+    const [folders, sessions] = await Promise.all([listSessionFolders(), listMySessions(100)]);
+    return [
+      ...folders.map((f) => ({ kind: "session-folder" as const, id: f.id, name: f.name })),
+      ...sessions.filter((s) => !s.session_folder_id).map((s) => ({ kind: "session" as const, id: s.session_id, name: sessionLabel(s), ts: s.last_event_at })),
+    ];
+  }, []);
+  const sessionsFolder = useCallback(async (folderId: string) => {
+    const [folders, sessions] = await Promise.all([listSessionFolders(), listMySessions(100, folderId)]);
+    const folder = folders.find((f) => f.id === folderId);
+    return {
+      crumbs: [{ id: folderId, name: folder?.name ?? "Folder", is_skill: false }],
+      items: sessions.map((s) => ({ kind: "session" as const, id: s.session_id, name: sessionLabel(s), ts: s.last_event_at })),
+    };
+  }, []);
+  const createSessionFolderItem = useCallback(async () => { await createSessionFolder("New folder"); }, []);
+
   if (section === "agents") return <AgentsExplorer />;
 
-  // Files, Memory & Skills are VFS file managers (own breadcrumb/toolbar).
-  if ((section === "files" || section === "memory" || section === "skills") && !atRoot) {
+  // Files, Memory, Skills & Sessions are all file managers (own breadcrumb/toolbar).
+  if ((section === "files" || section === "memory" || section === "skills" || section === "sessions") && !atRoot) {
     if (section === "memory" && !memoryFolderId) {
       return <div className="flex h-full flex-col bg-sidebar"><div className="flex h-9 items-center border-b border-sidebar-border px-3 text-[12px] text-muted-foreground">Home / Memory</div><LoadingRow /></div>;
     }
+    const isSessions = section === "sessions";
     return (
       <div className="flex h-full flex-col bg-sidebar">
         <FilesExplorer
           key={section}
           onRoot={() => setAtRoot(true)}
-          rootLabel={section === "memory" ? "Memory" : section === "skills" ? "Skills" : "Files"}
+          rootLabel={LABEL[section]}
           rootFolderId={section === "memory" ? memoryFolderId : null}
           hideFolderId={section === "files" ? memoryFolderId : null}
-          loadRoot={section === "skills" ? skillsRoot : undefined}
-          newRootItem={section === "skills" ? { label: "New skill", run: createSkill } : undefined}
+          loadRoot={section === "skills" ? skillsRoot : isSessions ? sessionsRoot : undefined}
+          loadFolder={isSessions ? sessionsFolder : undefined}
+          newRootItem={
+            section === "skills" ? { label: "New skill", run: createSkill } :
+            isSessions ? { label: "New folder", run: createSessionFolderItem } : undefined
+          }
+          showImport={!isSessions}
+          vfsWritable={!isSessions}
         />
       </div>
     );
@@ -212,13 +200,10 @@ export default function Explorer({ section }: { section: ExplorerSection }) {
             </button>
           </>
         )}
-        <div className="ml-auto flex items-center gap-0.5">
-          {!atRoot && section === "sessions" && <SortDropdown sort={sort} setSort={setSort} />}
-        </div>
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto">
-        {atRoot ? <RootSection /> : section === "sessions" ? <SessionsSection sort={sort} /> : <ToolsSection />}
+        {atRoot ? <RootSection /> : <ToolsSection />}
       </div>
     </div>
   );

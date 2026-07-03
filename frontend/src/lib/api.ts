@@ -399,6 +399,21 @@ export async function fetchSourceHistory(
 
 // --- Discover (public catalog, no auth required) ---
 
+// A public page from the pastebin (joinstash.ai/pages) — community docs/pages.
+export interface PublicPageCard {
+  slug: string;
+  title: string;
+  content_type: "markdown" | "html";
+  view_count: number;
+  created_at: string;
+}
+
+export async function listPublicPages(): Promise<PublicPageCard[]> {
+  const res = await fetch(`${API_BASE}/api/v1/pastes`);
+  if (!res.ok) return [];
+  return (await res.json()).pastes ?? [];
+}
+
 export interface PublicSkillCard {
   id: string;
   slug: string;
