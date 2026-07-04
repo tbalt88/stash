@@ -9,7 +9,7 @@ import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuIte
 import { cn } from "@/lib/utils";
 import { createPage } from "@/lib/api";
 import { useWorkspace, type WorkbenchTab } from "@/lib/workspace-store";
-import { useShellChromeValue } from "@/components/ShellChromeContext";
+import { ShellChromeScope, useShellChromeValue } from "@/components/ShellChromeContext";
 import { urlForTab, tabFromPath } from "@/lib/workspace-routes";
 import { PageIcon, FileIcon, TableIcon, SessionsIcon, SkillIcon, FolderIcon } from "@/components/SkillIcons";
 import TabBody from "./tab-body";
@@ -77,12 +77,10 @@ function TabPane({ pane }: { pane: 0 | 1 }) {
   const splitTab = useWorkspace((s) => s.splitTab);
   const moveTabToPane = useWorkspace((s) => s.moveTabToPane);
   const setFocusedPane = useWorkspace((s) => s.setFocusedPane);
-  // Per-tab actions (Share, Convert to folder, Agent handoff) the active viewer
-  // publishes — shown in a bar right under the tabs, not in the global top bar.
-  const { shareAction } = useShellChromeValue();
 
   const paneTabs = tabs.filter((t) => (paneOf[t.id] ?? 0) === pane);
   const activeId = pane === 0 ? activeTabId : activeTab1;
+  const { shareAction } = useShellChromeValue(activeId ?? undefined);
 
   function focus(tab: WorkbenchTab) {
     setActiveTab(tab.id);
@@ -155,7 +153,7 @@ function TabPane({ pane }: { pane: 0 | 1 }) {
           )}
         </div>
       </div>
-      {pane === 0 && shareAction && (
+      {shareAction && (
         <div className="flex h-10 shrink-0 items-center justify-end gap-2 border-b border-border bg-base px-3">
           {shareAction}
         </div>
@@ -176,7 +174,9 @@ function TabPane({ pane }: { pane: 0 | 1 }) {
             );
           return (
             <div key={active.id} className="h-full">
-              <TabBody tab={active} />
+              <ShellChromeScope scopeId={active.id}>
+                <TabBody tab={active} />
+              </ShellChromeScope>
             </div>
           );
         })()}

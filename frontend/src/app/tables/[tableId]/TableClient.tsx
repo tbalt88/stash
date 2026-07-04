@@ -1,6 +1,6 @@
 "use client";
 
-import { useParams, useRouter, useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   Suspense,
   useCallback,
@@ -17,7 +17,6 @@ import {
   type RefObject,
 } from "react";
 import Markdown from "react-markdown";
-import WorkspaceShell from "@/components/workspace/workspace-shell";
 import CustomSelect from "../../../components/CustomSelect";
 import { downloadBlob } from "../../../components/DownloadMenu";
 import { useShareAction } from "../../../components/ShellChromeContext";
@@ -247,27 +246,37 @@ function isTableCellEditorTarget(target: EventTarget | null) {
   return !!target.closest("[data-table-cell-editor]");
 }
 
-export default function TableEditorPage() {
+export default function TableEditorPage({
+  tableId,
+  embedded = false,
+}: {
+  tableId: string;
+  embedded?: boolean;
+}) {
   return (
     <Suspense fallback={<TableEditorSkeleton />}>
-      <TableEditorPageInner />
+      <TableEditorPageInner tableId={tableId} embedded={embedded} />
     </Suspense>
   );
 }
 
-function TableEditorPageInner() {
-  const params = useParams();
+function TableEditorPageInner({
+  tableId,
+  embedded,
+}: {
+  tableId: string;
+  embedded: boolean;
+}) {
   const searchParams = useSearchParams();
   const router = useRouter();
   const confirm = useConfirm();
-  const tableId = params.tableId as string;
   // Skill mode: `?skill=<slug>` switches the data source to the public
   // skill payload (which the backend gates by skill readability). All
   // mutating UI is hidden in this mode.
   const skillSlug = searchParams.get("skill");
   const readOnly = !!skillSlug;
   const [skillTitle, setSkillTitle] = useState<string | null>(null);
-  const { user, loading, logout } = useAuth();
+  const { user, loading } = useAuth();
 
   // Core state.
   const [table, setTable] = useState<Table | null>(null);
@@ -1161,6 +1170,7 @@ function TableEditorPageInner() {
   if (loading && !readOnly) return <TableEditorSkeleton />;
   if (!user && !readOnly) return null;
   if (!table && !error) {
+    if (embedded) return <TableEditorSkeleton />;
     if (readOnly || !user) {
       return (
         <main className="flex min-h-screen flex-col bg-background">
@@ -1168,11 +1178,7 @@ function TableEditorPageInner() {
         </main>
       );
     }
-    return (
-      <WorkspaceShell user={user} onLogout={logout}>
-        <TableEditorSkeleton />
-      </WorkspaceShell>
-    );
+    return <main className="flex min-h-screen flex-col bg-background"><TableEditorSkeleton /></main>;
   }
 
   // --- Render row ---
@@ -1723,14 +1729,13 @@ function TableEditorPageInner() {
 
   // Skill-mode viewers are reading through the skill, so keep the app
   // shell hidden even when they are signed in.
+  if (embedded) {
+    return <div className="flex h-full min-h-0 flex-col">{tableContent}</div>;
+  }
   if (readOnly || !user) {
     return <main className="flex min-h-screen flex-col bg-background">{tableContent}</main>;
   }
-  return (
-    <WorkspaceShell user={user} onLogout={logout}>
-      {tableContent}
-    </WorkspaceShell>
-  );
+  return <main className="flex min-h-screen flex-col bg-background">{tableContent}</main>;
 }
 
 function TableGlyph() {

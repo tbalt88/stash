@@ -58,11 +58,11 @@ function ExplorerPanel({ section }: { section: ExplorerSection }) {
 }
 
 /** Which workspace section a path belongs to (null = full-page route: Home,
- *  Index, Discover, Settings, Search, Tables, published skill pages, …). In a
- *  section the main area is always the tab workbench; the explorer follows the
- *  section but the tabs persist across sections (decoupled). */
+ *  Index, Discover, Settings, published skill pages, …). Most sections render
+ *  the tab workbench; `/sessions` keeps its full management page beside the
+ *  Sessions explorer. */
 function sectionForPath(pathname: string): ExplorerSection | null {
-  if (pathname === "/files" || /^\/(p|f|folders)\//.test(pathname)) return "files";
+  if (pathname === "/files" || /^\/(p|f|folders|tables)\//.test(pathname)) return "files";
   if (pathname === "/sessions" || pathname.startsWith("/sessions/") || pathname.startsWith("/session-folders")) return "sessions";
   if (pathname === "/skills" || pathname.startsWith("/skills/folder")) return "skills";
   if (pathname === "/agents") return "agents";
@@ -88,6 +88,7 @@ export default function WorkspaceShell({
 }) {
   const pathname = usePathname();
   const section = sectionForPath(pathname);
+  const renderRouteContent = pathname === "/sessions";
 
   return (
     // Chrome surface — the content panel floats on top of it.
@@ -102,7 +103,11 @@ export default function WorkspaceShell({
               <ExplorerPanel section={section} />
               {/* Floating content panel: clean white paper, subtly elevated. */}
               <div className="min-w-0 flex-1 overflow-hidden rounded-tl-2xl border-l border-t border-border bg-base shadow-[-10px_-6px_28px_-16px_rgba(30,25,15,0.10)]">
-                <Workbench />
+                {renderRouteContent ? (
+                  <main className="flex h-full min-h-0 flex-col overflow-hidden">{children}</main>
+                ) : (
+                  <Workbench />
+                )}
               </div>
             </div>
           ) : (

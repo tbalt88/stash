@@ -30,6 +30,8 @@ export function tabFromPath(pathname: string): { kind: TabKind; refId: string } 
   if (page) return { kind: "page", refId: decodeURIComponent(page[1]) };
   const file = pathname.match(/^\/f\/([^/?#]+)/);
   if (file) return { kind: "file", refId: decodeURIComponent(file[1]) };
+  const table = pathname.match(/^\/tables\/([^/?#]+)/);
+  if (table) return { kind: "table", refId: decodeURIComponent(table[1]) };
   const session = pathname.match(/^\/sessions\/([^/?#]+)/);
   if (session) return { kind: "session", refId: decodeURIComponent(session[1]) };
   const skillFolder = pathname.match(/^\/skills\/folder\/([^/?#]+)/);

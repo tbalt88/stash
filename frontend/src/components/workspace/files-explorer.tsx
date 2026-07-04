@@ -124,8 +124,7 @@ export default function FilesExplorer({
   // Session folders have no tab view, so they only ever navigate in the explorer.
   function openAsTab(item: Item) {
     if (item.kind === "session-folder") { setFolderId(item.id); return; }
-    if (item.kind === "table") { router.push(`/tables/${item.id}`); return; }
-    const kind = item.kind === "folder" ? "folder" : item.kind === "skill" ? "skill" : item.kind === "session" ? "session" : item.kind === "page" ? "page" : "file";
+    const kind = item.kind === "folder" ? "folder" : item.kind === "skill" ? "skill" : item.kind === "session" ? "session" : item.kind === "table" ? "table" : item.kind === "page" ? "page" : "file";
     openTab(kind, item.id, item.name);
     router.replace(urlForTab({ kind, refId: item.id }));
   }
@@ -183,7 +182,7 @@ export default function FilesExplorer({
     const t = await createTable("Untitled table");
     if (folderId) await updateTable(t.id, { folder_id: folderId });
     await load();
-    router.push(`/tables/${t.id}`);
+    openAsTab({ kind: "table", id: t.id, name: t.name });
   }
   async function newFolder() { await createFolder("New folder", folderId); await load(); }
   async function runNewRootItem() { if (!newRootItem) return; await newRootItem.run(); await load(); }

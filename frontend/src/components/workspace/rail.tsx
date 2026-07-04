@@ -13,7 +13,7 @@ type RailItem = { href: string; label: string; icon: typeof Bot; match: (p: stri
 // Primary sections — each opens its own explorer panel (see workspace-shell).
 const PRIMARY: RailItem[] = [
   { href: "/agents", label: "Agents", icon: Bot, match: (p) => p.startsWith("/agents") },
-  { href: "/files", label: "Files", icon: FolderTree, match: (p) => p === "/files" || p.startsWith("/f/") || p.startsWith("/p/") || p.startsWith("/folders/") },
+  { href: "/files", label: "Files", icon: FolderTree, match: (p) => p === "/files" || p.startsWith("/f/") || p.startsWith("/p/") || p.startsWith("/folders/") || p.startsWith("/tables/") },
   { href: "/sessions", label: "Sessions", icon: MessagesSquare, match: (p) => p.startsWith("/sessions") || p.startsWith("/session-folders") },
   { href: "/skills", label: "Skills", icon: GraduationCap, match: (p) => p.startsWith("/skills") },
   { href: "/memory", label: "Memory", icon: Brain, match: (p) => p.startsWith("/memory") },
