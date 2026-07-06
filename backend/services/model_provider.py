@@ -18,10 +18,16 @@ from __future__ import annotations
 from dataclasses import dataclass
 from uuid import UUID
 
-from fastapi import HTTPException
-
 from ..config import settings
 from . import billing_service
+
+
+class NeedsProError(Exception):
+    """A free account tried to run the managed cloud agent."""
+
+
+class ProviderNotConfigured(Exception):
+    """No managed key is configured for the run's provider."""
 
 
 @dataclass(frozen=True)
@@ -49,21 +55,20 @@ def _managed_key(provider: Provider) -> str | None:
 
 
 async def turn_env(user_id: UUID, provider: Provider) -> dict[str, str]:
-    """The provider env vars for one agent turn, or raise (402/503)."""
+    """The provider env vars for one agent turn.
+
+    Raises domain errors (NeedsProError / ProviderNotConfigured) so each
+    caller maps them for its surface — an HTTP 402/503 for web chat, a
+    friendly upgrade message for Slack/Telegram.
+    """
     # Local dev runs the machine's own harness login; no key injection.
     if settings.AGENT_EXEC_MODE == "local":
         return {}
 
     if not await billing_service.is_pro(user_id):
-        raise HTTPException(
-            status_code=402,
-            detail="The cloud agent is a Pro feature. Upgrade to run it on managed models.",
-        )
+        raise NeedsProError
 
     key = _managed_key(provider)
     if not key:
-        raise HTTPException(
-            status_code=503,
-            detail=f"The agent is not configured (no managed key for {provider.id}).",
-        )
+        raise ProviderNotConfigured(provider.id)
     return {provider.env_var: key}

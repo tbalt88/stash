@@ -97,3 +97,27 @@ async def test_bot_messages_ignored(monkeypatch):
     m["from"]["is_bot"] = True
     await agent.respond_to_message(m)
     assert called == []
+
+
+@pytest.mark.asyncio
+async def test_free_user_gets_upgrade_prompt(monkeypatch):
+    sent = []
+
+    async def fake_send(chat_id, text, **kw):
+        sent.append(text)
+
+    async def linked(_tid):
+        return "user-uuid"
+
+    async def get_user(_uid):
+        return {"display_name": "Sam", "name": "sam"}
+
+    async def needs_pro(*a, **k):
+        raise agent.sprite_agent_service.NeedsPro
+
+    monkeypatch.setattr(agent.client, "send_message", fake_send)
+    monkeypatch.setattr(agent.links, "get_linked_user_id", linked)
+    monkeypatch.setattr(agent.user_service, "get_user_by_id", get_user)
+    monkeypatch.setattr(agent.sprite_agent_service, "run_chat", needs_pro)
+    await agent.respond_to_message(_msg("do something"))
+    assert sent and "Pro feature" in sent[0]

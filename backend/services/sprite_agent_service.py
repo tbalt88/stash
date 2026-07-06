@@ -276,6 +276,11 @@ async def stream_chat(
 SLACK_DISALLOWED_TOOLS = ["Write", "Edit", "NotebookEdit", "Bash(rm:*)"]
 
 
+class NeedsPro(Exception):
+    """Surfaced to a channel (Slack/Telegram) so it can post an upgrade prompt
+    instead of failing silently."""
+
+
 async def run_chat(
     owner_user_id: UUID,
     owner_name: str,
@@ -283,8 +288,14 @@ async def run_chat(
     session_id: str,
     message: str,
 ) -> str:
-    """Non-streaming turn for Slack: returns the final answer text."""
-    provider_env = await model_provider.turn_env(user_id, DEFAULT_HARNESS.provider)
+    """Non-streaming turn for Slack/Telegram: returns the final answer text.
+    Raises NeedsPro for a free account so the channel can prompt an upgrade."""
+    try:
+        provider_env = await model_provider.turn_env(user_id, DEFAULT_HARNESS.provider)
+    except model_provider.NeedsProError:
+        raise NeedsPro
+    except model_provider.ProviderNotConfigured:
+        raise RuntimeError("cloud agent is not configured")
     async with _TurnLock(session_id):
         history = await _load_history(owner_user_id, session_id, user_id)
         await memory_service.push_event(

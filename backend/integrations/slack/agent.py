@@ -79,12 +79,21 @@ async def respond_to_mention(team_id: str, event: dict) -> None:
     # The scope is the user, so its name is the user's display name.
     owner_name = user["display_name"] or user["name"]
     session_id = _session_id(user["id"], event)
-    answer = await sprite_agent_service.run_chat(
-        owner_user_id, owner_name, user["id"], session_id, text
-    )
+    try:
+        answer = await sprite_agent_service.run_chat(
+            owner_user_id, owner_name, user["id"], session_id, text
+        )
+    except sprite_agent_service.NeedsPro:
+        await client.post_message(bot_token, channel, _upgrade_prompt(), thread_ts)
+        return
     await client.post_message(
         bot_token, channel, answer or "(I didn't produce a response.)", thread_ts
     )
+
+
+def _upgrade_prompt() -> str:
+    url = f"{settings.PUBLIC_URL.rstrip('/')}/settings"
+    return f"The cloud agent is a Pro feature. Upgrade to chat with it here: {url}"
 
 
 def _session_id(user_id, event: dict) -> str:

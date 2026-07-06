@@ -81,7 +81,14 @@ export async function streamAgentChat(
     body: JSON.stringify({ message: opts.message, session_id: opts.sessionId }),
     signal: opts.signal,
   });
-  if (!res.ok || !res.body) throw new Error(`Chat failed: ${res.status}`);
+  if (!res.ok || !res.body) {
+    // Surface the server's own message (e.g. the Pro-upgrade prompt on 402).
+    const detail = await res
+      .json()
+      .then((b) => b?.detail as string | undefined)
+      .catch(() => undefined);
+    throw new Error(detail || `Chat failed: ${res.status}`);
+  }
 
   const reader = res.body.getReader();
   const decoder = new TextDecoder();

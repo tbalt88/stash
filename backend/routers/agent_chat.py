@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
@@ -34,8 +34,16 @@ async def chat(
 ):
     owner_user_id = current_user["id"]
     # Resolve the model key + Pro-gate up front so a free user gets a clean 402
-    # instead of a stream that dies mid-flight (this raises 402/503).
-    provider_env = await model_provider.turn_env(current_user["id"], model_provider.ANTHROPIC)
+    # instead of a stream that dies mid-flight.
+    try:
+        provider_env = await model_provider.turn_env(current_user["id"], model_provider.ANTHROPIC)
+    except model_provider.NeedsProError:
+        raise HTTPException(
+            status_code=402,
+            detail="The cloud agent is a Pro feature. Upgrade to run it on managed models.",
+        )
+    except model_provider.ProviderNotConfigured:
+        raise HTTPException(status_code=503, detail="The agent is not configured.")
     scope_name = current_user["display_name"] or current_user["name"]
     session_id = req.session_id or f"agent-{uuid4().hex}"
     return StreamingResponse(

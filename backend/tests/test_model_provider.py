@@ -3,7 +3,6 @@
 import uuid
 
 import pytest
-from fastapi import HTTPException
 
 from backend.config import settings
 from backend.services import billing_service, model_provider
@@ -25,9 +24,8 @@ async def test_free_user_is_gated(monkeypatch):
         return False
 
     monkeypatch.setattr(billing_service, "is_pro", not_pro)
-    with pytest.raises(HTTPException) as exc:
+    with pytest.raises(model_provider.NeedsProError):
         await model_provider.turn_env(uuid.uuid4(), model_provider.ANTHROPIC)
-    assert exc.value.status_code == 402
 
 
 @pytest.mark.asyncio
@@ -44,7 +42,7 @@ async def test_pro_user_gets_managed_key(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_pro_user_but_no_managed_key_is_503(monkeypatch):
+async def test_pro_user_but_no_managed_key(monkeypatch):
     monkeypatch.setattr(settings, "AGENT_EXEC_MODE", "sprites")
     monkeypatch.setattr(settings, "ANTHROPIC_API_KEY", None)
 
@@ -52,9 +50,8 @@ async def test_pro_user_but_no_managed_key_is_503(monkeypatch):
         return True
 
     monkeypatch.setattr(billing_service, "is_pro", is_pro)
-    with pytest.raises(HTTPException) as exc:
+    with pytest.raises(model_provider.ProviderNotConfigured):
         await model_provider.turn_env(uuid.uuid4(), model_provider.ANTHROPIC)
-    assert exc.value.status_code == 503
 
 
 def test_provider_env_var_mapping():
