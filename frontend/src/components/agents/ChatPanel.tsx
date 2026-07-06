@@ -16,9 +16,11 @@ import {
 export default function ChatPanel({
   sessionId,
   onSessionId,
+  agentId,
 }: {
   sessionId: string | null;
   onSessionId: (id: string) => void;
+  agentId?: string | null;
 }) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
@@ -81,6 +83,7 @@ export default function ChatPanel({
         await streamAgentChat({
           sessionId,
           message,
+          agentId,
           signal: controller.signal,
           onSession: (id) => {
             if (!sessionId) onSessionId(id);
@@ -115,7 +118,7 @@ export default function ChatPanel({
         abortRef.current = null;
       }
     },
-    [sessionId, streaming, onSessionId],
+    [sessionId, streaming, onSessionId, agentId],
   );
 
   return (

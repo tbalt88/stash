@@ -9,14 +9,14 @@ cloud computer (sprite_service).
 
 from __future__ import annotations
 
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from ..auth import get_current_user
-from ..services import agent_auth, sprite_agent_service
+from ..services import agent_auth, agent_service, sprite_agent_service
 
 router = APIRouter(prefix="/api/v1/me/agent-chat", tags=["agent-chat"])
 
@@ -25,6 +25,9 @@ class ChatRequest(BaseModel):
     message: str = Field(..., min_length=1)
     # Omitted for the first message of a new chat — the server mints one.
     session_id: str | None = None
+    # Which configured agent runs this chat (its model + persona). Default agent
+    # if omitted.
+    agent_id: str | None = None
 
 
 @router.post("")
@@ -33,10 +36,15 @@ async def chat(
     current_user: dict = Depends(get_current_user),
 ):
     owner_user_id = current_user["id"]
+    agent = (
+        await agent_service.get_agent(current_user["id"], UUID(req.agent_id))
+        if req.agent_id
+        else await agent_service.get_or_create_default(current_user["id"])
+    )
     # Resolve the harness + credentials up front so an unconnected free user
     # gets a clean 402 instead of a stream that dies mid-flight.
     try:
-        auth = await agent_auth.resolve(current_user["id"])
+        auth = await agent_auth.resolve(current_user["id"], agent["model_provider"])
     except agent_auth.NeedsAuth:
         raise HTTPException(
             status_code=402,
@@ -49,7 +57,8 @@ async def chat(
     session_id = req.session_id or f"agent-{uuid4().hex}"
     return StreamingResponse(
         sprite_agent_service.stream_chat(
-            owner_user_id, scope_name, current_user["id"], session_id, req.message, auth
+            owner_user_id, scope_name, current_user["id"], session_id, req.message, auth,
+            agent["system_prompt"],
         ),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},

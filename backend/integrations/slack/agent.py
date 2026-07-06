@@ -81,7 +81,7 @@ async def respond_to_mention(team_id: str, event: dict) -> None:
     session_id = _session_id(user["id"], event)
     try:
         answer = await sprite_agent_service.run_chat(
-            owner_user_id, owner_name, user["id"], session_id, text
+            owner_user_id, owner_name, user["id"], session_id, text, channel="slack"
         )
     except sprite_agent_service.NeedsAuth:
         await client.post_message(bot_token, channel, _upgrade_prompt(), thread_ts)

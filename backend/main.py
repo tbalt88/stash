@@ -19,6 +19,7 @@ from .routers import (
     agent_chat,
     agent_credentials,
     agent_docs,
+    agents,
     aggregate,
     analytics,
     batch,
@@ -139,6 +140,7 @@ app.include_router(integrations_router)
 app.include_router(sources.router)
 app.include_router(agent_chat.router)
 app.include_router(agent_credentials.router)
+app.include_router(agents.router)
 app.include_router(machine.router)
 app.include_router(telegram.router)
 app.include_router(session_folders.me_router)

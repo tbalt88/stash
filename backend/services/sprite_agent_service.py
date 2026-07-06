@@ -26,7 +26,7 @@ from uuid import UUID
 import redis.asyncio as aioredis
 
 from ..config import settings
-from . import agent_auth, memory_service, prompts, sprite_service
+from . import agent_auth, agent_service, memory_service, prompts, sprite_service
 from . import harness as harness_mod
 
 logger = logging.getLogger(__name__)
@@ -214,6 +214,30 @@ class _TurnLock:
             await r.delete(self._key)
 
 
+def _system_prompt(owner_name: str, persona: str | None) -> str:
+    base = prompts.render_sprite_system(owner_name)
+    return f"{base}\n\n{persona}" if persona else base
+
+
+async def run_scheduled(agent: dict) -> str:
+    """Run a scheduled agent headless — its schedule_prompt as one turn into a
+    per-agent session — and return the result text."""
+    from uuid import UUID as _UUID
+
+    from . import user_service
+
+    user_id = _UUID(str(agent["user_id"]))
+    user = await user_service.get_user_by_id(user_id)
+    if user is None:
+        return ""
+    owner_name = user["display_name"] or user["name"]
+    session_id = f"agent-sched-{agent['id']}"
+    return await run_chat(
+        user_id, owner_name, user_id, session_id, agent["schedule_prompt"],
+        model_provider=agent["model_provider"], persona=agent["system_prompt"],
+    )
+
+
 async def stream_chat(
     owner_user_id: UUID,
     owner_name: str,
@@ -221,11 +245,13 @@ async def stream_chat(
     session_id: str,
     message: str,
     auth: agent_auth.RunAuth,
+    persona: str | None = None,
 ) -> AsyncIterator[str]:
     """Multi-turn agent chat over a stored session, streamed as SSE.
 
     `auth` is the harness + credentials resolved (and gated) by the router
     before the stream started, so a 402 is a clean HTTP error, not an SSE one.
+    `persona` is the selected agent's extra system prompt.
     """
     try:
         async with _TurnLock(session_id):
@@ -247,7 +273,7 @@ async def stream_chat(
             final = ""
             async for event in _turn_events(
                 auth, sprite, history, message, session_id,
-                prompts.render_sprite_system(owner_name),
+                _system_prompt(owner_name, persona),
             ):
                 if event["type"] == "end":
                     final = event.pop("_result_text")
@@ -286,11 +312,20 @@ async def run_chat(
     user_id: UUID,
     session_id: str,
     message: str,
+    channel: str | None = None,
+    model_provider: str | None = None,
+    persona: str | None = None,
 ) -> str:
-    """Non-streaming turn for Slack/Telegram: returns the final answer text.
+    """Non-streaming turn for Slack/Telegram/scheduled: returns the final answer.
+    `channel` ('slack'|'telegram') selects the bound agent's model + persona;
+    a scheduled run passes model_provider/persona directly.
     Raises NeedsAuth for an unconnected free account so the channel can prompt."""
+    if channel:
+        agent = await agent_service.channel_agent(user_id, channel)
+        model_provider = agent["model_provider"]
+        persona = agent["system_prompt"]
     try:
-        auth = await agent_auth.resolve(user_id)
+        auth = await agent_auth.resolve(user_id, model_provider)
     except agent_auth.NeedsAuth:
         raise NeedsAuth
     except agent_auth.ProviderNotConfigured:
@@ -307,7 +342,7 @@ async def run_chat(
         error: str | None = None
         async for event in _turn_events(
             auth, sprite, history, message, session_id,
-            prompts.render_sprite_system(owner_name),
+            _system_prompt(owner_name, persona),
             disallowed_tools=SLACK_DISALLOWED_TOOLS,
         ):
             if event["type"] == "end":

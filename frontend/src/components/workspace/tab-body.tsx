@@ -12,16 +12,19 @@ import ChatPanel from "@/components/agents/ChatPanel";
 import IntegrationsSettings from "@/components/integrations/IntegrationsSettings";
 import MachineFileView from "@/components/workspace/machine-file-view";
 import TerminalPanel from "@/components/agents/TerminalPanel";
+import AgentConfigPanel from "@/components/agents/AgentConfigPanel";
 import type { WorkbenchTab } from "@/lib/workspace-store";
 
-/** A live agent chat tab. Holds the session id locally: null starts a fresh
- *  chat, and the server mints one on the first turn (kept so the chat continues
- *  within the tab's lifetime). */
-function AgentChatTab({ initialSessionId }: { initialSessionId: string | null }) {
-  const [sessionId, setSessionId] = useState<string | null>(initialSessionId);
+/** A live agent chat tab. The refId is either a stored sessionId, or
+ *  `new:<agentId>:<nonce>` for a fresh chat under a specific agent (agentId
+ *  may be empty → default agent). The server mints the session on turn 1. */
+function AgentChatTab({ refId }: { refId: string }) {
+  const isNew = refId.startsWith("new");
+  const agentId = isNew && refId.startsWith("new:") ? refId.split(":")[1] || null : null;
+  const [sessionId, setSessionId] = useState<string | null>(isNew ? null : refId);
   return (
     <div className="mx-auto flex h-full w-full max-w-3xl flex-col">
-      <ChatPanel sessionId={sessionId} onSessionId={setSessionId} />
+      <ChatPanel sessionId={sessionId} onSessionId={setSessionId} agentId={agentId} />
     </div>
   );
 }
@@ -38,13 +41,14 @@ export default function TabBody({ tab }: { tab: WorkbenchTab }) {
   if (tab.kind === "session") return <SessionClient sessionId={tab.refId} />;
   if (tab.kind === "skill") return <SkillFolderClient folderId={tab.refId} />;
   if (tab.kind === "folder") return <FolderClient folderId={tab.refId} />;
-  if (tab.kind === "agent") return <AgentChatTab initialSessionId={tab.refId.startsWith("new-") ? null : tab.refId} />;
+  if (tab.kind === "agent") return <AgentChatTab refId={tab.refId} />;
   if (tab.kind === "tool")
     return (
       <div className="mx-auto w-full max-w-3xl px-6 py-6">
         <IntegrationsSettings embedded />
       </div>
     );
+  if (tab.kind === "agent-config") return <AgentConfigPanel agentId={tab.refId} />;
   if (tab.kind === "machine-file") return <MachineFileView path={tab.refId} />;
   if (tab.kind === "terminal")
     return (

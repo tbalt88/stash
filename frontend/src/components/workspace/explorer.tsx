@@ -3,8 +3,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { nanoid } from "nanoid";
-import { ChevronRight, File, Folder, Loader2, MessagesSquare, GraduationCap, Monitor, Plus, FolderTree, Brain, Plug, SquareTerminal } from "lucide-react";
-import { getMemoryFolder, listMySessions, listSessionFolders, createSessionFolder, listSkills, listSources, createFolder, createPage, machineFsList, type MachineEntry, type SessionSummary, type Source } from "@/lib/api";
+import { Bot, ChevronRight, File, Folder, Loader2, MessagesSquare, GraduationCap, Monitor, Plus, Settings, FolderTree, Brain, Plug, SquareTerminal } from "lucide-react";
+import { getMemoryFolder, listMySessions, listSessionFolders, createSessionFolder, listSkills, listSources, createFolder, createPage, machineFsList, listAgents, createAgent, type Agent as AgentRow, type MachineEntry, type SessionSummary, type Source } from "@/lib/api";
 import { SKILL_MD, skillMdTemplate } from "@/lib/localSkill";
 import { cn } from "@/lib/utils";
 import { useWorkspace, type TabKind } from "@/lib/workspace-store";
@@ -163,16 +163,43 @@ function RootSection() {
   );
 }
 
-// ── Agents: chat surface (own list, not a folder) ─────────────────────────────
+// ── Agents: named agent configs (each with New chat + settings), then chats ──
 function AgentsExplorer() {
   const open = useOpenTab();
+  const [agents, setAgents] = useState<AgentRow[] | null>(null);
   const [rows, setRows] = useState<SessionSummary[] | null>(null);
-  useEffect(() => { listMySessions(50).then(setRows).catch(() => setRows([])); }, []);
+  const reloadAgents = useCallback(() => { listAgents().then(setAgents).catch(() => setAgents([])); }, []);
+  useEffect(() => { reloadAgents(); listMySessions(50).then(setRows).catch(() => setRows([])); }, [reloadAgents]);
+
+  async function newAgent() {
+    const a = await createAgent({ name: "New agent" });
+    reloadAgents();
+    open("agent-config", a.id, a.name);
+  }
+
   return (
     <div className="flex h-full flex-col bg-sidebar">
-      <div className="flex h-9 shrink-0 items-center border-b border-sidebar-border px-3 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Agents</div>
+      <div className="flex h-9 shrink-0 items-center justify-between border-b border-sidebar-border px-3 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+        <span>Agents</span>
+        <button onClick={() => void newAgent()} className="cursor-pointer text-muted-foreground hover:text-foreground" title="New agent">
+          <Plus className="h-3.5 w-3.5" />
+        </button>
+      </div>
       <div className="min-h-0 flex-1 overflow-y-auto py-1">
-        <LeafRow icon={<Plus className="h-3.5 w-3.5" />} label="New chat" onClick={() => open("agent", `new-${nanoid(5)}`, "New Chat")} />
+        {(agents ?? []).map((a) => (
+          <div key={a.id} className="group flex items-center gap-1 rounded px-2 py-1.5 text-[13px] text-sidebar-foreground hover:bg-sidebar-accent">
+            <Bot className="h-4 w-4 shrink-0 text-muted-foreground" />
+            <span className="min-w-0 flex-1 truncate">{a.name}</span>
+            <button onClick={() => open("agent", `new:${a.id}:${nanoid(5)}`, a.name)} className="cursor-pointer text-muted-foreground opacity-0 group-hover:opacity-100 hover:text-foreground" title="New chat">
+              <Plus className="h-3.5 w-3.5" />
+            </button>
+            <button onClick={() => open("agent-config", a.id, a.name)} className="cursor-pointer text-muted-foreground opacity-0 group-hover:opacity-100 hover:text-foreground" title="Settings">
+              <Settings className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        ))}
+        <div className="mx-2 my-1 border-t border-sidebar-border" />
+        <div className="px-2 py-1 text-[10.5px] font-medium uppercase tracking-wide text-muted-foreground">Recent chats</div>
         {(rows ?? []).map((s) => <LeafRow key={s.session_id} icon={<MessagesSquare className="h-3.5 w-3.5" />} label={s.title || s.agent_name || "Chat"} onOpen={() => open("agent", s.session_id, s.title || s.agent_name || "Chat")} />)}
       </div>
     </div>

@@ -68,6 +68,7 @@ export async function streamAgentChat(
   opts: {
     sessionId: string | null;
     message: string;
+    agentId?: string | null;
     signal?: AbortSignal;
   } & StreamHandlers,
 ): Promise<void> {
@@ -78,7 +79,11 @@ export async function streamAgentChat(
       "Content-Type": "application/json",
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
-    body: JSON.stringify({ message: opts.message, session_id: opts.sessionId }),
+    body: JSON.stringify({
+      message: opts.message,
+      session_id: opts.sessionId,
+      agent_id: opts.agentId ?? null,
+    }),
     signal: opts.signal,
   });
   if (!res.ok || !res.body) {

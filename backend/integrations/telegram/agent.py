@@ -93,7 +93,7 @@ async def respond_to_message(message: dict) -> None:
     session_id = _session_id(user_id, message, is_private)
     reply_to = message.get("message_id") if not is_private else None
     try:
-        answer = await sprite_agent_service.run_chat(user_id, owner_name, user_id, session_id, body)
+        answer = await sprite_agent_service.run_chat(user_id, owner_name, user_id, session_id, body, channel="telegram")
     except sprite_agent_service.NeedsAuth:
         url = f"{settings.PUBLIC_URL.rstrip('/')}/settings"
         await client.send_message(

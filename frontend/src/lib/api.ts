@@ -1979,3 +1979,43 @@ export async function finishAgentOAuth(
   );
   return data.connected;
 }
+
+// ── Named agents (config: model, persona, schedule, channel binding) ──
+
+export type Agent = {
+  id: string;
+  name: string;
+  model_provider: string | null;
+  system_prompt: string | null;
+  run_mode: string;
+  schedule_cron: string | null;
+  schedule_prompt: string | null;
+  is_default: boolean;
+  slack_bound: boolean;
+  telegram_bound: boolean;
+};
+
+export async function listAgents(): Promise<Agent[]> {
+  const data = await apiFetch<{ agents: Agent[] }>("/api/v1/me/agents");
+  return data.agents;
+}
+
+export async function createAgent(fields: Partial<Agent>): Promise<Agent> {
+  return apiFetch("/api/v1/me/agents", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(fields),
+  });
+}
+
+export async function updateAgent(id: string, fields: Partial<Agent>): Promise<Agent> {
+  return apiFetch(`/api/v1/me/agents/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(fields),
+  });
+}
+
+export async function deleteAgent(id: string): Promise<void> {
+  await apiFetch(`/api/v1/me/agents/${id}`, { method: "DELETE" });
+}

@@ -1,0 +1,169 @@
+"""Named, configurable agents — CRUD and the per-turn config a run needs.
+
+An agent is a saved configuration: its model (a provider override), persona
+(extra system prompt), run mode (chat vs scheduled), and channel bindings.
+Every user has one auto-created default agent; chats and channels resolve to an
+agent, whose config shapes the turn.
+"""
+
+from __future__ import annotations
+
+from uuid import UUID
+
+from fastapi import HTTPException
+
+from ..database import get_pool
+
+_COLUMNS = (
+    "id, user_id, name, model_provider, system_prompt, run_mode, "
+    "schedule_cron, schedule_prompt, is_default, slack_bound, telegram_bound, "
+    "last_run_at, created_at"
+)
+
+_VALID_PROVIDERS = {"anthropic", "openai", "openrouter"}
+_VALID_RUN_MODES = {"chat", "scheduled"}
+
+
+def _row(row) -> dict:
+    d = dict(row)
+    d["id"] = str(d["id"])
+    return d
+
+
+async def list_agents(user_id: UUID) -> list[dict]:
+    rows = await get_pool().fetch(
+        f"SELECT {_COLUMNS} FROM agents WHERE user_id = $1 ORDER BY is_default DESC, created_at",
+        user_id,
+    )
+    return [_row(r) for r in rows]
+
+
+async def get_agent(user_id: UUID, agent_id: UUID) -> dict:
+    row = await get_pool().fetchrow(
+        f"SELECT {_COLUMNS} FROM agents WHERE id = $1 AND user_id = $2", agent_id, user_id
+    )
+    if row is None:
+        raise HTTPException(status_code=404, detail="agent not found")
+    return _row(row)
+
+
+async def get_or_create_default(user_id: UUID) -> dict:
+    """The user's default agent, created on first use."""
+    pool = get_pool()
+    row = await pool.fetchrow(
+        f"SELECT {_COLUMNS} FROM agents WHERE user_id = $1 AND is_default", user_id
+    )
+    if row is not None:
+        return _row(row)
+    row = await pool.fetchrow(
+        f"""
+        INSERT INTO agents (user_id, name, is_default)
+        VALUES ($1, 'Stash Agent', true)
+        ON CONFLICT (user_id) WHERE is_default DO NOTHING
+        RETURNING {_COLUMNS}
+        """,
+        user_id,
+    )
+    if row is None:  # lost the race — read the winner.
+        row = await pool.fetchrow(
+            f"SELECT {_COLUMNS} FROM agents WHERE user_id = $1 AND is_default", user_id
+        )
+    return _row(row)
+
+
+def _validate(model_provider, run_mode, schedule_cron) -> None:
+    if model_provider is not None and model_provider not in _VALID_PROVIDERS:
+        raise HTTPException(status_code=400, detail=f"invalid model_provider: {model_provider}")
+    if run_mode not in _VALID_RUN_MODES:
+        raise HTTPException(status_code=400, detail=f"invalid run_mode: {run_mode}")
+    if run_mode == "scheduled" and not schedule_cron:
+        raise HTTPException(status_code=400, detail="scheduled agents need a schedule_cron")
+
+
+async def create_agent(user_id: UUID, fields: dict) -> dict:
+    _validate(fields.get("model_provider"), fields.get("run_mode", "chat"), fields.get("schedule_cron"))
+    row = await get_pool().fetchrow(
+        f"""
+        INSERT INTO agents (user_id, name, model_provider, system_prompt,
+                            run_mode, schedule_cron, schedule_prompt)
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
+        RETURNING {_COLUMNS}
+        """,
+        user_id,
+        (fields.get("name") or "Agent").strip()[:80],
+        fields.get("model_provider"),
+        fields.get("system_prompt"),
+        fields.get("run_mode", "chat"),
+        fields.get("schedule_cron"),
+        fields.get("schedule_prompt"),
+    )
+    return _row(row)
+
+
+async def update_agent(user_id: UUID, agent_id: UUID, fields: dict) -> dict:
+    current = await get_agent(user_id, agent_id)
+    merged = {**current, **fields}
+    _validate(merged.get("model_provider"), merged.get("run_mode", "chat"), merged.get("schedule_cron"))
+
+    # Channel bindings are unique per user; clear any other agent's binding first.
+    pool = get_pool()
+    if fields.get("slack_bound"):
+        await pool.execute(
+            "UPDATE agents SET slack_bound = false WHERE user_id = $1 AND id <> $2", user_id, agent_id
+        )
+    if fields.get("telegram_bound"):
+        await pool.execute(
+            "UPDATE agents SET telegram_bound = false WHERE user_id = $1 AND id <> $2", user_id, agent_id
+        )
+
+    row = await pool.fetchrow(
+        f"""
+        UPDATE agents SET
+            name = $3, model_provider = $4, system_prompt = $5, run_mode = $6,
+            schedule_cron = $7, schedule_prompt = $8, slack_bound = $9, telegram_bound = $10
+        WHERE id = $1 AND user_id = $2
+        RETURNING {_COLUMNS}
+        """,
+        agent_id,
+        user_id,
+        (merged.get("name") or "Agent").strip()[:80],
+        merged.get("model_provider"),
+        merged.get("system_prompt"),
+        merged.get("run_mode", "chat"),
+        merged.get("schedule_cron"),
+        merged.get("schedule_prompt"),
+        bool(merged.get("slack_bound")),
+        bool(merged.get("telegram_bound")),
+    )
+    return _row(row)
+
+
+async def delete_agent(user_id: UUID, agent_id: UUID) -> None:
+    agent = await get_agent(user_id, agent_id)
+    if agent["is_default"]:
+        raise HTTPException(status_code=400, detail="cannot delete the default agent")
+    await get_pool().execute(
+        "DELETE FROM agents WHERE id = $1 AND user_id = $2", agent_id, user_id
+    )
+
+
+async def list_scheduled() -> list[dict]:
+    """All scheduled agents across users (for the beat task's due check)."""
+    rows = await get_pool().fetch(
+        f"SELECT {_COLUMNS} FROM agents "
+        "WHERE run_mode = 'scheduled' AND schedule_cron IS NOT NULL AND schedule_prompt IS NOT NULL"
+    )
+    return [_row(r) for r in rows]
+
+
+async def mark_run(agent_id: UUID) -> None:
+    await get_pool().execute("UPDATE agents SET last_run_at = now() WHERE id = $1", agent_id)
+
+
+async def channel_agent(user_id: UUID, channel: str) -> dict:
+    """The agent bound to a channel ('slack'|'telegram'), or the default."""
+    col = "slack_bound" if channel == "slack" else "telegram_bound"
+    row = await get_pool().fetchrow(
+        f"SELECT {_COLUMNS} FROM agents WHERE user_id = $1 AND {col}", user_id
+    )
+    return _row(row) if row is not None else await get_or_create_default(user_id)

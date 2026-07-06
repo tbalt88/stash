@@ -26,6 +26,8 @@ export function urlForTab(tab: Pick<WorkbenchTab, "kind" | "refId">): string {
       return `/agents`;
     case "terminal":
       return `/agents`;
+    case "agent-config":
+      return `/agents`;
   }
 }
 

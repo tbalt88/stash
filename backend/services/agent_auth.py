@@ -60,12 +60,22 @@ class RunAuth:
     files: dict[str, str] = field(default_factory=dict)
 
 
-async def _get_credential(user_id: UUID) -> dict | None:
-    row = await get_pool().fetchrow(
-        "SELECT provider, kind, secret_enc FROM user_agent_credentials "
-        "WHERE user_id = $1 ORDER BY created_at LIMIT 1",
-        user_id,
-    )
+async def _get_credential(user_id: UUID, provider: str | None = None) -> dict | None:
+    """The user's connected credential. With `provider`, only that one (so an
+    agent's model override selects a specific connected harness)."""
+    if provider is not None:
+        row = await get_pool().fetchrow(
+            "SELECT provider, kind, secret_enc FROM user_agent_credentials "
+            "WHERE user_id = $1 AND provider = $2",
+            user_id,
+            provider,
+        )
+    else:
+        row = await get_pool().fetchrow(
+            "SELECT provider, kind, secret_enc FROM user_agent_credentials "
+            "WHERE user_id = $1 ORDER BY created_at LIMIT 1",
+            user_id,
+        )
     if row is None:
         return None
     return {"provider": row["provider"], "kind": row["kind"],
@@ -106,17 +116,33 @@ async def delete_credential(user_id: UUID, provider: str) -> None:
     )
 
 
-async def resolve(user_id: UUID) -> RunAuth:
-    """The harness + credential injection for this user's next turn."""
+async def resolve(user_id: UUID, prefer_provider: str | None = None) -> RunAuth:
+    """The harness + credential injection for this user's next turn.
+
+    `prefer_provider` is an agent's model override: if the user has that
+    provider's credential, run it; a managed OpenRouter preference on Pro uses
+    the managed GLM. Falls back to the user's default resolution otherwise.
+    """
     # Local dev: the machine's own harness login; inject nothing.
     if settings.AGENT_EXEC_MODE == "local":
         return RunAuth(harness=harness_mod.CLAUDE)
 
+    if prefer_provider:
+        cred = await _get_credential(user_id, prefer_provider)
+        if cred is not None:
+            return _byo_auth(cred)
+        # Preferred managed OpenRouter with no BYO key → managed GLM (Pro gate).
+        if prefer_provider == "openrouter":
+            return await _managed(user_id)
+
     cred = await _get_credential(user_id)
     if cred is not None:
         return _byo_auth(cred)
+    return await _managed(user_id)
 
-    # No connected credential → managed agent, Pro only.
+
+async def _managed(user_id: UUID) -> RunAuth:
+    """The managed agent: opencode on OpenRouter GLM, Pro only."""
     if not await billing_service.is_pro(user_id):
         raise NeedsAuth
     key = settings.OPENROUTER_API_KEY
