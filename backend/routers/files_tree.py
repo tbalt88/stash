@@ -176,9 +176,7 @@ async def get_changes(
     from ..services import curation_service
 
     since_dt = datetime.fromisoformat(since) if since else None
-    return await curation_service.changes_since(
-        current_user["id"], current_user["id"], since_dt
-    )
+    return await curation_service.changes_since(current_user["id"], current_user["id"], since_dt)
 
 
 # --- Folders ---

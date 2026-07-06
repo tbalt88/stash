@@ -166,8 +166,8 @@ class StashVfsModel:
             child_rel = f"{rel_path}/{entry['name']}" if rel_path else entry["name"]
             if entry["dir"]:
                 child = self._add_dir_child(dir_path, entry["name"])
-                self._expanders[child] = (
-                    lambda c=child, r=child_rel: self._expand_computer_dir(c, r)
+                self._expanders[child] = lambda c=child, r=child_rel: self._expand_computer_dir(
+                    c, r
                 )
             else:
                 self._add_file(

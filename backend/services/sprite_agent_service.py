@@ -165,8 +165,12 @@ async def _turn_events(
 
     state = harness_mod.TurnState()
     argv = harness_mod.build_argv(
-        harness, message, session_key=key, resume=resume,
-        system_prompt=system_prompt, disallowed_tools=disallowed_tools,
+        harness,
+        message,
+        session_key=key,
+        resume=resume,
+        system_prompt=system_prompt,
+        disallowed_tools=disallowed_tools,
     )
     async for event in _run_harness(harness, sprite, argv, state, provider_env):
         yield event
@@ -175,11 +179,17 @@ async def _turn_events(
         # Cattle rule: the on-box transcript is gone. Recreate the canonical
         # session fresh (Claude: --session-id <same key>) with history seeded
         # into the prompt, so later turns resume it normally again.
-        logger.warning("cloud agent: transcript missing for %s — reseeding from history", session_id)
+        logger.warning(
+            "cloud agent: transcript missing for %s — reseeding from history", session_id
+        )
         state = harness_mod.TurnState()
         argv = harness_mod.build_argv(
-            harness, _reseed_prompt(history, message), session_key=key, resume=False,
-            system_prompt=system_prompt, disallowed_tools=disallowed_tools,
+            harness,
+            _reseed_prompt(history, message),
+            session_key=key,
+            resume=False,
+            system_prompt=system_prompt,
+            disallowed_tools=disallowed_tools,
         )
         async for event in _run_harness(harness, sprite, argv, state, provider_env):
             yield event
@@ -246,8 +256,13 @@ async def run_scheduled(agent: dict, run_stamp: str) -> str:
         session_id = f"agent-sched-{agent['id']}-{run_stamp}"
 
     return await run_chat(
-        user_id, owner_name, user_id, session_id, message,
-        model_provider=agent["model_provider"], persona=agent["system_prompt"],
+        user_id,
+        owner_name,
+        user_id,
+        session_id,
+        message,
+        model_provider=agent["model_provider"],
+        persona=agent["system_prompt"],
     )
 
 
@@ -285,7 +300,11 @@ async def stream_chat(
 
             final = ""
             async for event in _turn_events(
-                auth, sprite, history, message, session_id,
+                auth,
+                sprite,
+                history,
+                message,
+                session_id,
                 _system_prompt(owner_name, persona),
             ):
                 if event["type"] == "end":
@@ -294,8 +313,12 @@ async def stream_chat(
 
             if final:
                 await memory_service.push_event(
-                    owner_user_id, AGENT_NAME, "assistant_message", final,
-                    user_id, session_id=session_id,
+                    owner_user_id,
+                    AGENT_NAME,
+                    "assistant_message",
+                    final,
+                    user_id,
+                    session_id=session_id,
                 )
     except TurnInProgress:
         yield _sse({"type": "error", "message": "A turn is already running in this chat."})
@@ -356,7 +379,11 @@ async def run_chat(
         final = ""
         error: str | None = None
         async for event in _turn_events(
-            auth, sprite, history, message, session_id,
+            auth,
+            sprite,
+            history,
+            message,
+            session_id,
             _system_prompt(owner_name, persona),
             # Channel messages are untrusted input; scheduled runs (curator
             # included) execute a trusted prompt and need their full toolset.
@@ -371,6 +398,11 @@ async def run_chat(
 
         if final:
             await memory_service.push_event(
-                owner_user_id, AGENT_NAME, "assistant_message", final, user_id, session_id=session_id
+                owner_user_id,
+                AGENT_NAME,
+                "assistant_message",
+                final,
+                user_id,
+                session_id=session_id,
             )
         return final

@@ -81,17 +81,22 @@ async def test_agent_chat_persists_and_resumes(client: AsyncClient, sprite_exec)
 async def test_lost_transcript_reseeds_from_history(client: AsyncClient, sprite_exec):
     key, _ = await _register(client)
 
-    r1 = await client.post(
-        "/api/v1/me/agent-chat", json={"message": "hello"}, headers=_auth(key)
-    )
+    r1 = await client.post("/api/v1/me/agent-chat", json={"message": "hello"}, headers=_auth(key))
     session_id = _events(r1.text)[0]["session_id"]
 
     # The box lost the transcript: --resume fails, then the reseeded fresh
     # session succeeds. The reseed prompt must replay stored history.
     sprite_exec.replies.append(([], 1))  # stderr-free nonzero exit won't match…
     sprite_exec.replies[0] = (
-        [json.dumps({"type": "result", "subtype": "error_during_execution",
-                     "result": "No conversation found with session ID: xyz"})],
+        [
+            json.dumps(
+                {
+                    "type": "result",
+                    "subtype": "error_during_execution",
+                    "result": "No conversation found with session ID: xyz",
+                }
+            )
+        ],
         1,
     )
     sprite_exec.replies.append((stream_json_reply("recovered"), 0))
@@ -115,9 +120,7 @@ async def test_lost_transcript_reseeds_from_history(client: AsyncClient, sprite_
 @pytest.mark.asyncio
 async def test_concurrent_turn_on_same_session_errors(client: AsyncClient, sprite_exec):
     key, _ = await _register(client)
-    r1 = await client.post(
-        "/api/v1/me/agent-chat", json={"message": "hi"}, headers=_auth(key)
-    )
+    r1 = await client.post("/api/v1/me/agent-chat", json={"message": "hi"}, headers=_auth(key))
     session_id = _events(r1.text)[0]["session_id"]
 
     # Simulate a turn already holding the lock.
@@ -136,12 +139,20 @@ async def test_concurrent_turn_on_same_session_errors(client: AsyncClient, sprit
 async def test_agent_failure_surfaces_error_event(client: AsyncClient, sprite_exec):
     key, _ = await _register(client)
     sprite_exec.replies.append(
-        ([json.dumps({"type": "result", "subtype": "error_during_execution",
-                      "result": "API overloaded"})], 1)
+        (
+            [
+                json.dumps(
+                    {
+                        "type": "result",
+                        "subtype": "error_during_execution",
+                        "result": "API overloaded",
+                    }
+                )
+            ],
+            1,
+        )
     )
-    r = await client.post(
-        "/api/v1/me/agent-chat", json={"message": "hi"}, headers=_auth(key)
-    )
+    r = await client.post("/api/v1/me/agent-chat", json={"message": "hi"}, headers=_auth(key))
     evts = _events(r.text)
     errors = [e for e in evts if e["type"] == "error"]
     assert errors and "API overloaded" in errors[0]["message"]

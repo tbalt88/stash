@@ -43,11 +43,17 @@ def test_claude_fixture_maps_to_contract_events():
 
 def test_claude_error_result_and_is_error():
     state = h.TurnState()
-    h.map_line(h.CLAUDE, '{"type":"result","subtype":"error_during_execution","result":"boom"}', state)
+    h.map_line(
+        h.CLAUDE, '{"type":"result","subtype":"error_during_execution","result":"boom"}', state
+    )
     assert state.error == "boom"
 
     state2 = h.TurnState()
-    h.map_line(h.CLAUDE, '{"type":"result","subtype":"success","is_error":true,"result":"Invalid API key"}', state2)
+    h.map_line(
+        h.CLAUDE,
+        '{"type":"result","subtype":"success","is_error":true,"result":"Invalid API key"}',
+        state2,
+    )
     assert state2.result_text is None and state2.error == "Invalid API key"
 
 
@@ -75,8 +81,14 @@ def test_claude_uses_deterministic_id_for_create_and_resume():
 
 
 def test_claude_disallowed_tools():
-    argv = h.build_argv(h.CLAUDE, "hi", session_key="k", resume=False, system_prompt="s",
-                        disallowed_tools=["Write", "Edit"])
+    argv = h.build_argv(
+        h.CLAUDE,
+        "hi",
+        session_key="k",
+        resume=False,
+        system_prompt="s",
+        disallowed_tools=["Write", "Edit"],
+    )
     assert argv[argv.index("--disallowedTools") + 1] == "Write,Edit"
 
 
@@ -97,7 +109,9 @@ def test_codex_argv_and_resume():
     assert "sys" in first[2] and "do it" in first[2]  # system prompt prepended
     assert "resume" not in first
 
-    resumed = h.build_argv(h.CODEX, "more", session_key="thread_abc", resume=True, system_prompt="sys")
+    resumed = h.build_argv(
+        h.CODEX, "more", session_key="thread_abc", resume=True, system_prompt="sys"
+    )
     assert resumed[1:4] == ["exec", "resume", "thread_abc"]
 
 
@@ -139,7 +153,9 @@ def test_opencode_argv_targets_openrouter_model():
 
 def test_opencode_captures_session_and_maps_text():
     state = h.TurnState()
-    events = h.map_line(h.OPENCODE, '{"sessionID":"os_1","part":{"type":"text","text":"hi there"}}', state)
+    events = h.map_line(
+        h.OPENCODE, '{"sessionID":"os_1","part":{"type":"text","text":"hi there"}}', state
+    )
     assert state.native_id == "os_1"
     assert events == [{"type": "text", "delta": "hi there"}]
 

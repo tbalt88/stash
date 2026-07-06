@@ -118,7 +118,8 @@ async def _make_due(pool, agent_id: str, watermark: datetime) -> None:
         "UPDATE agents SET schedule_cron = '* * * * *', "
         "last_run_at = now() - interval '5 minutes', curated_through = $2 "
         "WHERE id = $1",
-        UUID(agent_id), watermark,
+        UUID(agent_id),
+        watermark,
     )
 
 
@@ -169,9 +170,7 @@ async def test_curator_run_does_not_echo_loop(client: AsyncClient, sprite_exec, 
     # doesn't re-trigger the gate or appear in the feed.
     assert await curation_service.has_changes_since(uid, uid, after) is False
     feed = await curation_service.changes_since(uid, uid, after)
-    assert all(
-        not str(e["session_id"] or "").startswith("agent-curate-") for e in feed["history"]
-    )
+    assert all(not str(e["session_id"] or "").startswith("agent-curate-") for e in feed["history"])
 
 
 @pytest.mark.asyncio

@@ -41,9 +41,7 @@ def upgrade() -> None:
     op.execute(
         "CREATE UNIQUE INDEX one_default_agent_per_user ON agents (user_id) WHERE is_default"
     )
-    op.execute(
-        "CREATE UNIQUE INDEX one_slack_agent_per_user ON agents (user_id) WHERE slack_bound"
-    )
+    op.execute("CREATE UNIQUE INDEX one_slack_agent_per_user ON agents (user_id) WHERE slack_bound")
     op.execute(
         "CREATE UNIQUE INDEX one_telegram_agent_per_user ON agents (user_id) WHERE telegram_bound"
     )

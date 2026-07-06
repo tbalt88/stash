@@ -37,7 +37,10 @@ async def set_webhook(url: str) -> dict:
     async with httpx.AsyncClient(timeout=15.0) as client:
         resp = await client.post(
             f"{_base()}/setWebhook",
-            json={"url": url, "secret_token": settings.TELEGRAM_WEBHOOK_SECRET,
-                  "allowed_updates": ["message"]},
+            json={
+                "url": url,
+                "secret_token": settings.TELEGRAM_WEBHOOK_SECRET,
+                "allowed_updates": ["message"],
+            },
         )
     return resp.json()

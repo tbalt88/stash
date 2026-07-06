@@ -39,14 +39,18 @@ def test_pkce_challenge_is_s256_of_verifier():
     import hashlib
 
     verifier, challenge = agent_oauth._pkce()
-    expect = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).decode().rstrip("=")
+    expect = (
+        base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).decode().rstrip("=")
+    )
     assert challenge == expect
 
 
 def test_parse_pasted_code_variants():
     assert agent_oauth._parse_pasted_code("abc") == ("abc", None)
     assert agent_oauth._parse_pasted_code("abc#xyz") == ("abc", "xyz")
-    code, state = agent_oauth._parse_pasted_code("http://localhost:1455/auth/callback?code=C&state=S")
+    code, state = agent_oauth._parse_pasted_code(
+        "http://localhost:1455/auth/callback?code=C&state=S"
+    )
     assert code == "C" and state == "S"
 
 
@@ -95,7 +99,9 @@ async def test_finish_exchanges_and_stores(monkeypatch):
         assert json["grant_type"] == "authorization_code"
         assert json["code"] == "THECODE"
         assert json["code_verifier"]  # the PKCE verifier from state
-        return httpx.Response(200, json={"access_token": "AT", "refresh_token": "RT", "expires_in": 3600})
+        return httpx.Response(
+            200, json={"access_token": "AT", "refresh_token": "RT", "expires_in": 3600}
+        )
 
     stored = {}
 

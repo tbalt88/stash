@@ -41,8 +41,8 @@ class ProviderNotConfigured(Exception):
 
 # provider a user connects → the harness it drives.
 _PROVIDER_HARNESS = {
-    "anthropic": harness_mod.CLAUDE,   # Claude Code
-    "openai": harness_mod.CODEX,       # Codex
+    "anthropic": harness_mod.CLAUDE,  # Claude Code
+    "openai": harness_mod.CODEX,  # Codex
     "openrouter": harness_mod.OPENCODE,  # opencode on the user's OpenRouter key
 }
 # OpenRouter has no OAuth — API key only.
@@ -78,8 +78,7 @@ async def _get_credential(user_id: UUID, provider: str | None = None) -> dict | 
         )
     if row is None:
         return None
-    return {"provider": row["provider"], "kind": row["kind"],
-            "secret": _decrypt(row["secret_enc"])}
+    return {"provider": row["provider"], "kind": row["kind"], "secret": _decrypt(row["secret_enc"])}
 
 
 async def store_credential(user_id: UUID, provider: str, kind: str, secret: str) -> None:

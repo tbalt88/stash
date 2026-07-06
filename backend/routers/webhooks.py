@@ -134,13 +134,17 @@ async def telegram_webhook(request: Request):
     update = await request.json()
     message = update.get("message")
     # update_id is Telegram's own monotonic id — dedupe on it.
-    if message and message.get("text") and not await _already_handled(
-        f"tg:{update.get('update_id')}"
+    if (
+        message
+        and message.get("text")
+        and not await _already_handled(f"tg:{update.get('update_id')}")
     ):
         celery.send_task(
             "backend.tasks.sources.respond_to_telegram_message", kwargs={"message": message}
         )
     return {"ok": True}
+
+
 # --- END Telegram agent ---
 
 

@@ -384,7 +384,7 @@ async def write_file(sprite: Sprite, abs_path: str, contents: str) -> None:
 
     b64 = base64.b64encode(contents.encode()).decode()
     script = (
-        'import base64,os,sys;p=sys.argv[1];os.makedirs(os.path.dirname(p),exist_ok=True);'
+        "import base64,os,sys;p=sys.argv[1];os.makedirs(os.path.dirname(p),exist_ok=True);"
         'open(p,"wb").write(base64.b64decode(sys.argv[2]));os.chmod(p,0o600)'
     )
     _, code = await exec_collect(
@@ -415,7 +415,13 @@ async def fs_read(sprite: Sprite, rel_path: str) -> bytes:
     box_path = _box_path(rel_path)
     output, code = await exec_collect(
         sprite,
-        ["python3", "-c", "import base64,sys;print(base64.b64encode(open(sys.argv[1],'rb').read(int(sys.argv[2]))).decode())", box_path, str(FS_MAX_READ_BYTES)],
+        [
+            "python3",
+            "-c",
+            "import base64,sys;print(base64.b64encode(open(sys.argv[1],'rb').read(int(sys.argv[2]))).decode())",
+            box_path,
+            str(FS_MAX_READ_BYTES),
+        ],
         env={},
         timeout_s=60,
         stdout_only=True,

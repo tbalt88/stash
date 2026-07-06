@@ -19,9 +19,7 @@ depends_on = None
 
 def upgrade() -> None:
     op.execute("ALTER TABLE agents ADD COLUMN is_curator boolean NOT NULL DEFAULT false")
-    op.execute(
-        "CREATE UNIQUE INDEX one_curator_per_user ON agents (user_id) WHERE is_curator"
-    )
+    op.execute("CREATE UNIQUE INDEX one_curator_per_user ON agents (user_id) WHERE is_curator")
 
 
 def downgrade() -> None:

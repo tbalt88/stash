@@ -110,11 +110,17 @@ def build_argv(
         # Claude always carries its deterministic id: --session-id creates it on
         # turn 1, --resume continues that exact session on later turns.
         argv = [
-            "claude", "-p", prompt,
-            "--output-format", "stream-json", "--verbose", "--include-partial-messages",
+            "claude",
+            "-p",
+            prompt,
+            "--output-format",
+            "stream-json",
+            "--verbose",
+            "--include-partial-messages",
             "--resume" if resume else "--session-id",
             session_key,
-            "--append-system-prompt", system_prompt,
+            "--append-system-prompt",
+            system_prompt,
             "--dangerously-skip-permissions",
         ]
         if disallowed_tools:
@@ -128,13 +134,26 @@ def build_argv(
         base = ["codex", "exec"]
         if resume and session_key:
             base += ["resume", session_key]
-        return [*base, full, "--json", "--skip-git-repo-check",
-                "--dangerously-bypass-approvals-and-sandbox"]
+        return [
+            *base,
+            full,
+            "--json",
+            "--skip-git-repo-check",
+            "--dangerously-bypass-approvals-and-sandbox",
+        ]
 
     if harness is OPENCODE:
         full = f"{system_prompt}\n\n{prompt}"
-        argv = ["opencode", "run", full, "-m", f"{harness.provider.id}/{harness.default_model}",
-                "--format", "json", "--dangerously-skip-permissions"]
+        argv = [
+            "opencode",
+            "run",
+            full,
+            "-m",
+            f"{harness.provider.id}/{harness.default_model}",
+            "--format",
+            "json",
+            "--dangerously-skip-permissions",
+        ]
         if resume and session_key:
             argv += ["-s", session_key]
         return argv
@@ -179,17 +198,28 @@ def _map_claude(obj: dict, state: TurnState) -> list[dict]:
         for block in (obj.get("message") or {}).get("content") or []:
             if block.get("type") == "tool_use":
                 state.tool_names[block["id"]] = block["name"]
-                events.append({"type": "tool", "id": block["id"],
-                               "name": block["name"], "args": block.get("input") or {}})
+                events.append(
+                    {
+                        "type": "tool",
+                        "id": block["id"],
+                        "name": block["name"],
+                        "args": block.get("input") or {},
+                    }
+                )
         return events
     if kind == "user":
         events = []
         for block in (obj.get("message") or {}).get("content") or []:
             if isinstance(block, dict) and block.get("type") == "tool_result":
                 tool_id = block.get("tool_use_id") or ""
-                events.append({"type": "tool_result", "id": tool_id,
-                               "name": state.tool_names.get(tool_id, ""),
-                               "ok": not block.get("is_error", False)})
+                events.append(
+                    {
+                        "type": "tool_result",
+                        "id": tool_id,
+                        "name": state.tool_names.get(tool_id, ""),
+                        "ok": not block.get("is_error", False),
+                    }
+                )
         return events
     if kind == "result":
         # subtype "success" can still carry is_error (e.g. a rejected key).
@@ -218,9 +248,18 @@ def _map_codex(obj: dict, state: TurnState) -> list[dict]:
         if itype == "command_execution" and item.get("command"):
             tool_id = item.get("id") or item["command"]
             return [
-                {"type": "tool", "id": tool_id, "name": "Bash", "args": {"command": item["command"]}},
-                {"type": "tool_result", "id": tool_id, "name": "Bash",
-                 "ok": item.get("exit_code", 0) == 0},
+                {
+                    "type": "tool",
+                    "id": tool_id,
+                    "name": "Bash",
+                    "args": {"command": item["command"]},
+                },
+                {
+                    "type": "tool_result",
+                    "id": tool_id,
+                    "name": "Bash",
+                    "ok": item.get("exit_code", 0) == 0,
+                },
             ]
         return []
     if kind == "error":
@@ -247,8 +286,14 @@ def _map_opencode(obj: dict, state: TurnState) -> list[dict]:
         name = part.get("tool") or "tool"
         events = [{"type": "tool", "id": tool_id, "name": name, "args": st.get("input") or {}}]
         if st.get("status") in ("completed", "error"):
-            events.append({"type": "tool_result", "id": tool_id, "name": name,
-                           "ok": st.get("status") == "completed"})
+            events.append(
+                {
+                    "type": "tool_result",
+                    "id": tool_id,
+                    "name": name,
+                    "ok": st.get("status") == "completed",
+                }
+            )
         return events
     if ptype == "error":
         state.error = str(part.get("message") or "opencode error")

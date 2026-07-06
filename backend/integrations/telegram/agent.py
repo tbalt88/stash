@@ -51,7 +51,9 @@ async def _handle_start(chat_id: int, telegram_user_id: str, text: str) -> None:
         return
     user_id = await links.redeem_connect_code(code, telegram_user_id)
     if user_id is None:
-        await client.send_message(chat_id, "That link expired. Generate a new one in Stash settings.")
+        await client.send_message(
+            chat_id, "That link expired. Generate a new one in Stash settings."
+        )
         return
     user = await user_service.get_user_by_id(user_id)
     name = (user["display_name"] or user["name"]) if user else "there"
@@ -93,7 +95,9 @@ async def respond_to_message(message: dict) -> None:
     session_id = _session_id(user_id, message, is_private)
     reply_to = message.get("message_id") if not is_private else None
     try:
-        answer = await sprite_agent_service.run_chat(user_id, owner_name, user_id, session_id, body, channel="telegram")
+        answer = await sprite_agent_service.run_chat(
+            user_id, owner_name, user_id, session_id, body, channel="telegram"
+        )
     except sprite_agent_service.NeedsAuth:
         url = f"{settings.PUBLIC_URL.rstrip('/')}/settings"
         await client.send_message(
@@ -113,7 +117,9 @@ async def respond_to_message(message: dict) -> None:
             chat_id, "Something went wrong on that one. Try again?", reply_to=reply_to
         )
         return
-    await client.send_message(chat_id, answer or "(I didn't produce a response.)", reply_to=reply_to)
+    await client.send_message(
+        chat_id, answer or "(I didn't produce a response.)", reply_to=reply_to
+    )
 
 
 def _session_id(user_id, message: dict, is_private: bool) -> str:

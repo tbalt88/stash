@@ -44,7 +44,9 @@ async def connect(req: ConnectRequest, current_user: dict = Depends(get_current_
         raise HTTPException(status_code=400, detail=f"unknown provider: {req.provider}")
     if not req.api_key.strip():
         raise HTTPException(status_code=400, detail="api_key is required")
-    await agent_auth.store_credential(current_user["id"], req.provider, "api_key", req.api_key.strip())
+    await agent_auth.store_credential(
+        current_user["id"], req.provider, "api_key", req.api_key.strip()
+    )
     return {"ok": True, "connected": await agent_auth.list_connected(current_user["id"])}
 
 

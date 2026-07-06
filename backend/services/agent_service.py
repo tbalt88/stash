@@ -20,11 +20,13 @@ _COLUMNS = (
     "telegram_bound, last_run_at, curated_through, created_at"
 )
 
+
 # The daily curator's cron is staggered per user so sprite wakes spread across
 # the day rather than all firing at once.
 def _staggered_daily_cron(user_id: UUID) -> str:
     n = int.from_bytes(user_id.bytes, "big")
     return f"{n % 60} {n % 24} * * *"
+
 
 _VALID_PROVIDERS = {"anthropic", "openai", "openrouter"}
 _VALID_RUN_MODES = {"chat", "scheduled"}
@@ -148,7 +150,9 @@ async def create_agent(user_id: UUID, fields: dict) -> dict:
 async def update_agent(user_id: UUID, agent_id: UUID, fields: dict) -> dict:
     current = await get_agent(user_id, agent_id)
     merged = {**current, **fields}
-    _validate(merged.get("model_provider"), merged.get("run_mode", "chat"), merged.get("schedule_cron"))
+    _validate(
+        merged.get("model_provider"), merged.get("run_mode", "chat"), merged.get("schedule_cron")
+    )
 
     async with get_pool().acquire() as conn, conn.transaction():
         # Channel bindings are unique per user; clear others in the same tx so
@@ -156,12 +160,14 @@ async def update_agent(user_id: UUID, agent_id: UUID, fields: dict) -> dict:
         if merged.get("slack_bound"):
             await conn.execute(
                 "UPDATE agents SET slack_bound = false WHERE user_id = $1 AND id <> $2",
-                user_id, agent_id,
+                user_id,
+                agent_id,
             )
         if merged.get("telegram_bound"):
             await conn.execute(
                 "UPDATE agents SET telegram_bound = false WHERE user_id = $1 AND id <> $2",
-                user_id, agent_id,
+                user_id,
+                agent_id,
             )
         # Seed last_run_at when the agent first becomes scheduled, so the cron
         # has a baseline (a NULL baseline never becomes due).
@@ -199,9 +205,7 @@ async def delete_agent(user_id: UUID, agent_id: UUID) -> None:
         raise HTTPException(
             status_code=400, detail="cannot delete the Memory curator (turn it off instead)"
         )
-    await get_pool().execute(
-        "DELETE FROM agents WHERE id = $1 AND user_id = $2", agent_id, user_id
-    )
+    await get_pool().execute("DELETE FROM agents WHERE id = $1 AND user_id = $2", agent_id, user_id)
 
 
 async def list_scheduled() -> list[dict]:

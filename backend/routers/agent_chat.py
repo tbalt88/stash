@@ -59,7 +59,12 @@ async def chat(
     session_id = req.session_id or f"agent-{uuid4().hex}"
     return StreamingResponse(
         sprite_agent_service.stream_chat(
-            owner_user_id, scope_name, current_user["id"], session_id, req.message, auth,
+            owner_user_id,
+            scope_name,
+            current_user["id"],
+            session_id,
+            req.message,
+            auth,
             agent["system_prompt"],
         ),
         media_type="text/event-stream",

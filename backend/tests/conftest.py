@@ -146,8 +146,15 @@ def stream_json_reply(text: str) -> list[str]:
     """A minimal well-formed claude stream-json transcript replying `text`."""
     return [
         _json.dumps({"type": "system", "subtype": "init"}),
-        _json.dumps({"type": "stream_event", "event": {"type": "content_block_delta",
-                     "delta": {"type": "text_delta", "text": text}}}),
+        _json.dumps(
+            {
+                "type": "stream_event",
+                "event": {
+                    "type": "content_block_delta",
+                    "delta": {"type": "text_delta", "text": text},
+                },
+            }
+        ),
         _json.dumps({"type": "result", "subtype": "success", "result": text}),
     ]
 
@@ -164,7 +171,9 @@ def sprite_exec(monkeypatch):
 
     async def fake_exec_stream(sprite, argv, *, env, cwd=None):
         calls.append(argv)
-        lines, exit_code = replies.pop(0) if replies else (stream_json_reply("Reply to: " + argv[2]), 0)
+        lines, exit_code = (
+            replies.pop(0) if replies else (stream_json_reply("Reply to: " + argv[2]), 0)
+        )
         for line in lines:
             yield {"stream": "stdout", "data": (line + "\n").encode()}
         yield {"exit_code": exit_code}

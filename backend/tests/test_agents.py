@@ -40,8 +40,11 @@ async def test_create_update_delete_agent(client: AsyncClient):
     created = (
         await client.post(
             "/api/v1/me/agents",
-            json={"name": "Researcher", "model_provider": "openrouter",
-                  "system_prompt": "Be terse."},
+            json={
+                "name": "Researcher",
+                "model_provider": "openrouter",
+                "system_prompt": "Be terse.",
+            },
             headers=_auth(key),
         )
     ).json()
@@ -88,12 +91,22 @@ async def test_channel_binding_is_unique_and_resolves(client: AsyncClient, _db_p
     key = await _register(client)
     agents = (await client.get("/api/v1/me/agents", headers=_auth(key))).json()["agents"]
     default_id = agents[0]["id"]
-    a = (await client.post("/api/v1/me/agents", json={"name": "Slackbot"}, headers=_auth(key))).json()
+    a = (
+        await client.post("/api/v1/me/agents", json={"name": "Slackbot"}, headers=_auth(key))
+    ).json()
     b = (await client.post("/api/v1/me/agents", json={"name": "Other"}, headers=_auth(key))).json()
 
-    await client.patch(f"/api/v1/me/agents/{a['id']}", json={"name": "Slackbot", "slack_bound": True}, headers=_auth(key))
+    await client.patch(
+        f"/api/v1/me/agents/{a['id']}",
+        json={"name": "Slackbot", "slack_bound": True},
+        headers=_auth(key),
+    )
     # Binding a second agent clears the first (unique per user).
-    await client.patch(f"/api/v1/me/agents/{b['id']}", json={"name": "Other", "slack_bound": True}, headers=_auth(key))
+    await client.patch(
+        f"/api/v1/me/agents/{b['id']}",
+        json={"name": "Other", "slack_bound": True},
+        headers=_auth(key),
+    )
     listed = (await client.get("/api/v1/me/agents", headers=_auth(key))).json()["agents"]
     bound = [x for x in listed if x["slack_bound"]]
     assert len(bound) == 1 and bound[0]["id"] == b["id"]
@@ -132,8 +145,12 @@ async def test_scheduled_agent_seeds_baseline_and_becomes_due(client: AsyncClien
     a = (
         await client.post(
             "/api/v1/me/agents",
-            json={"name": "Daily", "run_mode": "scheduled", "schedule_cron": "* * * * *",
-                  "schedule_prompt": "go"},
+            json={
+                "name": "Daily",
+                "run_mode": "scheduled",
+                "schedule_cron": "* * * * *",
+                "schedule_prompt": "go",
+            },
             headers=_auth(key),
         )
     ).json()

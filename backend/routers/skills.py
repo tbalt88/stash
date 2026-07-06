@@ -85,15 +85,11 @@ async def import_github_skill(
     """Import every SKILL.md folder in a public GitHub repo as private skills in
     the caller's own scope (folders with SKILL.md)."""
     try:
-        result = await github_skill_import.import_repo_for_user(
-            current_user["id"], req.repo_url
-        )
+        result = await github_skill_import.import_repo_for_user(current_user["id"], req.repo_url)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     if result["skills"] == 0:
-        raise HTTPException(
-            status_code=404, detail="No SKILL.md folders found in that repo"
-        )
+        raise HTTPException(status_code=404, detail="No SKILL.md folders found in that repo")
     return result
 
 

@@ -71,7 +71,7 @@ def render_sprite_system(stash_name: str) -> str:
         "filesystem, shell, and internet access. Your working directory is ~/work.\n"
         "Their Stash (files, pages, tables, sessions, skills, connected sources) "
         "lives in the Stash service, not on this disk. Reach it with the `stash` "
-        "CLI: `stash search \"...\"` to find things, `stash vfs \"ls /\"` and "
+        'CLI: `stash search "..."` to find things, `stash vfs "ls /"` and '
         "`stash vfs \"cat '/files/<page>.md'\"` to browse and read, `stash upload "
         "<path>` to save a file into their Stash. Run `stash --help` for more.\n"
         "When you produce something the user will want to keep or share — a "

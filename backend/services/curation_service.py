@@ -63,10 +63,7 @@ async def changes_since(owner_user_id: UUID, user_id: UUID, since: datetime | No
     )
     # The curator's own run transcripts are not user activity — feeding them
     # back would echo-loop the daily gate and pollute the wiki.
-    events = [
-        e for e in events
-        if not str(e.get("session_id") or "").startswith("agent-curate-")
-    ]
+    events = [e for e in events if not str(e.get("session_id") or "").startswith("agent-curate-")]
     history = [
         {
             "session_id": e.get("session_id"),
@@ -88,11 +85,20 @@ async def changes_since(owner_user_id: UUID, user_id: UUID, since: datetime | No
           AND ($2::timestamptz IS NULL OR updated_at > $2)
         ORDER BY updated_at DESC LIMIT $3
         """,
-        owner_user_id, since, _MAX_PAGES, _SNIPPET, exclude,
+        owner_user_id,
+        since,
+        _MAX_PAGES,
+        _SNIPPET,
+        exclude,
     )
     pages = [
-        {"id": str(r["id"]), "name": r["name"], "folder_id": str(r["folder_id"]) if r["folder_id"] else None,
-         "updated_at": _iso(r["updated_at"]), "snippet": r["snippet"]}
+        {
+            "id": str(r["id"]),
+            "name": r["name"],
+            "folder_id": str(r["folder_id"]) if r["folder_id"] else None,
+            "updated_at": _iso(r["updated_at"]),
+            "snippet": r["snippet"],
+        }
         for r in page_rows
     ]
 
@@ -103,11 +109,18 @@ async def changes_since(owner_user_id: UUID, user_id: UUID, since: datetime | No
         WHERE owner_user_id = $1 AND ($2::timestamptz IS NULL OR created_at > $2)
         ORDER BY created_at DESC LIMIT $3
         """,
-        owner_user_id, since, _MAX_FILES, _SNIPPET,
+        owner_user_id,
+        since,
+        _MAX_FILES,
+        _SNIPPET,
     )
     files = [
-        {"id": str(r["id"]), "name": r["name"], "created_at": _iso(r["created_at"]),
-         "snippet": r["snippet"]}
+        {
+            "id": str(r["id"]),
+            "name": r["name"],
+            "created_at": _iso(r["created_at"]),
+            "snippet": r["snippet"],
+        }
         for r in file_rows
     ]
 
@@ -120,8 +133,12 @@ async def changes_since(owner_user_id: UUID, user_id: UUID, since: datetime | No
 
     return {
         "since": _iso(since),
-        "counts": {"history": len(history), "pages": len(pages), "files": len(files),
-                   "sources": len(sources)},
+        "counts": {
+            "history": len(history),
+            "pages": len(pages),
+            "files": len(files),
+            "sources": len(sources),
+        },
         "history": history,
         "pages": pages,
         "files": files,

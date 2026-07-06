@@ -7,8 +7,12 @@ from backend.integrations.telegram import agent
 
 
 def _msg(text, chat_type="private", **extra):
-    m = {"message_id": 5, "text": text, "from": {"id": 42, "is_bot": False},
-         "chat": {"id": 100, "type": chat_type}}
+    m = {
+        "message_id": 5,
+        "text": text,
+        "from": {"id": 42, "is_bot": False},
+        "chat": {"id": 100, "type": chat_type},
+    }
     m.update(extra)
     return m
 
@@ -91,8 +95,7 @@ async def test_start_with_code_links_account(monkeypatch):
 @pytest.mark.asyncio
 async def test_bot_messages_ignored(monkeypatch):
     called = []
-    monkeypatch.setattr(agent.client, "send_message",
-                        lambda *a, **k: called.append(1))
+    monkeypatch.setattr(agent.client, "send_message", lambda *a, **k: called.append(1))
     m = _msg("hi")
     m["from"]["is_bot"] = True
     await agent.respond_to_message(m)
