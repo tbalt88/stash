@@ -28,7 +28,7 @@ from uuid import UUID
 import redis.asyncio as aioredis
 
 from ..config import settings
-from . import memory_service, prompts, sprite_service
+from . import memory_service, model_provider, prompts, sprite_service
 
 logger = logging.getLogger(__name__)
 
@@ -129,18 +129,10 @@ def _claude_argv(
     return argv
 
 
-def _turn_env() -> dict[str, str]:
-    # Local dev mode runs this machine's own claude install, which brings its
-    # own login — no key injection. On sprites, the backend's key is the only
-    # auth the box has.
-    if settings.AGENT_EXEC_MODE == "local":
-        return {}
-    if not settings.ANTHROPIC_API_KEY:
-        raise RuntimeError("ANTHROPIC_API_KEY is not set")
-    return {
-        "ANTHROPIC_API_KEY": settings.ANTHROPIC_API_KEY,
-        "ANTHROPIC_MODEL": settings.ANTHROPIC_MODEL,
-    }
+def _turn_env(provider_env: dict[str, str]) -> dict[str, str]:
+    # provider_env is the resolved model key(s) for this run (managed on paid
+    # tiers, empty in local dev where the machine's own login applies).
+    return {"ANTHROPIC_MODEL": settings.ANTHROPIC_MODEL, **provider_env}
 
 
 class _TurnState:
@@ -221,6 +213,7 @@ async def _run_claude(
     sprite: sprite_service.Sprite,
     argv: list[str],
     state: _TurnState,
+    provider_env: dict[str, str],
 ) -> AsyncIterator[dict]:
     """Exec one claude turn on the box; yields contract events. Sets
     state.error / state.resume_missing on failure instead of raising, so the
@@ -233,7 +226,7 @@ async def _run_claude(
     # The open exec stream itself keeps the sprite awake — Sprites only sleeps
     # after activity stops, and a live connection is activity.
     async for event in sprite_service.exec_stream(
-        sprite, argv, env=_turn_env(), cwd=sprite_service.SPRITE_WORKDIR
+        sprite, argv, env=_turn_env(provider_env), cwd=sprite_service.SPRITE_WORKDIR
     ):
         if "exit_code" in event:
             exit_code = event["exit_code"]
@@ -268,6 +261,7 @@ async def _turn_events(
     message: str,
     session_id: str,
     system_prompt: str,
+    provider_env: dict[str, str],
     disallowed_tools: list[str] | None = None,
 ) -> AsyncIterator[dict]:
     """One full agent turn: resume the CLI session, reseeding from stored
@@ -283,7 +277,7 @@ async def _turn_events(
         system_prompt=system_prompt,
         disallowed_tools=disallowed_tools,
     )
-    async for event in _run_claude(sprite, argv, state):
+    async for event in _run_claude(sprite, argv, state, provider_env):
         yield event
 
     if state.resume_missing:
@@ -297,7 +291,7 @@ async def _turn_events(
             system_prompt=system_prompt,
             disallowed_tools=disallowed_tools,
         )
-        async for event in _run_claude(sprite, argv, state):
+        async for event in _run_claude(sprite, argv, state, provider_env):
             yield event
 
     if state.error is not None:
@@ -333,8 +327,13 @@ async def stream_chat(
     user_id: UUID,
     session_id: str,
     message: str,
+    provider_env: dict[str, str],
 ) -> AsyncIterator[str]:
-    """Multi-turn agent chat over a stored session, streamed as SSE."""
+    """Multi-turn agent chat over a stored session, streamed as SSE.
+
+    provider_env is the model key(s) resolved (and Pro-gated) by the router
+    before the stream started, so a 402 is a clean HTTP error, not an SSE one.
+    """
     try:
         async with _TurnLock(session_id):
             history = await _load_history(owner_user_id, session_id, user_id)
@@ -354,7 +353,8 @@ async def stream_chat(
 
             final = ""
             async for event in _turn_events(
-                sprite, history, message, session_id, prompts.render_sprite_system(owner_name)
+                sprite, history, message, session_id,
+                prompts.render_sprite_system(owner_name), provider_env,
             ):
                 if event["type"] == "end":
                     final = event.pop("_result_text")
@@ -394,6 +394,7 @@ async def run_chat(
     message: str,
 ) -> str:
     """Non-streaming turn for Slack: returns the final answer text."""
+    provider_env = await model_provider.turn_env(user_id, model_provider.ANTHROPIC)
     async with _TurnLock(session_id):
         history = await _load_history(owner_user_id, session_id, user_id)
         await memory_service.push_event(
@@ -410,6 +411,7 @@ async def run_chat(
             message,
             session_id,
             prompts.render_sprite_system(owner_name),
+            provider_env,
             disallowed_tools=SLACK_DISALLOWED_TOOLS,
         ):
             if event["type"] == "end":

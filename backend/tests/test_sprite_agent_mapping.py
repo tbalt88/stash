@@ -97,17 +97,13 @@ def test_reseed_prompt_replays_history_capped():
     assert len(capped) < svc._RESEED_MAX_CHARS + 1000
 
 
-def test_turn_env_requires_anthropic_key_on_sprites(monkeypatch):
-    monkeypatch.setattr(settings, "AGENT_EXEC_MODE", "sprites")
-    monkeypatch.setattr(settings, "ANTHROPIC_API_KEY", None)
-    with pytest.raises(RuntimeError):
-        svc._turn_env()
-
-
-def test_turn_env_local_mode_uses_machine_login(monkeypatch):
-    monkeypatch.setattr(settings, "AGENT_EXEC_MODE", "local")
-    monkeypatch.setattr(settings, "ANTHROPIC_API_KEY", "sk-ant-whatever")
-    assert svc._turn_env() == {}
+def test_turn_env_merges_provider_env_and_model(monkeypatch):
+    monkeypatch.setattr(settings, "ANTHROPIC_MODEL", "claude-x")
+    assert svc._turn_env({}) == {"ANTHROPIC_MODEL": "claude-x"}
+    assert svc._turn_env({"ANTHROPIC_API_KEY": "k"}) == {
+        "ANTHROPIC_MODEL": "claude-x",
+        "ANTHROPIC_API_KEY": "k",
+    }
 
 
 def test_result_success_with_is_error_is_an_error():

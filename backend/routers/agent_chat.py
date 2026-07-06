@@ -11,13 +11,12 @@ from __future__ import annotations
 
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from ..auth import get_current_user
-from ..config import settings
-from ..services import sprite_agent_service
+from ..services import model_provider, sprite_agent_service
 
 router = APIRouter(prefix="/api/v1/me/agent-chat", tags=["agent-chat"])
 
@@ -34,17 +33,14 @@ async def chat(
     current_user: dict = Depends(get_current_user),
 ):
     owner_user_id = current_user["id"]
-    # Local dev mode uses this machine's own claude login instead.
-    if settings.AGENT_EXEC_MODE == "sprites" and not settings.ANTHROPIC_API_KEY:
-        raise HTTPException(
-            status_code=503,
-            detail="The agent is not configured (ANTHROPIC_API_KEY unset).",
-        )
+    # Resolve the model key + Pro-gate up front so a free user gets a clean 402
+    # instead of a stream that dies mid-flight (this raises 402/503).
+    provider_env = await model_provider.turn_env(current_user["id"], model_provider.ANTHROPIC)
     scope_name = current_user["display_name"] or current_user["name"]
     session_id = req.session_id or f"agent-{uuid4().hex}"
     return StreamingResponse(
         sprite_agent_service.stream_chat(
-            owner_user_id, scope_name, current_user["id"], session_id, req.message
+            owner_user_id, scope_name, current_user["id"], session_id, req.message, provider_env
         ),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},

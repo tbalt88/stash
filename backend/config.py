@@ -318,6 +318,13 @@ class Settings:
     ANTHROPIC_MODEL: str = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-6")
     ANTHROPIC_FAST_MODEL: str = os.getenv("ANTHROPIC_FAST_MODEL", "claude-haiku-4-5")
 
+    # --- Managed model keys (server-owned, for the cloud agent on paid tiers) ---
+    # Each harness's default provider reads its key from here. A run on a paid
+    # account is billed to us via these keys; free accounts are gated (until
+    # bring-your-own-key ships). OpenRouter is the one-key-many-models option.
+    OPENROUTER_API_KEY: str | None = os.getenv("OPENROUTER_API_KEY")
+    MANAGED_GEMINI_API_KEY: str | None = os.getenv("MANAGED_GEMINI_API_KEY")
+
     # --- Cloud agent (per-user sprite VM) ---
     # "sprites" runs each user's agent on their Fly Sprite; "local" execs on
     # this machine's own claude install (dev mode — no Sprites credentials).
