@@ -137,16 +137,11 @@ async def _get_user_from_jwt(token: str) -> dict:
     return user
 
 
-async def get_current_user(
-    credentials: HTTPAuthorizationCredentials | None = Depends(security),
-) -> dict:
-    if credentials is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Missing Authorization header",
-        )
+async def authenticate_token(token: str) -> dict:
+    """Resolve a raw bearer token (mc_ API key or Auth0 JWT) to a user.
 
-    token: str = credentials.credentials
+    For surfaces that can't carry an Authorization header, e.g. browser
+    WebSockets passing the token as a query parameter."""
     from .config import settings
 
     if token.startswith("mc_"):
@@ -156,6 +151,18 @@ async def get_current_user(
         return await _get_user_from_jwt(token)
 
     raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid API key")
+
+
+async def get_current_user(
+    credentials: HTTPAuthorizationCredentials | None = Depends(security),
+) -> dict:
+    if credentials is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Missing Authorization header",
+        )
+
+    return await authenticate_token(credentials.credentials)
 
 
 async def get_current_user_optional(

@@ -85,7 +85,6 @@ def sprite_exec(monkeypatch):
         return sprite_service.Sprite(name="test-sprite")
 
     async def fake_exec_stream(sprite, argv, *, env, cwd=None):
-        assert env["ANTHROPIC_API_KEY"], "turns must carry the API key"
         calls.append(argv)
         if replies:
             lines, exit_code = replies.pop(0)

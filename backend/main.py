@@ -28,6 +28,7 @@ from .routers import (
     exports,
     files,
     files_tree,
+    machine,
     marketing,
     memory,
     pastes,
@@ -135,6 +136,7 @@ app.include_router(tasks.router)
 app.include_router(integrations_router)
 app.include_router(sources.router)
 app.include_router(agent_chat.router)
+app.include_router(machine.router)
 app.include_router(session_folders.me_router)
 app.include_router(session_folders.public_router)
 app.include_router(shares.router)

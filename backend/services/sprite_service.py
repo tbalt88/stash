@@ -298,13 +298,20 @@ async def _local_exec_stream(
     env: dict[str, str],
     cwd: str | None,
 ) -> AsyncIterator[dict]:
+    # Callers name box paths; the simulated box's workdir lives under $HOME.
+    local_cwd = _local_workdir() if cwd in (None, SPRITE_WORKDIR) else Path(cwd)
+    local_cwd.mkdir(parents=True, exist_ok=True)
+    # Local mode means "this machine's own claude login" — the backend's
+    # ANTHROPIC_API_KEY (loaded into os.environ by dotenv) must not leak into
+    # the child, or it overrides that login. Explicit `env` still wins.
+    inherited = {k: v for k, v in os.environ.items() if k != "ANTHROPIC_API_KEY"}
     proc = await asyncio.create_subprocess_exec(
         *argv,
         stdin=asyncio.subprocess.DEVNULL,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
-        env={**os.environ, **env},
-        cwd=cwd or str(_local_workdir()),
+        env={**inherited, **env},
+        cwd=str(local_cwd),
     )
     assert proc.stdout is not None and proc.stderr is not None
 
@@ -364,6 +371,147 @@ async def hold_awake(sprite: Sprite) -> AsyncIterator[None]:
         refresher.cancel()
         with contextlib.suppress(asyncio.CancelledError):
             await refresher
+
+
+# ---------------------------------------------------------------------------
+# Interactive terminal (PTY)
+# ---------------------------------------------------------------------------
+
+
+class Terminal:
+    """An interactive shell on the user's box, bridged to a browser terminal.
+
+    `output()` yields raw bytes; `send_input`/`resize` feed keystrokes and
+    window-size changes in. Exactly two implementations, one per exec mode.
+    """
+
+    async def send_input(self, data: bytes) -> None:
+        raise NotImplementedError
+
+    async def resize(self, cols: int, rows: int) -> None:
+        raise NotImplementedError
+
+    def output(self) -> AsyncIterator[bytes]:
+        raise NotImplementedError
+
+    async def close(self) -> None:
+        raise NotImplementedError
+
+
+async def open_terminal(sprite: Sprite, *, cols: int, rows: int) -> Terminal:
+    if settings.AGENT_EXEC_MODE == "local":
+        return await _LocalTerminal.open(cols=cols, rows=rows)
+    return await _SpriteTerminal.open(sprite, cols=cols, rows=rows)
+
+
+# Stdin frames to the Sprites tty exec are tagged like the output frames.
+_FRAME_STDIN = 0x00
+
+
+class _SpriteTerminal(Terminal):
+    """WSS exec with tty=true against the user's sprite. The default sprite
+    environment applies (no env params), so the shell looks like a login
+    shell on the box — the Anthropic key is never in a terminal's env."""
+
+    def __init__(self, ws) -> None:
+        self._ws = ws
+
+    @classmethod
+    async def open(cls, sprite: Sprite, *, cols: int, rows: int) -> _SpriteTerminal:
+        params: list[tuple[str, str]] = [
+            ("cmd", "bash"),
+            ("cmd", "-l"),
+            ("tty", "true"),
+            ("cols", str(cols)),
+            ("rows", str(rows)),
+            ("dir", SPRITE_WORKDIR),
+        ]
+        ws_base = settings.SPRITES_API_URL.replace("https://", "wss://", 1)
+        url = f"{ws_base}/v1/sprites/{sprite.name}/exec?{urlencode(params)}"
+        ws = await websockets.connect(
+            url,
+            additional_headers={"Authorization": f"Bearer {settings.SPRITES_TOKEN}"},
+            max_size=None,
+        )
+        return cls(ws)
+
+    async def send_input(self, data: bytes) -> None:
+        await self._ws.send(bytes([_FRAME_STDIN]) + data)
+
+    async def resize(self, cols: int, rows: int) -> None:
+        await self._ws.send(json.dumps({"type": "resize", "cols": cols, "rows": rows}))
+
+    async def output(self) -> AsyncIterator[bytes]:
+        async for frame in self._ws:
+            if not isinstance(frame, bytes) or not frame:
+                continue
+            tag, payload = frame[0], frame[1:]
+            if tag in (_FRAME_STDOUT, _FRAME_STDERR):
+                yield payload
+            elif tag == _FRAME_EXIT:
+                return
+
+    async def close(self) -> None:
+        await self._ws.close()
+
+
+class _LocalTerminal(Terminal):
+    """A real PTY running the dev machine's shell (local exec mode)."""
+
+    def __init__(self, proc, master_fd: int) -> None:
+        self._proc = proc
+        self._master_fd = master_fd
+
+    @classmethod
+    async def open(cls, *, cols: int, rows: int) -> _LocalTerminal:
+        import pty
+
+        master_fd, slave_fd = pty.openpty()
+        _set_winsize(slave_fd, cols, rows)
+        _local_workdir().mkdir(parents=True, exist_ok=True)
+        proc = await asyncio.create_subprocess_exec(
+            os.environ.get("SHELL", "bash"),
+            "-l",
+            stdin=slave_fd,
+            stdout=slave_fd,
+            stderr=slave_fd,
+            cwd=str(_local_workdir()),
+            env={**os.environ, "TERM": "xterm-256color"},
+            start_new_session=True,
+        )
+        os.close(slave_fd)
+        return cls(proc, master_fd)
+
+    async def send_input(self, data: bytes) -> None:
+        os.write(self._master_fd, data)
+
+    async def resize(self, cols: int, rows: int) -> None:
+        _set_winsize(self._master_fd, cols, rows)
+
+    async def output(self) -> AsyncIterator[bytes]:
+        loop = asyncio.get_running_loop()
+        while True:
+            try:
+                data = await loop.run_in_executor(None, os.read, self._master_fd, 65536)
+            except OSError:
+                return  # PTY closed (shell exited)
+            if not data:
+                return
+            yield data
+
+    async def close(self) -> None:
+        if self._proc.returncode is None:
+            self._proc.kill()
+        with contextlib.suppress(OSError):
+            os.close(self._master_fd)
+
+
+def _set_winsize(fd: int, cols: int, rows: int) -> None:
+    import fcntl
+    import struct
+    import termios
+
+    fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", rows, cols, 0, 0))
 
 
 # ---------------------------------------------------------------------------

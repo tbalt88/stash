@@ -34,7 +34,8 @@ async def chat(
     current_user: dict = Depends(get_current_user),
 ):
     owner_user_id = current_user["id"]
-    if not settings.ANTHROPIC_API_KEY:
+    # Local dev mode uses this machine's own claude login instead.
+    if settings.AGENT_EXEC_MODE == "sprites" and not settings.ANTHROPIC_API_KEY:
         raise HTTPException(
             status_code=503,
             detail="The agent is not configured (ANTHROPIC_API_KEY unset).",

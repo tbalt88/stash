@@ -130,6 +130,11 @@ def _claude_argv(
 
 
 def _turn_env() -> dict[str, str]:
+    # Local dev mode runs this machine's own claude install, which brings its
+    # own login — no key injection. On sprites, the backend's key is the only
+    # auth the box has.
+    if settings.AGENT_EXEC_MODE == "local":
+        return {}
     if not settings.ANTHROPIC_API_KEY:
         raise RuntimeError("ANTHROPIC_API_KEY is not set")
     return {
@@ -198,7 +203,9 @@ def _map_line(line: str, state: _TurnState) -> list[dict]:
         return events
 
     if kind == "result":
-        if obj.get("subtype") == "success":
+        # The CLI can report subtype "success" with is_error=true (e.g. a
+        # rejected API key) — is_error is the authoritative bit.
+        if obj.get("subtype") == "success" and not obj.get("is_error"):
             state.result_text = (obj.get("result") or "").strip()
         else:
             state.error = _redact(str(obj.get("result") or obj.get("subtype") or "unknown error"))
@@ -360,6 +367,12 @@ async def stream_chat(
                 )
     except TurnInProgress:
         yield _sse({"type": "error", "message": "A turn is already running in this chat."})
+        yield _sse({"type": "end"})
+    except Exception:
+        # SSE has already started, so an exception can't become an HTTP error —
+        # without this the stream just dies and the client sees nothing.
+        logger.exception("cloud agent: turn failed for session %s", session_id)
+        yield _sse({"type": "error", "message": "The agent turn failed. Try again."})
         yield _sse({"type": "end"})
 
 

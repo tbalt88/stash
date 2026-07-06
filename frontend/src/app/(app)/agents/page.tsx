@@ -4,11 +4,14 @@ import { useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useRef, useState } from "react";
 
 import ChatPanel from "@/components/agents/ChatPanel";
+import TerminalPanel from "@/components/agents/TerminalPanel";
 
-// Agents is a chat surface. Each tab is a stored Session, so its session_id and
-// the open tabs persist across reloads.
+// Agents is a chat surface plus a shell into the user's cloud computer. Each
+// chat tab is a stored Session, so its session_id and the open tabs persist
+// across reloads; "terminal" is a fixed pseudo-tab.
 type ChatTab = { id: number; sessionId: string | null; title: string };
-type PersistedTabs = { chats: ChatTab[]; nextId: number; active: number };
+type ActiveTab = number | "terminal";
+type PersistedTabs = { chats: ChatTab[]; nextId: number; active: ActiveTab };
 
 const firstChatId = 1;
 const tabsKey = "stash_agent_chat_tabs";
@@ -34,7 +37,7 @@ function AgentsPageInner() {
   const initialTabs = defaultTabs();
   const [chats, setChats] = useState<ChatTab[]>(initialTabs.chats);
   const [nextId, setNextId] = useState(initialTabs.nextId);
-  const [active, setActive] = useState(initialTabs.active);
+  const [active, setActive] = useState<ActiveTab>(initialTabs.active);
   const restored = useRef(false);
   // Resume a specific chat from a `?resume=<sessionId>` link (e.g. from the
   // Agent Sessions list).
@@ -50,8 +53,9 @@ function AgentsPageInner() {
       const raw = window.localStorage.getItem(tabsKey);
       if (raw) {
         const p = JSON.parse(raw) as PersistedTabs;
-        if (Array.isArray(p.chats) && p.chats.length > 0 && typeof p.active === "number") {
-          const activeExists = p.chats.some((t) => t.id === p.active);
+        if (Array.isArray(p.chats) && p.chats.length > 0) {
+          const activeExists =
+            p.active === "terminal" || p.chats.some((t) => t.id === p.active);
           state = {
             chats: p.chats,
             nextId: p.nextId ?? Math.max(...p.chats.map((t) => t.id)) + 1,
@@ -163,11 +167,22 @@ function AgentsPageInner() {
           >
             ＋
           </button>
+          <span className="ml-auto" />
+          <span className={tabClass(active === "terminal")}>
+            <button
+              type="button"
+              onClick={() => setActive("terminal")}
+              className="min-w-0 cursor-pointer truncate outline-none"
+            >
+              Terminal
+            </button>
+          </span>
         </div>
 
         <div className="min-h-0 flex-1 pt-4">
           {/* All panels stay mounted (toggled with `hidden`) so a chat keeps
-              its transcript, scroll, and in-flight stream when you switch tabs. */}
+              its transcript, scroll, and in-flight stream when you switch tabs
+              — and the terminal keeps its shell. */}
           {chats.map((t) => (
             <div key={t.id} className={active === t.id ? "h-full" : "hidden"}>
               <ChatPanel
@@ -176,10 +191,23 @@ function AgentsPageInner() {
               />
             </div>
           ))}
+          <div className={active === "terminal" ? "h-full" : "hidden"}>
+            {/* Mount lazily on first visit; keep mounted afterwards. */}
+            <TerminalMount active={active === "terminal"} />
+          </div>
         </div>
       </div>
     </div>
   );
+}
+
+// Don't open a shell (and wake the machine) until the tab is first visited.
+function TerminalMount({ active }: { active: boolean }) {
+  const [visited, setVisited] = useState(false);
+  useEffect(() => {
+    if (active) setVisited(true);
+  }, [active]);
+  return visited ? <TerminalPanel /> : null;
 }
 
 function tabClass(activeTab: boolean): string {
