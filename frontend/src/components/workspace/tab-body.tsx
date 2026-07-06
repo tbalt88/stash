@@ -10,6 +10,7 @@ import SkillFolderClient from "@/app/(app)/skills/folder/[folderId]/SkillFolderC
 import FolderClient from "@/app/(app)/folders/[folderId]/FolderClient";
 import ChatPanel from "@/components/agents/ChatPanel";
 import IntegrationsSettings from "@/components/integrations/IntegrationsSettings";
+import MachineFileView from "@/components/workspace/machine-file-view";
 import type { WorkbenchTab } from "@/lib/workspace-store";
 
 /** A live agent chat tab. Holds the session id locally: null starts a fresh
@@ -43,5 +44,6 @@ export default function TabBody({ tab }: { tab: WorkbenchTab }) {
         <IntegrationsSettings embedded />
       </div>
     );
+  if (tab.kind === "machine-file") return <MachineFileView path={tab.refId} />;
   return null;
 }

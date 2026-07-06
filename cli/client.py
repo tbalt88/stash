@@ -504,6 +504,20 @@ class StashClient:
     def download_file(self, file_id: str) -> bytes:
         return self._request("GET", f"/api/v1/me/files/{file_id}/download").content
 
+    # --- The user's cloud computer (read-through machine filesystem) ---
+
+    def machine_fs_list(self, path: str) -> list[dict]:
+        data = self._get("/api/v1/me/machine/fs", path=path)
+        return data["entries"]
+
+    def machine_fs_read(self, path: str) -> bytes:
+        import base64
+
+        data = self._get("/api/v1/me/machine/fs/file", path=path)
+        if "text" in data:
+            return data["text"].encode()
+        return base64.b64decode(data["content_base64"])
+
     # --- Sources (unified VFS: native files/sessions + connected sources) ---
 
     def list_sources(self) -> list:

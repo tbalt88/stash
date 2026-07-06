@@ -3,7 +3,7 @@
 import { Fragment, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { Bot, FolderTree, MessagesSquare, GraduationCap, Brain, Wrench, Settings } from "lucide-react";
+import { Bot, FolderTree, MessagesSquare, GraduationCap, Brain, Monitor, Wrench, Settings } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useEscapeKey } from "@/hooks/useEscapeKey";
 import { useWorkspace, type RailSection } from "@/lib/workspace-store";
@@ -19,6 +19,7 @@ const PRIMARY: RailItem[] = [
   { key: "skills", label: "Skills", icon: GraduationCap, match: (p) => p.startsWith("/skills") },
   { key: "memory", label: "Memory", icon: Brain, match: (p) => p.startsWith("/memory") },
   { key: "tools", label: "Tools", icon: Wrench, match: (p) => p.startsWith("/tools") },
+  { key: "computer", label: "Computer", icon: Monitor, match: () => false },
 ];
 
 function RailButton({

@@ -116,3 +116,15 @@ def test_result_success_with_is_error_is_an_error():
     svc._map_line(line, state)
     assert state.result_text is None
     assert state.error == "Invalid API key"
+
+
+def test_box_path_rejects_escapes(monkeypatch):
+    from backend.services import sprite_service
+
+    monkeypatch.setattr(settings, "AGENT_EXEC_MODE", "sprites")
+    assert sprite_service._box_path("") == "/root"
+    assert sprite_service._box_path("work/notes.md") == "/root/work/notes.md"
+    assert sprite_service._box_path("/work") == "/root/work"
+    for bad in ("../etc/passwd", "work/../../etc", "..", "a/../../.."):
+        with pytest.raises(sprite_service.FsPathError):
+            sprite_service._box_path(bad)

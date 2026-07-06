@@ -3,8 +3,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { nanoid } from "nanoid";
-import { ChevronRight, Loader2, MessagesSquare, GraduationCap, Plus, FolderTree, Brain, Plug } from "lucide-react";
-import { getMemoryFolder, listMySessions, listSessionFolders, createSessionFolder, listSkills, listSources, createFolder, createPage, type SessionSummary, type Source } from "@/lib/api";
+import { ChevronRight, File, Folder, Loader2, MessagesSquare, GraduationCap, Monitor, Plus, FolderTree, Brain, Plug } from "lucide-react";
+import { getMemoryFolder, listMySessions, listSessionFolders, createSessionFolder, listSkills, listSources, createFolder, createPage, machineFsList, type MachineEntry, type SessionSummary, type Source } from "@/lib/api";
 import { SKILL_MD, skillMdTemplate } from "@/lib/localSkill";
 import { cn } from "@/lib/utils";
 import { useWorkspace, type TabKind } from "@/lib/workspace-store";
@@ -12,7 +12,7 @@ import { urlForTab } from "@/lib/workspace-routes";
 import { CONNECTORS, connectorIcon, providerForSourceType } from "@/components/integrations/connectors";
 import FilesExplorer, { type Item } from "./files-explorer";
 
-export type ExplorerSection = "files" | "sessions" | "skills" | "agents" | "memory" | "tools";
+export type ExplorerSection = "files" | "sessions" | "skills" | "agents" | "memory" | "tools" | "computer";
 
 const SECTIONS: { key: ExplorerSection; label: string; route: string; icon: React.ReactNode }[] = [
   { key: "files", label: "Files", route: "/files", icon: <FolderTree className="h-4 w-4 text-chart-4" /> },
@@ -20,8 +20,9 @@ const SECTIONS: { key: ExplorerSection; label: string; route: string; icon: Reac
   { key: "sessions", label: "Sessions", route: "/sessions", icon: <MessagesSquare className="h-4 w-4 text-chart-4" /> },
   { key: "memory", label: "Memory", route: "/memory", icon: <Brain className="h-4 w-4 text-chart-4" /> },
   { key: "tools", label: "Tools", route: "/tools", icon: <Plug className="h-4 w-4 text-chart-4" /> },
+  { key: "computer", label: "Computer", route: "/agents", icon: <Monitor className="h-4 w-4 text-chart-4" /> },
 ];
-const LABEL: Record<ExplorerSection, string> = { files: "Files", skills: "Skills", sessions: "Sessions", memory: "Memory", tools: "Tools", agents: "Agents" };
+const LABEL: Record<ExplorerSection, string> = { files: "Files", skills: "Skills", sessions: "Sessions", memory: "Memory", tools: "Tools", agents: "Agents", computer: "Computer" };
 
 /** Open any item as a workbench tab and sync the URL. */
 function useOpenTab() {
@@ -72,6 +73,56 @@ function ToolsSection() {
           onOpen={() => open("tool", "integrations", "Tools")}
         />
       ))}
+    </div>
+  );
+}
+
+// Computer = a read-through view of the user's cloud machine's filesystem
+// (relative to its home). Browsing wakes a sleeping machine; nothing here is
+// synced — "Save to Stash" on an open file is the only copy path.
+function ComputerSection() {
+  const open = useOpenTab();
+  const [path, setPath] = useState("");
+  const [entries, setEntries] = useState<MachineEntry[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setEntries(null);
+    setError(null);
+    machineFsList(path)
+      .then((rows) => { if (!cancelled) setEntries(rows); })
+      .catch((e) => { if (!cancelled) setError(e instanceof Error ? e.message : String(e)); });
+    return () => { cancelled = true; };
+  }, [path]);
+
+  const crumbs = path ? path.split("/") : [];
+  return (
+    <div className="py-1">
+      <div className="flex flex-wrap items-center gap-1 px-2 py-1 text-[12px] text-muted-foreground">
+        <button className="hover:text-foreground" onClick={() => setPath("")}>~</button>
+        {crumbs.map((c, i) => (
+          <span key={i} className="flex items-center gap-1">
+            <span className="text-muted-foreground/50">/</span>
+            <button className="hover:text-foreground" onClick={() => setPath(crumbs.slice(0, i + 1).join("/"))}>{c}</button>
+          </span>
+        ))}
+      </div>
+      {error && <div className="px-3 py-2 text-[12px] text-muted-foreground">Waking your computer… {error.includes("502") ? "" : error}</div>}
+      {!entries && !error && <LoadingRow />}
+      {entries?.map((e) => (
+        <LeafRow
+          key={e.name}
+          icon={e.dir ? <Folder className="h-3.5 w-3.5" /> : <File className="h-3.5 w-3.5" />}
+          label={e.name}
+          onClick={e.dir ? () => setPath(path ? `${path}/${e.name}` : e.name) : undefined}
+          onOpen={e.dir ? undefined : () => {
+            const filePath = path ? `${path}/${e.name}` : e.name;
+            open("machine-file", filePath, e.name);
+          }}
+        />
+      ))}
+      {entries?.length === 0 && <div className="px-3 py-2 text-[12px] text-muted-foreground">Empty</div>}
     </div>
   );
 }
@@ -226,7 +277,7 @@ export default function Explorer({ section }: { section: ExplorerSection }) {
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto">
-        {atRoot ? <RootSection /> : <ToolsSection />}
+        {atRoot ? <RootSection /> : section === "computer" ? <ComputerSection /> : <ToolsSection />}
       </div>
     </div>
   );

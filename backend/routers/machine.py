@@ -1,4 +1,8 @@
-"""The user's cloud computer: interactive terminal (and later, file browsing).
+"""The user's cloud computer: interactive terminal + read-through file browsing.
+
+The filesystem endpoints are a projection, not a sync: nothing is copied into
+the DB except through the explicit save-to-Stash action, which routes through
+the normal upload path so shares/extraction behave like any other upload.
 
 The browser's WebSocket can't carry an Authorization header, so the bearer
 token rides a query parameter. The backend holds both sockets and pumps
@@ -8,19 +12,89 @@ bytes between them — the Sprites org token never reaches the browser.
 from __future__ import annotations
 
 import asyncio
+import base64
 import contextlib
 import json
 import logging
+import mimetypes
+import posixpath
+from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, WebSocket
+from fastapi import APIRouter, Depends, HTTPException, WebSocket
+from pydantic import BaseModel
 from starlette.websockets import WebSocketDisconnect
 
-from ..auth import authenticate_token
+from ..auth import authenticate_token, get_current_user
 from ..services import sprite_service
+from .files import ingest_bytes
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/me/machine", tags=["machine"])
+
+
+@router.get("/fs")
+async def list_machine_dir(path: str = "", current_user: dict = Depends(get_current_user)):
+    """Directory listing on the user's computer, path relative to its home."""
+    sprite = await sprite_service.acquire(current_user["id"])
+    try:
+        entries = await sprite_service.fs_list(sprite, path)
+    except sprite_service.FsPathError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    except sprite_service.SpriteError as e:
+        raise HTTPException(status_code=502, detail=str(e)) from e
+    return {"path": path, "entries": entries}
+
+
+@router.get("/fs/file")
+async def read_machine_file(path: str, current_user: dict = Depends(get_current_user)):
+    """A file's content from the user's computer (capped; read-only)."""
+    sprite = await sprite_service.acquire(current_user["id"])
+    try:
+        content = await sprite_service.fs_read(sprite, path)
+    except sprite_service.FsPathError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    except sprite_service.SpriteError as e:
+        raise HTTPException(status_code=502, detail=str(e)) from e
+    try:
+        text = content.decode("utf-8")
+        return {"path": path, "size": len(content), "text": text}
+    except UnicodeDecodeError:
+        return {
+            "path": path,
+            "size": len(content),
+            "content_base64": base64.b64encode(content).decode(),
+        }
+
+
+class SaveToStashRequest(BaseModel):
+    path: str
+    folder_id: UUID | None = None
+
+
+@router.post("/fs/save-to-stash")
+async def save_machine_file_to_stash(
+    req: SaveToStashRequest, current_user: dict = Depends(get_current_user)
+):
+    """Copy-on-share: the only way bytes leave the machine for the DB."""
+    sprite = await sprite_service.acquire(current_user["id"])
+    try:
+        content = await sprite_service.fs_read(sprite, req.path)
+    except sprite_service.FsPathError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    except sprite_service.SpriteError as e:
+        raise HTTPException(status_code=502, detail=str(e)) from e
+
+    filename = posixpath.basename(req.path) or "file"
+    content_type = mimetypes.guess_type(filename)[0] or "application/octet-stream"
+    return await ingest_bytes(
+        owner_user_id=current_user["id"],
+        user_id=current_user["id"],
+        filename=filename,
+        content=content,
+        content_type=content_type,
+        folder_id=req.folder_id,
+    )
 
 
 @router.websocket("/terminal")

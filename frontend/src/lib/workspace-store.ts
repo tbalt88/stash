@@ -11,9 +11,9 @@ import { nanoid } from "nanoid";
  * components/workspace/persistence.tsx (localStorage).
  */
 
-export type RailSection = "files" | "agents" | "sessions" | "skills" | "memory" | "tools";
+export type RailSection = "files" | "agents" | "sessions" | "skills" | "memory" | "tools" | "computer";
 
-export type TabKind = "page" | "file" | "table" | "session" | "sessions-home" | "skill" | "folder" | "agent" | "tool";
+export type TabKind = "page" | "file" | "table" | "session" | "sessions-home" | "skill" | "folder" | "agent" | "tool" | "machine-file";
 
 export interface WorkbenchTab {
   id: string;

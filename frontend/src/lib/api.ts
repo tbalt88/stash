@@ -1901,3 +1901,31 @@ export async function purgeItem(kind: TrashKind, id: string): Promise<void> {
 export async function getTrash(): Promise<TrashListing> {
   return apiFetch(`${ME}/trash`);
 }
+
+// ── The user's cloud computer (read-through projection; see routers/machine.py) ──
+
+export type MachineEntry = { name: string; dir: boolean; size: number; mtime: number };
+
+export async function machineFsList(path: string): Promise<MachineEntry[]> {
+  const data = await apiFetch<{ entries: MachineEntry[] }>(
+    `/api/v1/me/machine/fs?path=${encodeURIComponent(path)}`,
+  );
+  return data.entries;
+}
+
+export type MachineFile = { path: string; size: number; text?: string; content_base64?: string };
+
+export async function machineFsRead(path: string): Promise<MachineFile> {
+  return apiFetch<MachineFile>(`/api/v1/me/machine/fs/file?path=${encodeURIComponent(path)}`);
+}
+
+export async function machineSaveToStash(
+  path: string,
+  folderId?: string | null,
+): Promise<{ kind: string; id: string; name: string; app_url: string }> {
+  return apiFetch(`/api/v1/me/machine/fs/save-to-stash`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ path, folder_id: folderId ?? null }),
+  });
+}

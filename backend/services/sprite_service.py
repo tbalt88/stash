@@ -374,6 +374,70 @@ async def hold_awake(sprite: Sprite) -> AsyncIterator[None]:
 
 
 # ---------------------------------------------------------------------------
+# Filesystem read-through (the "Computer" projection in the VFS/sidebar)
+# ---------------------------------------------------------------------------
+
+# Listing and reading ride the exec seam (a python3 one-liner on the box), so
+# they work identically in both exec modes with no extra API surface.
+
+FS_MAX_READ_BYTES = 2 * 1024 * 1024
+
+_FS_LIST_PY = (
+    "import json,os,sys\n"
+    "p=sys.argv[1]\n"
+    "out=[]\n"
+    "for e in sorted(os.scandir(p), key=lambda e:(not e.is_dir(),e.name.lower())):\n"
+    "    st=e.stat(follow_symlinks=False)\n"
+    "    out.append({'name':e.name,'dir':e.is_dir(),'size':st.st_size,'mtime':int(st.st_mtime)})\n"
+    "print(json.dumps(out))\n"
+)
+
+
+class FsPathError(ValueError):
+    """A path escaped the box home or doesn't resolve."""
+
+
+def _box_path(rel_path: str) -> str:
+    """Resolve a home-relative path to an absolute box path, refusing escapes."""
+    import posixpath
+
+    home = SPRITE_HOME if settings.AGENT_EXEC_MODE == "sprites" else str(_local_workdir().parent)
+    joined = posixpath.normpath(posixpath.join(home, rel_path.lstrip("/")))
+    if joined != home and not joined.startswith(home + "/"):
+        raise FsPathError(f"path escapes the machine home: {rel_path}")
+    return joined
+
+
+async def fs_list(sprite: Sprite, rel_path: str) -> list[dict]:
+    """Directory entries at a home-relative path on the box."""
+    output, code = await exec_collect(
+        sprite,
+        ["python3", "-c", _FS_LIST_PY, _box_path(rel_path)],
+        env={},
+        timeout_s=30,
+    )
+    if code != 0:
+        raise SpriteError(f"fs list failed: {output[-500:]}")
+    return json.loads(output)
+
+
+async def fs_read(sprite: Sprite, rel_path: str) -> bytes:
+    """A file's bytes from the box (capped at FS_MAX_READ_BYTES)."""
+    import base64
+
+    box_path = _box_path(rel_path)
+    output, code = await exec_collect(
+        sprite,
+        ["python3", "-c", "import base64,sys;print(base64.b64encode(open(sys.argv[1],'rb').read(int(sys.argv[2]))).decode())", box_path, str(FS_MAX_READ_BYTES)],
+        env={},
+        timeout_s=60,
+    )
+    if code != 0:
+        raise SpriteError(f"fs read failed: {output[-500:]}")
+    return base64.b64decode(output.strip())
+
+
+# ---------------------------------------------------------------------------
 # Interactive terminal (PTY)
 # ---------------------------------------------------------------------------
 
