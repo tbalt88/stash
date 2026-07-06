@@ -170,7 +170,9 @@ function AgentsExplorer() {
   const [agents, setAgents] = useState<AgentRow[] | null>(null);
   const [rows, setRows] = useState<SessionSummary[] | null>(null);
   const reloadAgents = useCallback(() => { listAgents().then(setAgents).catch(() => setAgents([])); }, []);
-  useEffect(() => { reloadAgents(); listMySessions(50).then(setRows).catch(() => setRows([])); }, [reloadAgents]);
+  // Recent chats here are only conversations that ran through our platform
+  // agents — CLI transcripts live in the Sessions view, not here.
+  useEffect(() => { reloadAgents(); listMySessions(50, undefined, 0, true).then(setRows).catch(() => setRows([])); }, [reloadAgents]);
   // Keep the list fresh when the config panel saves/deletes an agent.
   useEffect(() => {
     const onChange = () => reloadAgents();
