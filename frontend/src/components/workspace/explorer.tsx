@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { nanoid } from "nanoid";
-import { ChevronRight, File, Folder, Loader2, MessagesSquare, GraduationCap, Monitor, Plus, FolderTree, Brain, Plug } from "lucide-react";
+import { ChevronRight, File, Folder, Loader2, MessagesSquare, GraduationCap, Monitor, Plus, FolderTree, Brain, Plug, SquareTerminal } from "lucide-react";
 import { getMemoryFolder, listMySessions, listSessionFolders, createSessionFolder, listSkills, listSources, createFolder, createPage, machineFsList, type MachineEntry, type SessionSummary, type Source } from "@/lib/api";
 import { SKILL_MD, skillMdTemplate } from "@/lib/localSkill";
 import { cn } from "@/lib/utils";
@@ -99,6 +99,12 @@ function ComputerSection() {
   const crumbs = path ? path.split("/") : [];
   return (
     <div className="py-1">
+      <LeafRow
+        icon={<SquareTerminal className="h-3.5 w-3.5" />}
+        label="Terminal"
+        onOpen={() => open("terminal", "terminal", "Terminal")}
+      />
+      <div className="mx-2 my-1 border-t border-sidebar-border" />
       <div className="flex flex-wrap items-center gap-1 px-2 py-1 text-[12px] text-muted-foreground">
         <button className="hover:text-foreground" onClick={() => setPath("")}>~</button>
         {crumbs.map((c, i) => (

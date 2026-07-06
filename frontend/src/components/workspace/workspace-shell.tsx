@@ -13,7 +13,7 @@ import Workbench from "./workbench";
 const WIDTH_KEY = "moltchat_explorer_width";
 const MIN_W = 220;
 const MAX_W = 600;
-const EXPLORER_SECTIONS: ExplorerSection[] = ["files", "sessions", "skills", "agents", "memory", "tools"];
+const EXPLORER_SECTIONS: ExplorerSection[] = ["files", "sessions", "skills", "agents", "memory", "tools", "computer"];
 
 /** Resizable explorer panel — drag the right edge to set width (persisted). */
 function ExplorerPanel({ section }: { section: ExplorerSection }) {

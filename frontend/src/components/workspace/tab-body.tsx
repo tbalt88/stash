@@ -11,6 +11,7 @@ import FolderClient from "@/app/(app)/folders/[folderId]/FolderClient";
 import ChatPanel from "@/components/agents/ChatPanel";
 import IntegrationsSettings from "@/components/integrations/IntegrationsSettings";
 import MachineFileView from "@/components/workspace/machine-file-view";
+import TerminalPanel from "@/components/agents/TerminalPanel";
 import type { WorkbenchTab } from "@/lib/workspace-store";
 
 /** A live agent chat tab. Holds the session id locally: null starts a fresh
@@ -45,5 +46,11 @@ export default function TabBody({ tab }: { tab: WorkbenchTab }) {
       </div>
     );
   if (tab.kind === "machine-file") return <MachineFileView path={tab.refId} />;
+  if (tab.kind === "terminal")
+    return (
+      <div className="h-full p-3">
+        <TerminalPanel />
+      </div>
+    );
   return null;
 }

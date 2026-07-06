@@ -24,6 +24,8 @@ export function urlForTab(tab: Pick<WorkbenchTab, "kind" | "refId">): string {
     case "machine-file":
       // Machine files have no permanent route — they live on the box.
       return `/agents`;
+    case "terminal":
+      return `/agents`;
   }
 }
 
