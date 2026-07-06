@@ -86,6 +86,17 @@ async def respond_to_mention(team_id: str, event: dict) -> None:
     except sprite_agent_service.NeedsPro:
         await client.post_message(bot_token, channel, _upgrade_prompt(), thread_ts)
         return
+    except sprite_agent_service.TurnInProgress:
+        await client.post_message(
+            bot_token, channel, "I'm still working on your last message — one sec.", thread_ts
+        )
+        return
+    except Exception:
+        logger.exception("slack agent: turn failed for %s", session_id)
+        await client.post_message(
+            bot_token, channel, "Something went wrong on that one. Try again?", thread_ts
+        )
+        return
     await client.post_message(
         bot_token, channel, answer or "(I didn't produce a response.)", thread_ts
     )

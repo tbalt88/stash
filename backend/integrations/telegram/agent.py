@@ -100,6 +100,17 @@ async def respond_to_message(message: dict) -> None:
             chat_id, f"The cloud agent is a Pro feature. Upgrade here: {url}", reply_to=reply_to
         )
         return
+    except sprite_agent_service.TurnInProgress:
+        await client.send_message(
+            chat_id, "I'm still working on your last message — one sec.", reply_to=reply_to
+        )
+        return
+    except Exception:
+        logger.exception("telegram agent: turn failed for %s", session_id)
+        await client.send_message(
+            chat_id, "Something went wrong on that one. Try again?", reply_to=reply_to
+        )
+        return
     await client.send_message(chat_id, answer or "(I didn't produce a response.)", reply_to=reply_to)
 
 

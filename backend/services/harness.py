@@ -84,10 +84,12 @@ def get(harness_id: str) -> Harness:
 
 
 def session_key(harness: Harness, session_id: str, native_id: str | None) -> str | None:
-    """The resume identifier to pass on this turn, or None for a fresh session.
+    """The harness's id for this conversation.
 
-    Claude's is a deterministic uuid derived from ours; the others reuse the
-    captured native id (None on turn 1)."""
+    Claude's is a deterministic uuid derived from ours — the SAME id is used to
+    create the session (turn 1, --session-id) and to resume it (later turns,
+    --resume). Codex/opencode mint their own; we reuse the captured native id
+    (None until turn 1 has run)."""
     if harness is CLAUDE:
         return str(uuid.uuid5(uuid.NAMESPACE_URL, f"stash-agent:{session_id}"))
     return native_id
@@ -97,16 +99,21 @@ def build_argv(
     harness: Harness,
     prompt: str,
     *,
-    resume_key: str | None,
+    session_key: str | None,
+    resume: bool,
     system_prompt: str,
     disallowed_tools: list[str] | None = None,
 ) -> list[str]:
+    """`session_key` is the id for this conversation (see session_key());
+    `resume` says whether to continue an existing session vs create fresh."""
     if harness is CLAUDE:
+        # Claude always carries its deterministic id: --session-id creates it on
+        # turn 1, --resume continues that exact session on later turns.
         argv = [
             "claude", "-p", prompt,
             "--output-format", "stream-json", "--verbose", "--include-partial-messages",
-            "--resume" if resume_key else "--session-id",
-            resume_key or str(uuid.uuid4()),
+            "--resume" if resume else "--session-id",
+            session_key,
             "--append-system-prompt", system_prompt,
             "--dangerously-skip-permissions",
         ]
@@ -115,11 +122,12 @@ def build_argv(
         return argv
 
     if harness is CODEX:
-        # Codex has no persistent system-prompt flag; prepend it to the prompt.
+        # Codex mints its own thread id and has no persistent system-prompt
+        # flag; prepend the prompt and resume only with a captured id.
         full = f"{system_prompt}\n\n{prompt}"
         base = ["codex", "exec"]
-        if resume_key:
-            base += ["resume", resume_key]
+        if resume and session_key:
+            base += ["resume", session_key]
         return [*base, full, "--json", "--skip-git-repo-check",
                 "--dangerously-bypass-approvals-and-sandbox"]
 
@@ -127,8 +135,8 @@ def build_argv(
         full = f"{system_prompt}\n\n{prompt}"
         argv = ["opencode", "run", full, "-m", f"{harness.provider.id}/{harness.default_model}",
                 "--format", "json", "--dangerously-skip-permissions"]
-        if resume_key:
-            argv += ["-s", resume_key]
+        if resume and session_key:
+            argv += ["-s", session_key]
         return argv
 
     raise ValueError(f"unhandled harness: {harness.id}")

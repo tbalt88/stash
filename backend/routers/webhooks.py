@@ -127,7 +127,8 @@ async def slack_events(request: Request):
 async def telegram_webhook(request: Request):
     # The bot echoes our secret in this header; anything else is not Telegram.
     secret = settings.TELEGRAM_WEBHOOK_SECRET
-    if not secret or request.headers.get("X-Telegram-Bot-Api-Secret-Token") != secret:
+    got = request.headers.get("X-Telegram-Bot-Api-Secret-Token", "")
+    if not secret or not hmac.compare_digest(got, secret):
         raise HTTPException(status_code=401, detail="bad secret")
 
     update = await request.json()

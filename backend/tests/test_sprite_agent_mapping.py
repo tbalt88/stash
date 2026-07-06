@@ -58,18 +58,24 @@ def test_resume_missing_detected_from_merged_stderr():
     assert state.resume_missing is True
 
 
-def test_claude_argv_first_turn_vs_resume():
-    first = h.build_argv(h.CLAUDE, "hi", resume_key=None, system_prompt="sys")
+def test_claude_uses_deterministic_id_for_create_and_resume():
+    # Regression: turn 1 must CREATE the session under the deterministic id, so
+    # turn 2's --resume finds it (else every turn silently reseeds).
+    key = h.session_key(h.CLAUDE, "sess-1", None)
+
+    first = h.build_argv(h.CLAUDE, "hi", session_key=key, resume=False, system_prompt="sys")
     assert first[:3] == ["claude", "-p", "hi"]
-    assert "--session-id" in first and "--resume" not in first
+    assert first[first.index("--session-id") + 1] == key
+    assert "--resume" not in first
     assert "--dangerously-skip-permissions" in first
 
-    later = h.build_argv(h.CLAUDE, "hi", resume_key="the-uuid", system_prompt="sys")
-    assert "--resume" in later and "the-uuid" in later and "--session-id" not in later
+    later = h.build_argv(h.CLAUDE, "hi", session_key=key, resume=True, system_prompt="sys")
+    assert later[later.index("--resume") + 1] == key
+    assert "--session-id" not in later
 
 
 def test_claude_disallowed_tools():
-    argv = h.build_argv(h.CLAUDE, "hi", resume_key=None, system_prompt="s",
+    argv = h.build_argv(h.CLAUDE, "hi", session_key="k", resume=False, system_prompt="s",
                         disallowed_tools=["Write", "Edit"])
     assert argv[argv.index("--disallowedTools") + 1] == "Write,Edit"
 
@@ -85,12 +91,13 @@ def test_claude_session_key_deterministic():
 
 
 def test_codex_argv_and_resume():
-    first = h.build_argv(h.CODEX, "do it", resume_key=None, system_prompt="sys")
+    first = h.build_argv(h.CODEX, "do it", session_key=None, resume=False, system_prompt="sys")
     assert first[:2] == ["codex", "exec"]
     assert "--json" in first and "--skip-git-repo-check" in first
     assert "sys" in first[2] and "do it" in first[2]  # system prompt prepended
+    assert "resume" not in first
 
-    resumed = h.build_argv(h.CODEX, "more", resume_key="thread_abc", system_prompt="sys")
+    resumed = h.build_argv(h.CODEX, "more", session_key="thread_abc", resume=True, system_prompt="sys")
     assert resumed[1:4] == ["exec", "resume", "thread_abc"]
 
 
@@ -119,13 +126,14 @@ def test_codex_captures_thread_id_and_maps():
 
 
 def test_opencode_argv_targets_openrouter_model():
-    argv = h.build_argv(h.OPENCODE, "go", resume_key=None, system_prompt="sys")
+    argv = h.build_argv(h.OPENCODE, "go", session_key=None, resume=False, system_prompt="sys")
     assert argv[:2] == ["opencode", "run"]
     m = argv[argv.index("-m") + 1]
     assert m == "openrouter/z-ai/glm-5.2"
     assert "--format" in argv and argv[argv.index("--format") + 1] == "json"
+    assert "-s" not in argv
 
-    resumed = h.build_argv(h.OPENCODE, "go", resume_key="sess_x", system_prompt="sys")
+    resumed = h.build_argv(h.OPENCODE, "go", session_key="sess_x", resume=True, system_prompt="sys")
     assert resumed[resumed.index("-s") + 1] == "sess_x"
 
 

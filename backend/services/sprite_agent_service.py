@@ -160,26 +160,30 @@ async def _turn_events(
     """One full agent turn: resume the harness session, reseeding from stored
     history if the box has lost it. Ends with exactly one end/error event."""
     native_id = await harness_mod.get_native_id(session_id, harness.id)
-    resume_key = harness_mod.session_key(harness, session_id, native_id)
-    # Claude derives its key deterministically, so only pass it as a resume if
-    # the conversation has prior turns; the others resume only with a native id.
-    if harness is harness_mod.CLAUDE and not any(t["role"] == "assistant" for t in history):
-        resume_key = None
+    key = harness_mod.session_key(harness, session_id, native_id)
+    # Claude resumes when the conversation has prior turns (its id is
+    # deterministic); the others resume only once they've minted a native id.
+    if harness is harness_mod.CLAUDE:
+        resume = any(t["role"] == "assistant" for t in history)
+    else:
+        resume = native_id is not None
 
     state = harness_mod.TurnState()
     argv = harness_mod.build_argv(
-        harness, message, resume_key=resume_key,
+        harness, message, session_key=key, resume=resume,
         system_prompt=system_prompt, disallowed_tools=disallowed_tools,
     )
     async for event in _run_harness(harness, sprite, argv, state, provider_env):
         yield event
 
     if state.resume_missing:
-        # Cattle rule: the on-box transcript is gone; rebuild from the DB.
+        # Cattle rule: the on-box transcript is gone. Recreate the canonical
+        # session fresh (Claude: --session-id <same key>) with history seeded
+        # into the prompt, so later turns resume it normally again.
         logger.warning("cloud agent: transcript missing for %s — reseeding from history", session_id)
         state = harness_mod.TurnState()
         argv = harness_mod.build_argv(
-            harness, _reseed_prompt(history, message), resume_key=None,
+            harness, _reseed_prompt(history, message), session_key=key, resume=False,
             system_prompt=system_prompt, disallowed_tools=disallowed_tools,
         )
         async for event in _run_harness(harness, sprite, argv, state, provider_env):

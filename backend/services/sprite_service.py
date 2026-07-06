@@ -228,17 +228,23 @@ async def exec_collect(
     env: dict[str, str],
     cwd: str | None = None,
     timeout_s: int,
+    stdout_only: bool = False,
 ) -> tuple[str, int]:
-    """Run argv to completion; returns (combined output, exit code)."""
+    """Run argv to completion; returns (output, exit code).
+
+    stdout_only excludes stderr — required for callers that strictly parse the
+    output (JSON/base64), since Sprites merges stderr into the stream and a
+    stray warning would corrupt the parse.
+    """
 
     async def _drain() -> tuple[str, int]:
         chunks: list[bytes] = []
         exit_code = -1
         async for event in exec_stream(sprite, argv, env=env, cwd=cwd):
-            if "data" in event:
-                chunks.append(event["data"])
-            else:
+            if "exit_code" in event:
                 exit_code = event["exit_code"]
+            elif not stdout_only or event["stream"] == "stdout":
+                chunks.append(event["data"])
         return b"".join(chunks).decode("utf-8", "replace"), exit_code
 
     return await asyncio.wait_for(_drain(), timeout=timeout_s)
@@ -378,6 +384,7 @@ async def fs_list(sprite: Sprite, rel_path: str) -> list[dict]:
         ["python3", "-c", _FS_LIST_PY, _box_path(rel_path)],
         env={},
         timeout_s=30,
+        stdout_only=True,
     )
     if code != 0:
         raise SpriteError(f"fs list failed: {output[-500:]}")
@@ -394,6 +401,7 @@ async def fs_read(sprite: Sprite, rel_path: str) -> bytes:
         ["python3", "-c", "import base64,sys;print(base64.b64encode(open(sys.argv[1],'rb').read(int(sys.argv[2]))).decode())", box_path, str(FS_MAX_READ_BYTES)],
         env={},
         timeout_s=60,
+        stdout_only=True,
     )
     if code != 0:
         raise SpriteError(f"fs read failed: {output[-500:]}")

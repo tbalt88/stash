@@ -131,7 +131,10 @@ async def terminal(ws: WebSocket, token: str = "", cols: int = 80, rows: int = 2
     except WebSocketDisconnect:
         pass
     finally:
-        output_task.cancel()
-        with contextlib.suppress(asyncio.CancelledError):
-            await output_task
+        # Close the box side first, unconditionally — awaiting the pump can
+        # re-raise its own send error, and a leaked sprite exec keeps the box
+        # awake (defeating sleep-to-zero).
         await term.close()
+        output_task.cancel()
+        with contextlib.suppress(Exception):
+            await output_task
