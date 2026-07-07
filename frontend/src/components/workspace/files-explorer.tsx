@@ -43,6 +43,7 @@ export default function FilesExplorer({
   openRootTab,
   showImport = true,
   vfsWritable = true,
+  headerAction,
   confirmMemoryWrites = false,
   tabSection,
 }: {
@@ -71,6 +72,11 @@ export default function FilesExplorer({
   /** This section can create VFS items (new file/folder/upload). Default true;
    *  Sessions is a read-through view, so false. */
   vfsWritable?: boolean;
+  /** A labeled section-specific action on its own row under the toolbar (e.g.
+   *  Memory's "Curate wiki"). The toolbar row itself can't fit a labeled
+   *  button — its action cluster doesn't shrink, so it would overflow the
+   *  sidebar. */
+  headerAction?: { icon: React.ReactNode; label: string; run: () => void };
   /** Memory is the curator agent's knowledge base, so a manual write there is
    *  unusual: confirm it first and offer to send the item to Files instead. */
   confirmMemoryWrites?: boolean;
@@ -306,6 +312,15 @@ export default function FilesExplorer({
           <input ref={fileRef} type="file" multiple className="hidden" onChange={onUpload} />
         </div>
       </div>
+
+      {headerAction && (
+        <div className="shrink-0 border-b border-[var(--divider-color)] px-2 py-1.5">
+          <button onClick={headerAction.run} className="flex h-7 w-full items-center justify-center gap-1.5 rounded border border-sidebar-border text-[12px] text-sidebar-foreground hover:bg-sidebar-accent">
+            {headerAction.icon}
+            {headerAction.label}
+          </button>
+        </div>
+      )}
 
       {/* List — root is also a drop target (move to root) */}
       <div
