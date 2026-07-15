@@ -33,12 +33,12 @@ describe("HomePage community page cards", () => {
     vi.unstubAllGlobals();
   });
 
-  // Public pages are served by the marketing site (joinstash.ai/pages), not
-  // this app — a relative /pages href resolves against the app host, which
-  // has no such route, and 404s in production.
-  it("links community pages to the www origin, not a relative path", async () => {
+  // Community pages render inside the app at /pages/[slug], like skills do at
+  // /skills/[slug] — the card must stay on the app origin and in the same tab.
+  it("links community pages to the in-app viewer route", async () => {
     render(<HomePage />);
     const card = await screen.findByRole("link", { name: /my page/i });
-    expect(card.getAttribute("href")).toBe("https://joinstash.ai/pages/my-page-abc123");
+    expect(card.getAttribute("href")).toBe("/pages/my-page-abc123");
+    expect(card.getAttribute("target")).toBeNull();
   });
 });
