@@ -32,6 +32,7 @@ async def get_or_create_user_row_from_auth0(
     auth0_sub: str,
     email: str | None,
     name: str | None,
+    email_verified: bool = False,
 ):
     """Return (user_row, created) for an Auth0 identity.
 
@@ -49,10 +50,13 @@ async def get_or_create_user_row_from_auth0(
     )
     if row:
         if email:
+            # email_verified is the trust anchor for derived workspace
+            # membership — persisting it here IS the enrollment.
             await pool.execute(
-                "UPDATE users SET last_seen = now(), email = $2 WHERE id = $1",
+                "UPDATE users SET last_seen = now(), email = $2, email_verified = $3 WHERE id = $1",
                 row["id"],
                 email,
+                email_verified,
             )
             # An invite may have been addressed to this email after the account
             # existed (e.g. before its email was recorded) — convert on login.
@@ -68,13 +72,14 @@ async def get_or_create_user_row_from_auth0(
     display_name = name or username
 
     row = await pool.fetchrow(
-        "INSERT INTO users (name, display_name, auth0_sub, description, email) "
-        "VALUES ($1, $2, $3, '', $4) "
+        "INSERT INTO users (name, display_name, auth0_sub, description, email, email_verified) "
+        "VALUES ($1, $2, $3, '', $4, $5) "
         "RETURNING id, name, display_name, description, created_at, last_seen",
         username,
         display_name,
         auth0_sub,
         email,
+        email_verified,
     )
     user = dict(row)
 

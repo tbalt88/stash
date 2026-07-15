@@ -163,7 +163,7 @@ async def test_managed_auth0_allows_manual_api_key_creation(client, monkeypatch)
 
     created = await client.post(
         "/api/v1/users/me/keys",
-        json={"name": "production-agent"},
+        json={"name": "production-agent", "access": "full"},
         headers=headers,
     )
 
@@ -318,3 +318,54 @@ async def test_welcome_email_failure_logs_only_metadata(monkeypatch):
     assert "user@webflow.com" not in str(captured_logs)
     assert "secret-token" not in str(captured_logs)
     assert "customer transcript" not in str(captured_logs)
+
+
+@pytest.mark.asyncio
+async def test_verified_auth0_email_grants_derived_membership(pool):
+    """Workspace membership is derived from Auth0's email_verified claim and
+    nothing else. A verified signup on a workspace domain is a member; an
+    unverified one must not be."""
+    from backend.services import permission_service, workspace_service
+
+    domain = f"{unique_name('corp')}.com".lower()
+    ws = await workspace_service.create_workspace("Corp", domain)
+
+    verified, _ = await get_or_create_user_row_from_auth0(
+        auth0_sub=f"google-oauth2|{unique_name()}",
+        email=f"a@{domain}",
+        name="Verified",
+        email_verified=True,
+    )
+    unverified, _ = await get_or_create_user_row_from_auth0(
+        auth0_sub=f"auth0|{unique_name()}",
+        email=f"b@{domain}",
+        name="Unverified",
+        email_verified=False,
+    )
+
+    assert await pool.fetchval("SELECT email_verified FROM users WHERE id = $1", verified["id"])
+    assert await permission_service.is_workspace_member(ws["scope_user_id"], verified["id"])
+    assert not await permission_service.is_workspace_member(ws["scope_user_id"], unverified["id"])
+
+
+@pytest.mark.asyncio
+async def test_returning_login_grants_membership_once_verified(pool):
+    """A user who existed before verifying becomes a member on their next
+    verified login — the UPDATE path must persist email_verified, which is
+    all membership is derived from."""
+    from backend.services import permission_service, workspace_service
+
+    domain = f"{unique_name('corp')}.com".lower()
+    sub = f"google-oauth2|{unique_name()}"
+    email = f"late@{domain}"
+
+    user, _ = await get_or_create_user_row_from_auth0(
+        auth0_sub=sub, email=email, name="Late", email_verified=False
+    )
+    ws = await workspace_service.create_workspace("Corp", domain)
+    assert not await permission_service.is_workspace_member(ws["scope_user_id"], user["id"])
+
+    await get_or_create_user_row_from_auth0(
+        auth0_sub=sub, email=email, name="Late", email_verified=True
+    )
+    assert await permission_service.is_workspace_member(ws["scope_user_id"], user["id"])
