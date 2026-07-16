@@ -426,6 +426,43 @@ async def fetch_twitter_content(owner_user_id: UUID, account_id: str, ref: str) 
 BOOKMARKS_SYNC_PAGE_SIZE = 100
 
 
+async def store_captured_bookmarks(source: dict, items: list[dict]) -> int:
+    """Upsert bookmarks the browser extension captured from x.com.
+
+    The extension intercepts x.com's own Bookmarks response (full tweet
+    content, no X API), so there is no server-side fetch and no API cost —
+    this just renders and stores. Same table and archive semantics as the
+    API path; the two never run for the same source (server sync is enabled
+    only for bring-your-own-app users, extension push feeds the rest)."""
+    source_id = UUID(source["id"])
+    owner_user_id = UUID(source["owner_user_id"])
+    stored = 0
+    for item in items:
+        tweet = {
+            "id": item["id"],
+            "text": item.get("text"),
+            "created_at": item.get("created_at"),
+        }
+        username = item.get("author_username")
+        user = {"username": username} if username else None
+        created = (item.get("created_at") or "")[:10]
+        prefix = f"@{username}" if username else "Post"
+        display = f"{prefix} - {created}" if created else prefix
+        await source_service.upsert_content_document(
+            table="twitter_bookmark_docs",
+            source_id=source_id,
+            owner_user_id=owner_user_id,
+            path=item["id"],
+            name=display,
+            kind="post",
+            content=_render_tweet(tweet, user),
+            external_ref=item["id"],
+            external_updated_at=_parse_time(item.get("created_at")),
+        )
+        stored += 1
+    return stored
+
+
 async def index_twitter_bookmarks(source: dict) -> str | None:
     """Archive the connected account's X bookmarks.
 
@@ -444,6 +481,14 @@ async def index_twitter_bookmarks(source: dict) -> str | None:
             BOOKMARKS_URL.format(user_id=source["external_ref"]),
             params={"max_results": BOOKMARKS_SYNC_PAGE_SIZE, **_TWEET_PARAMS},
         )
+        if resp.status_code in (402, 403):
+            # X gates the bookmarks endpoint behind paid API tiers; the app's
+            # current plan doesn't include it. Not retryable, not the user's
+            # fault — say so on the source row instead of a redacted constant.
+            raise source_service.SourceSyncUserError(
+                f"X returned {resp.status_code} for the bookmarks API — this endpoint "
+                "requires a paid X API tier (Basic or above) on the Stash developer app"
+            )
         resp.raise_for_status()
         payload = resp.json()
 
