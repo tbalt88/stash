@@ -1,6 +1,6 @@
 [project]
 name = "stashai"
-version = "0.1.267"
+version = "0.1.268"
 description = "CLI for Stash — shared memory for AI coding agents"
 readme = "README.md"
 requires-python = ">=3.11"
